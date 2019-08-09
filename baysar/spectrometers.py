@@ -1,4 +1,4 @@
-from numpy import square, sqrt, mean, linspace, nan, log, diff, arange, zeros, concatenate
+from numpy import square, sqrt, mean, linspace, nan, log, diff, arange, zeros, concatenate, where
 
 from scipy.interpolate import interp1d
 from scipy.signal import fftconvolve
@@ -120,7 +120,7 @@ class SpectrometerChord(object):
 
         pass
 
-    def __call__(self, theta, *args, **kwargs):
+    def __call__(self, *args, **kwargs):
          # TODO: do this in the posterior not in the spectrometer chord
 
         return self.likelihood()

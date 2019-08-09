@@ -56,22 +56,10 @@ class BaysarPosterior(object):
 
         self.plasma.update_plasma(theta)
 
-        try:
-            if self.priors is None:
-                prob = sum(p(theta) for p in self.posterior_components)
-            else:
-                prob = sum(p(theta) for p in self.posterior_components)
+        prob = sum(p() for p in self.posterior_components)
 
-                prob += sum(p(self) for p in self.priors)
-                       # sum(p(self.plasma.plasma_state) for p in self.priors)
-        except:
-            if self.print_errors:
-                print('Error in evaluating posterior')
-            prob = -1e50
-            if skip_error:
-                return prob
-            else:
-                raise
+        if self.priors is not None:
+            prob += sum(p(self) for p in self.priors)
 
         if any(self.plasma.plasma_state['main_ion_density'] < 0):
             if self.print_errors:

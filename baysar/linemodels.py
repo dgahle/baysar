@@ -11,14 +11,16 @@ from scipy.interpolate import RegularGridInterpolator, RectBivariateSpline
 from scipy.signal import fftconvolve
 import scipy.constants
 
-from numpy import diff, log10
+from numpy import diff
 
-import copy
-import numpy as np
 import warnings
 
-import sys
 import time as clock
+
+from numpy import sqrt, linspace, diff, arange, zeros, where, nan_to_num, array, log10, trapz, sin, cos, interp
+
+from baysar.lineshapes import GaussiansNorm
+
 
 def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
 
@@ -43,13 +45,13 @@ def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
         upper_index = len(wavelengths) - 1
     else:
         tmp_wave = abs(wavelengths - upper_cwl)
-        upper_index = np.where(tmp_wave == min(tmp_wave))[0][0]
+        upper_index = where(tmp_wave == min(tmp_wave))[0][0]
 
     if lower_cwl < max(wavelengths):
         lower_index = 0
     else:
         tmp_wave = abs(wavelengths - lower_cwl)
-        lower_index = np.where(tmp_wave == min(tmp_wave))[0][0]
+        lower_index = where(tmp_wave == min(tmp_wave))[0][0]
 
     # print(lower_index, upper_index)
 
@@ -75,12 +77,11 @@ def build_tec406(filename):
     except:
         raise
 
-    tmp_te = np.log10(tmp_data['te']).tolist()
-    tmp_ne = np.log10(tmp_data['edens']).tolist()
-    tmp_tau = np.log10(tmp_data['tau']).tolist()
+    tmp_te = tmp_data['te']
+    tmp_ne = tmp_data['edens']
+    tmp_tau = tmp_data['tau']
 
-    tmp_tec_grid0 = tmp_data['tec_grid']
-    tmp_tec_grid = np.log10(copy.copy(tmp_tec_grid0)).tolist()
+    tmp_tec_grid = tmp_data['tec_grid']
 
     tmp_3d = (tmp_tau, tmp_ne, tmp_te)
 
@@ -136,11 +137,11 @@ def reshape_tec_grid(tec_grid):
     old_shape = tec_grid.shape
     new_shape = old_shape[::-1]
 
-    new_tec_grid = np.zeros(new_shape)
+    new_tec_grid = zeros(new_shape)
 
-    for counter0 in np.arange(new_shape[0]):
+    for counter0 in arange(new_shape[0]):
 
-        for counter1 in np.arange(new_shape[1]):
+        for counter1 in arange(new_shape[1]):
 
 
             try:
@@ -197,7 +198,7 @@ class DopplerLine(BasicLine):
         self.reduced_wavelength, self.reduced_wavelength_indicies = \
             reduce_wavelength(wavelengths, cwl, half_range, return_indicies=True)
 
-        self.zeros_peak = np.zeros(len(self.wavelengths))
+        self.zeros_peak = zeros(len(self.wavelengths))
 
         super(DopplerLine, self).__init__(cwl, self.reduced_wavelength, lineshape, vectorise=vectorise)
 
@@ -207,7 +208,7 @@ class DopplerLine(BasicLine):
 
         fwhm = self.ti_to_fwhm(ti)
 
-        peak = self.zeros_peak  # np.zeros(len(self.wavelengths))
+        peak = self.zeros_peak  # zeros(len(self.wavelengths))
         peak[min(self.reduced_wavelength_indicies):max(self.reduced_wavelength_indicies) + 1] = \
             super(DopplerLine, self).__call__(fwhm, ems)
 
@@ -229,9 +230,9 @@ class DopplerLine(BasicLine):
 
         # tmp = ti / (1.67e8 * self.atomic_mass)
         # tmp = 5.988e-9 / (ti * self.atomic_mass)
-        # tmp = 2 * np.sqrt(tmp)
+        # tmp = 2 * sqrt(tmp)
 
-        tmp = 7.715e-5 * np.sqrt(ti / self.atomic_mass)
+        tmp = 7.715e-5 * sqrt(ti / self.atomic_mass)
 
         return self.cwl * tmp # = fwhm
 
@@ -325,9 +326,9 @@ class ADAS406Line(DopplerLine):
 
         ne = self.plasma['electron_density']
         te = self.plasma['electron_temperature']
-        tau = np.zeros( len(ne) ) + self.plasma[self.species]['tau']
+        tau = zeros( len(ne) ) + self.plasma[self.species]['tau']
 
-        tec_in = np.array([tau, ne, te]).T
+        tec_in = array([tau, ne, te]).T
         # self.tec_input.append(tec_in)
 
         length = diff (self.plasma['los'] )[0]
@@ -336,8 +337,8 @@ class ADAS406Line(DopplerLine):
         self.times.append(clock.time())
         self.time_labels.append('before tec evaluation')
 
-        # ems = n0 * ne * np.nan_to_num( self.tec406( tec_in ) ) * length_per_sr * self.jj_frac
-        ems = n0 * np.nan_to_num( self.tec406( tec_in ) ) * length_per_sr * self.jj_frac
+        # ems = n0 * ne * nan_to_num( self.tec406( tec_in ) ) * length_per_sr * self.jj_frac
+        ems = n0 * nan_to_num( self.tec406( tec_in ) ) * length_per_sr * self.jj_frac
         # TODO only takes one at a time or returns NaNs
 
         ems = ems.clip(min=0)
@@ -351,7 +352,7 @@ class ADAS406Line(DopplerLine):
 
         return super(ADAS406Line, self).__call__(ti, ems)
 
-        # peak = self.zeros_peak  # np.zeros(len(self.wavelengths))
+        # peak = self.zeros_peak  # zeros(len(self.wavelengths))
         # peak[min(self.reduced_wavelength_indicies):max(self.reduced_wavelength_indicies) + 1] = \
         #     super(ADAS406Line, self).__call__(ti, ems)
         #
@@ -376,7 +377,7 @@ class ADAS406Line(DopplerLine):
 
         # return super(ADAS406Line, self).__call__(ti, ems)
 
-        peak = self.zeros_peak  # np.zeros(len(self.wavelengths))
+        peak = self.zeros_peak  # zeros(len(self.wavelengths))
         peak[min(self.reduced_wavelength_indicies):max(self.reduced_wavelength_indicies) + 1] = \
             super(ADAS406Line, self).__call__(ti, ems)
 
@@ -475,9 +476,10 @@ class ADAS406Lines(object):
 
         ne = self.plasma['electron_density']
         te = self.plasma['electron_temperature']
-        tau = np.zeros(len(ne)) + self.plasma[self.species][self.ion]['tau']
+        tau = zeros(len(ne)) + self.plasma[self.species][self.ion]['tau']
 
-        tec_in = np.log10( np.array([tau, ne, te]).T )
+        # tec_in = log10( array([tau, ne, te]).T )
+        tec_in = array([tau, ne, te]).T
         # self.tec_input.append(tec_in)
 
         length = diff(self.plasma['los'])[0]
@@ -486,8 +488,10 @@ class ADAS406Lines(object):
         self.times.append(clock.time())
         self.time_labels.append('before tec evaluation')
 
-        # ems = n0 * ne * np.nan_to_num( self.tec406( tec_in ) ) * length_per_sr * self.jj_frac
-        ems = n0 * np.power(10, self.tec406(tec_in)) * length_per_sr # * self.jj_frac
+        tec = nan_to_num( self.tec406( tec_in ) )
+
+        ems = n0 * ne * tec * length_per_sr
+        # ems = n0 * power(10, self.tec406(tec_in)) * length_per_sr # * self.jj_frac
         # TODO only takes one at a time or returns NaNs
 
         ems = ems.clip(min=1e-20)
@@ -529,14 +533,12 @@ class HydrogenLineShape(object):
 
         self.zeeman = zeeman
 
-        from BaySAR.lineshapes import GaussiansNorm # , Gaussian
-
         wavelengths_doppler_num = len(self.wavelengths)
 
         if type(wavelengths_doppler_num/2) != int:
             wavelengths_doppler_num += 1
 
-        self.wavelengths_doppler = np.linspace(self.cwl-10, self.cwl+10, wavelengths_doppler_num)
+        self.wavelengths_doppler = linspace(self.cwl-10, self.cwl+10, wavelengths_doppler_num)
 
         self.doppler_function = DopplerLine(self.cwl, self.wavelengths_doppler, GaussiansNorm, atomic_mass)
 
@@ -585,7 +587,7 @@ class HydrogenLineShape(object):
         doppler_component = self.doppler_function(ion_temperature, 1)
 
         peak = fftconvolve(stark_component, doppler_component, 'same')
-        peak /= np.trapz(peak, self.wavelengths)
+        peak /= trapz(peak, self.wavelengths)
 
         if self.zeeman:
             return self.zeeman_split(peak, b_field, viewangle)
@@ -606,7 +608,7 @@ class HydrogenLineShape(object):
         ls_s = 1 / (abs((self.wavelengths - self.cwl)) ** (5. / 2.) +
                     (10 * delta_lambda_12ij / 2) ** (5. / 2.))
 
-        ls_s /= np.trapz(ls_s, self.wavelengths)
+        ls_s /= trapz(ls_s, self.wavelengths)
 
         return ls_s
 
@@ -623,12 +625,12 @@ class HydrogenLineShape(object):
 
         """
 
-        viewangle *= np.pi
+        viewangle *= pi
 
-        rel_intensity_pi = 0.5 * np.sin(viewangle) ** 2
-        rel_intensity_sigma = 0.25 * (1 + np.cos(viewangle) ** 2)
+        rel_intensity_pi = 0.5 * sin(viewangle) ** 2
+        rel_intensity_sigma = 0.25 * (1 + cos(viewangle) ** 2)
 
-        freq_shift_sigma = self.electron_charge / (4 * np.pi * self.electron_mass) * b_field
+        freq_shift_sigma = self.electron_charge / (4 * pi * self.electron_mass) * b_field
 
         # wave_shift_sigma = self.delta_magnetic_quantum_number * self.bohr_magnaton * b_field
         # wave_shift_sigma = self.delta_magnetic_quantum_number * 0.5 * b_field
@@ -639,8 +641,8 @@ class HydrogenLineShape(object):
 
         # relative intensities normalised to sum to one
 
-        ls_sigma_minus = rel_intensity_sigma * np.interp(self.wavelengths + wave_shift_sigma, self.wavelengths, peak)
-        ls_sigma_plus = rel_intensity_sigma * np.interp(self.wavelengths - wave_shift_sigma, self.wavelengths, peak)
+        ls_sigma_minus = rel_intensity_sigma * interp(self.wavelengths + wave_shift_sigma, self.wavelengths, peak)
+        ls_sigma_plus = rel_intensity_sigma * interp(self.wavelengths - wave_shift_sigma, self.wavelengths, peak)
         ls_pi = rel_intensity_pi * peak
 
         return ls_sigma_minus + ls_pi + ls_sigma_plus
@@ -661,7 +663,7 @@ class HydrogenLineShape(object):
                                wl_axis=self.wavelengths / 1e10, wl_centre=self.cwl / 1e10,
                                override_input_check=True)
 
-        return line.ls_szd / np.trapz(line.ls_szd, self.wavelengths)
+        return line.ls_szd / trapz(line.ls_szd, self.wavelengths)
 
 
 
@@ -684,7 +686,7 @@ class BalmerHydrogenLine(object):
         self.reduced_wavelength, self.reduced_wavelength_indicies = \
             reduce_wavelength(wavelengths, cwl, half_range, return_indicies=True)
 
-        self.zeros_peak = np.zeros(len(self.wavelengths))
+        self.zeros_peak = zeros(len(self.wavelengths))
 
 
         self.species = species
@@ -704,7 +706,7 @@ class BalmerHydrogenLine(object):
 
         self.tec_input = []
 
-        self.two_pi = 2 * np.pi
+        self.two_pi = 2 * pi
 
     def __call__(self):
 
@@ -717,9 +719,9 @@ class BalmerHydrogenLine(object):
 
         ne = self.plasma['electron_density']
         te = self.plasma['electron_temperature']
-        # tau = np.zeros(len(ne)) + self.plasma[self.species]['tau']
+        # tau = zeros(len(ne)) + self.plasma[self.species]['tau']
         #
-        # tec_in = np.array([tau, ne, te]).T
+        # tec_in = array([tau, ne, te]).T
 
         length = diff(self.plasma['los'])[0]
         length_per_sr = length / (4 * pi)
@@ -728,14 +730,14 @@ class BalmerHydrogenLine(object):
         rec_profile = n1 * ne * length_per_sr * rec_pec
 
         exc_pec = [self.exc_pec(tmp_ne, te[counter])[0][0] for counter, tmp_ne in enumerate(ne)]
-        exc_profile = n0 * ne * length_per_sr * np.nan_to_num( exc_pec )
-        # exc_profile = n0 * length_per_sr * np.nan_to_num( self.exc_tec(tec_in) )
+        exc_profile = n0 * ne * length_per_sr * nan_to_num( exc_pec )
+        # exc_profile = n0 * length_per_sr * nan_to_num( self.exc_tec(tec_in) )
 
         low_te = 0.2
         low_ne = 1e11
 
-        low_te_indicies = np.where(te < low_te)
-        low_ne_indicies = np.where(ne < low_ne)
+        low_te_indicies = where(te < low_te)
+        low_ne_indicies = where(ne < low_ne)
 
         rec_profile[low_te_indicies] = 0.0
         exc_profile[low_te_indicies] = 0.0
@@ -749,14 +751,14 @@ class BalmerHydrogenLine(object):
         self.rec_profile = rec_profile
         self.ems_profile = rec_profile + exc_profile
 
-        rec_weighted_electron_density = np.sum( rec_profile * ne ) / sum( rec_profile )
-        exc_weighted_electron_density = np.sum( exc_profile * ne ) / sum( exc_profile )
+        rec_weighted_electron_density = sum( rec_profile * ne ) / sum( rec_profile )
+        exc_weighted_electron_density = sum( exc_profile * ne ) / sum( exc_profile )
 
-        rec_weighted_electron_temperature = np.sum( rec_profile * te ) / sum( rec_profile )
-        exc_weighted_electron_temperature = np.sum( exc_profile * te ) / sum( exc_profile )
+        rec_weighted_electron_temperature = sum( rec_profile * te ) / sum( rec_profile )
+        exc_weighted_electron_temperature = sum( exc_profile * te ) / sum( exc_profile )
 
-        ems_weighted_electron_density = np.sum( self.ems_profile * ne ) / sum( self.ems_profile )
-        ems_weighted_electron_temperature = np.sum( self.ems_profile * te ) / sum( self.ems_profile )
+        ems_weighted_electron_density = sum( self.ems_profile * ne ) / sum( self.ems_profile )
+        ems_weighted_electron_temperature = sum( self.ems_profile * te ) / sum( self.ems_profile )
 
         self.exc_ne = exc_weighted_electron_density
         self.rec_ne = rec_weighted_electron_density
@@ -783,8 +785,8 @@ class BalmerHydrogenLine(object):
         self.exc_lineshape_input = [exc_weighted_electron_density, self.exc_te, ti, bfield, viewangle]
         self.rec_lineshape_input = [rec_weighted_electron_density, self.rec_te, ti, bfield, viewangle]
 
-        exc_peak = np.nan_to_num( self.lineshape(self.exc_lineshape_input) )
-        rec_peak = np.nan_to_num( self.lineshape(self.rec_lineshape_input) )
+        exc_peak = nan_to_num( self.lineshape(self.exc_lineshape_input) )
+        rec_peak = nan_to_num( self.lineshape(self.rec_lineshape_input) )
 
         self.exc_peak = exc_peak
         self.rec_peak = rec_peak
@@ -793,106 +795,13 @@ class BalmerHydrogenLine(object):
 
         self.tmp_peak = tmp_peak
 
-        peak = self.zeros_peak # np.zeros(len(self.wavelengths))
+        peak = self.zeros_peak # zeros(len(self.wavelengths))
         peak[min(self.reduced_wavelength_indicies):max(self.reduced_wavelength_indicies)+1] = tmp_peak
 
         assert len(peak) == len(self.wavelengths), 'len(peak) != len(self.wavelengths)'
 
         return peak
 
-        # return tmp_peak
-
-    def OLDCALL(self):
-
-        n0 = self.plasma[self.species][self.ion]['conc']
-        n1 = self.plasma['main_ion_density']
-        ti = self.plasma[self.species][self.ion]['ti']
-
-        bfield = self.plasma['B-field']
-        viewangle = self.plasma['view_angle'] / self.two_pi
-
-        ne = self.plasma['electron_density']
-        te = self.plasma['electron_temperature']
-        # tau = np.zeros(len(ne)) + self.plasma[self.species]['tau']
-        #
-        # tec_in = np.array([tau, ne, te]).T
-
-        length = diff(self.plasma['los'])[0]
-        length_per_sr = length / (4 * pi)
-
-        rec_pec = [ self.rec_pec(tmp_ne, te[counter])[0][0] for counter, tmp_ne in enumerate(ne) ]
-        rec_profile = n1 * ne * length_per_sr * rec_pec
-
-        exc_pec = [self.exc_pec(tmp_ne, te[counter])[0][0] for counter, tmp_ne in enumerate(ne)]
-        exc_profile = n0 * ne * length_per_sr * np.nan_to_num( exc_pec )
-        # exc_profile = n0 * length_per_sr * np.nan_to_num( self.exc_tec(tec_in) )
-
-        low_te = 0.2
-        low_te_indicies = np.where(te < low_te)
-
-        rec_profile[low_te_indicies] = 0.0
-        exc_profile[low_te_indicies] = 0.0
-
-        self.f_rec = sum(rec_profile) / sum(rec_profile + exc_profile)
-
-        self.exc_profile = exc_profile
-        self.rec_profile = rec_profile
-        self.ems_profile = rec_profile + exc_profile
-
-        rec_weighted_electron_density = np.sum( rec_profile * ne ) / sum( rec_profile )
-        exc_weighted_electron_density = np.sum( exc_profile * ne ) / sum( exc_profile )
-
-        ems_weighted_electron_density = np.sum( self.ems_profile * ne ) / sum( self.ems_profile )
-        ems_weighted_electron_temperature = np.sum( self.ems_profile * te ) / sum( self.ems_profile )
-
-        self.exc_ne = exc_weighted_electron_density
-        self.rec_ne = rec_weighted_electron_density
-
-        self.ems_ne = ems_weighted_electron_density
-        self.ems_te = ems_weighted_electron_temperature
-
-        line_models = ['rosato', 'stehle', 'stehle_param', 'voigt']
-        line_model_key = 2
-
-        # tmp_wavelengths = self.wavelengths
-        tmp_wavelengths = self.reduced_wavelength
-
-        rec_peak = BalmerLineshape(self.n_upper, rec_weighted_electron_density*1e6, ti, bfield=bfield,
-                                   viewangle=viewangle, line_model=line_models[line_model_key],
-                                   wl_axis=tmp_wavelengths/1e10, wl_centre=self.cwl/1e10,
-                                   override_input_check=True)
-
-        exc_peak = BalmerLineshape(self.n_upper, exc_weighted_electron_density*1e6, ti, bfield=bfield,
-                                   viewangle=viewangle, line_model=line_models[line_model_key],
-                                   wl_axis=tmp_wavelengths/1e10, wl_centre=self.cwl/1e10,
-                                   override_input_check=True)
-
-
-
-
-
-        tmp_peak = ls_norm(rec_peak.ls_szd, tmp_wavelengths, norm_type='area') * sum(rec_profile) + \
-                    ls_norm(exc_peak.ls_szd, tmp_wavelengths, norm_type='area') * sum(exc_profile)
-
-        peak = self.zeros_peak # np.zeros(len(self.wavelengths))
-        peak[min(self.reduced_wavelength_indicies):max(self.reduced_wavelength_indicies)+1] = tmp_peak
-
-        assert len(peak) == len(self.wavelengths), 'len(peak) != len(self.wavelengths)'
-
-        return peak
-
-        # return tmp_peak
-
-    def comparison(self, fast=True):
-
-        new = self()
-
-        old = self.OLDCALL()
-
-        if fast:
-            return new / old
-        else:
-            return new, old
 
 
 class NoADASLine(DopplerLine):
@@ -1075,7 +984,7 @@ class XLine(BasicLine):
             warnings.simplefilter("ignore")
 
             try:
-                assert not np.array([ t == None for t in super(XLine, self).__call__(self.fwhm, ems) ]).any()
+                assert not array([ t == None for t in super(XLine, self).__call__(self.fwhm, ems) ]).any()
             except AssertionError:
                 raise
             except TypeError:
@@ -1097,109 +1006,4 @@ class XLine(BasicLine):
 
 if __name__=='__main__':
 
-    import numpy as np
-
-    cwl = 3967 # e-9
-    waves = np.linspace(3950, 3990, 4000)  # * 1e-9
-
-    atomic_mass = 2
-
-    line = HydrogenLineShape(cwl, waves, 7, 2, atomic_mass) # , False)
-
-    from tulasa import general
-
-    new = [5e13, 10, 10, 0, 0.5]
-    old = [5e19, 10,     0, 90]
-
-    peaks = [line(new), line.comparison(old), line.comparison(old, 'stehle'),
-                        line.comparison(old, 'voigt')] #, line.comparison(old, 'rosato')]
-
-    # t0 = clock.time()
-    #
-    # for tmp in np.arange(1000):
-    #     # line(new)
-    #     line.comparison(old)
-    #
-    # t1 = clock.time()
-    #
-    # print('Iteration time', (t1-t0)/1e3)
-
-    general.plot(peaks, [line.wavelengths for p in peaks], multi='fake')
-
-
     pass
-
-# else:
-#
-#     import os, sys, io
-#
-#     sys.path.append(os.path.expanduser('~/'))
-#
-#     from numpy import arange, random
-#
-#     from BaySAR.plasmas import PlasmaLine
-#     from BaySAR.lineshapes import GaussiansNorm, Gaussian
-#     from BaySAR.line_data import line_data
-#
-#     from tulasa import general
-#
-#     line_info = line_data['D']['0']['3968.99']
-#     # line_info = line_data['D']['0']['4100.58']
-#
-#     cwl = line_info['wavelength']
-#     dtuning = 5.
-#     wave_res = 0.18
-#     wavelengths = np.linspace(cwl-dtuning, cwl+dtuning, int(2*dtuning/wave_res))
-#     n_upper = line_info['n_upper']
-#     atomic_mass = 2
-#     pec = [ line_info['exc_tec'], line_info['rec_pec'] ]
-#     species = 'D'
-#     ion = '0'
-#
-#     plasma = {}
-#
-#     plasma['los'] = np.linspace(-5., 5., 20)
-#
-#     profiles = Gaussian(x=plasma['los'])
-#
-#     plasma['electron_density'] = profiles( [-1, 5, 5e14] )
-#     plasma['main_ion_density'] = plasma['electron_density']
-#     plasma['electron_temperature'] = profiles([0, 3, 5])
-#     plasma['D'] = {'tau': 1e-3, 'conc': 1e13, 'ti': 1e1}
-#
-#     d_epsilon_line = BalmerHydrogenLine(cwl, wavelengths, n_upper, atomic_mass, pec,
-#                               species, ion, plasma)
-#
-#     line_info = line_data['D']['0']['4100.58']
-#
-#     cwl = line_info['wavelength']
-#     dtuning = 5.
-#     wave_res = 0.18
-#     wavelengths = np.linspace(cwl-dtuning, cwl+dtuning, int(2*dtuning/wave_res))
-#     n_upper = line_info['n_upper']
-#     atomic_mass = 2
-#     pec = [ line_info['exc_tec'], line_info['rec_pec'] ]
-#     species = 'D'
-#     ion = '0'
-#
-#     plasma = {}
-#
-#     plasma['los'] = np.linspace(-5., 5., 20)
-#
-#     profiles = Gaussian(x=plasma['los'])
-#
-#     plasma['electron_density'] = profiles( [-1, 5, 5e14] )
-#     plasma['main_ion_density'] = plasma['electron_density']
-#     plasma['electron_temperature'] = profiles([0, 3, 5])
-#     plasma['D'] = {'tau': 1e-6, 'conc': 1e13, 'ti': 1e1}
-#
-#     d_delta_line = BalmerHydrogenLine(cwl, wavelengths, n_upper, atomic_mass, pec,
-#                               species, ion, plasma)
-#
-#
-#     general.plot([sum(d_delta_line())+1e12, sum(d_epsilon_line())+1e12], log=True, multi='fake')
-#
-#     print(  sum(sum(d_epsilon_line())) / sum(sum(d_delta_line())) )
-#
-#
-#     pass
