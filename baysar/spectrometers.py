@@ -1,4 +1,4 @@
-from numpy import square, sqrt, mean, linspace, nan, log, diff, arange, zeros, concatenate
+from numpy import square, sqrt, mean, linspace, nan, log, diff, arange, zeros, concatenate, where
 
 from scipy.interpolate import interp1d
 from scipy.signal import fftconvolve

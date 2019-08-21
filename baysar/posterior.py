@@ -349,7 +349,7 @@ if __name__=='__main__':
 
     input_dict['chords'] = {}
 
-    from BaySAR.BaySAR.lineshapes import Gaussian, GaussianNorm
+    from baysar.lineshapes import Gaussian, GaussianNorm
 
     instrument_function = GaussianNorm(cwl=15, x=np.arange(31))
     instrument_function = instrument_function([10, 1])

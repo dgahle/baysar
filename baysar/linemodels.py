@@ -133,6 +133,9 @@ def reshape_tec_grid(tec_grid):
     :return: restructured 3D ne*TEC Tensor
     """
 
+    if type(tec_grid) == list:
+        tec_grid = np.array(tec_grid)
+
     old_shape = tec_grid.shape
     new_shape = old_shape[::-1]
 
@@ -490,7 +493,7 @@ class ADAS406Lines(object):
         ems = n0 * np.power(10, self.tec406(tec_in)) * length_per_sr # * self.jj_frac
         # TODO only takes one at a time or returns NaNs
 
-        ems = ems.clip(min=1e-20)
+        ems = np.nan_to_num( ems.clip(min=1e-20) )
 
         self.emission_profile = ems
 
@@ -529,7 +532,7 @@ class HydrogenLineShape(object):
 
         self.zeeman = zeeman
 
-        from BaySAR.lineshapes import GaussiansNorm # , Gaussian
+        from baysar.lineshapes import GaussiansNorm # , Gaussian
 
         wavelengths_doppler_num = len(self.wavelengths)
 
