@@ -70,7 +70,9 @@ class PlasmaLine():
 
     def build_plasma(self):
 
+
         self.all_the_indicies = {}
+        self.theta_slices = {}
 
         # check is the chords are calibrated
         self.calibration_constants = []
@@ -91,16 +93,27 @@ class PlasmaLine():
 
             intercept_index = len( np.where(cc_condition == True)[0] )
 
+            self.theta_slices['calibration'] = slice(0, intercept_index)
+
         else:
             intercept_index = 0
 
         self.all_the_indicies['intercept_index'] = intercept_index
+        num_chords = 1 #TODO: needs to be updated so there is one per chord
+        self.theta_slices['intercept'] = slice(intercept_index, intercept_index+num_chords)
 
         # defining indicies for electron density and temperature profiles
         self.all_the_indicies['ne_index'] = intercept_index + 1
         self.all_the_indicies['te_index'] = self.all_the_indicies['ne_index'] + \
                                             self.profile_fucntion_num_varriables
 
+        self.theta_slices['electron_density'] = slice(self.theta_slices['intercept'].stop,
+                                                      self.theta_slices['intercept'].stop +
+                                                      self.profile_fucntion_num_varriables)
+
+        self.theta_slices['electron_temperature'] = slice(self.theta_slices['electron_density'].stop,
+                                                          self.theta_slices['electron_density'].stop +
+                                                          self.profile_fucntion_num_varriables)
 
         # defining indicies for viewing-angle, b-field and concentration
         if self.hydrogen_isotope:
@@ -108,6 +121,14 @@ class PlasmaLine():
                 k_dr = 1
             else:
                 k_dr = 0
+
+            self.theta_slices['b-field'] = slice(self.theta_slices['electron_temperature'].stop,
+                                                 self.theta_slices['electron_temperature'].stop + 1)
+            self.theta_slices['viewangle'] = slice(self.theta_slices['b-field'].stop,
+                                                   self.theta_slices['b-field'].stop + 1)
+            # self.theta_slices['conc'] = slice(self.theta_slices['viewangle'].stop,
+            #                                        self.theta_slices['b-field'].stop + 1)
+
 
             self.all_the_indicies['b_index'] = self.all_the_indicies['te_index'] + \
                                                self.profile_fucntion_num_varriables - k_dr
@@ -129,6 +150,9 @@ class PlasmaLine():
                                                   self.profile_fucntion_num_varriables - k_dr
 
             self.all_the_indicies['upper_te_index'] = self.all_the_indicies['conc_index']
+
+        self.theta_slices['conc'] = slice(self.theta_slices['viewangle'].stop, ...)
+
 
         # defining indicies for taus and ion temperatures
         if self.inference_resolution['ion_resolved_tau']:
@@ -230,6 +254,173 @@ class PlasmaLine():
 
         ne_theta = theta[self.all_the_indicies['ne_index']:
                          self.all_the_indicies['te_index']]
+
+        ne_theta = theta[self.theta_slices['electron_density']]
+
+        te_theta = []
+
+        if self.profile_fucntion.dr:
+            te_theta.append([0])
+
+        for tmp in theta[self.all_the_indicies['te_index']:
+                         self.all_the_indicies['upper_te_index']]:
+
+            te_theta.append(tmp)
+
+        self.plasma_state['electron_density'] = np.power(10., self.profile_fucntion(ne_theta))
+
+        if self.logte:
+            self.plasma_state['electron_temperature'] = np.power(10., self.profile_fucntion(te_theta))
+        else:
+            self.plasma_state['electron_temperature'] = self.profile_fucntion(te_theta)
+
+        x_param = 'conc*tec*jj_frac'
+        x_index = self.all_the_indicies['x_index']
+        no_data_index = self.all_the_indicies['no_data_index']
+
+        tmp_shift = 0
+        tmp_shift_ti = 0
+        tmp_shift_tau = 0
+        tmp_nodata_shift = 0
+
+        # for tmp_isotope in self.input_dict['isotopes']:
+        for tmp_isotope in self.input_dict['physics'].keys():
+
+            if tmp_isotope == 'X':
+                try:
+                    for countx, tmpx in enumerate(self.plasma['physics'][tmp_isotope].keys()): # ['lines']:
+                        self.plasma_state[tmp_isotope][tmpx][x_param] = np.power(10, theta[ x_index + countx ])
+                except:
+
+                    print(x_index, countx, tmpx)
+                    print(len(theta))
+
+                    raise
+
+            elif any([tmp_isotope == h for h in self.hydrogen_isotopes]):
+
+                if self.conc:
+                    tmp_log_conc = theta[ self.all_the_indicies['conc_index'] + tmp_shift ] + \
+                                       theta[self.all_the_indicies['te_index'] - 1]
+                else:
+                    tmp_log_conc = theta[self.all_the_indicies['conc_index'] + tmp_shift]
+
+                tmp_ti = np.power(10., theta[ self.all_the_indicies['ti_index'] + tmp_shift_ti ] )
+
+                self.plasma_state[tmp_isotope]['0'] = {'conc': np.power(10., tmp_log_conc), 'ti': tmp_ti}
+
+                tmp_shift += 1
+                tmp_shift_ti += 1
+
+            else:
+
+                # tmp_number_of_ions = len(self.input_dict['physics'][tmp_isotope]['ions'])
+                # TODO: Need to add functionality for ion resolution
+                for tmp_ion_counter, tmp_ion in enumerate(self.input_dict['physics'][tmp_isotope]['ions']):
+
+                    if self.conc:
+                        tmp_log_conc = theta[self.all_the_indicies['conc_index'] + tmp_shift] + \
+                                   theta[self.all_the_indicies['te_index'] - 1]
+                    else:
+                        tmp_log_conc = theta[self.all_the_indicies['conc_index'] + tmp_shift]
+
+                    if self.netau:
+                        tmp_log_tau = theta[self.all_the_indicies['tau_index'] + tmp_shift_tau] - \
+                                      theta[self.all_the_indicies['te_index'] - 1]
+                    else:
+                        tmp_log_tau = theta[self.all_the_indicies['tau_index'] + tmp_shift_tau]
+                        pass
+
+                    self.plasma_state[tmp_isotope][tmp_ion] = \
+                        {'conc': np.power(10., tmp_log_conc),
+                         'ti': np.power(10., theta[ self.all_the_indicies['ti_index'] + tmp_shift_ti ] ),
+                         'tau': np.power( 10.,  tmp_log_tau )}
+
+                    if self.inference_resolution['ion_resolved_tau']:
+                        tmp_shift += 1
+                        tmp_shift_tau += 1
+
+                    if self.inference_resolution['ion_resolved_temperatures']:
+                        tmp_shift_ti += 1
+
+                if not self.inference_resolution['ion_resolved_tau']:
+                    tmp_shift += 1
+                    tmp_shift_tau += 1
+
+                if not self.inference_resolution['ion_resolved_temperatures']:
+                    tmp_shift_ti += 1
+
+
+            # update non-physics parameters
+            #
+            # check if the species has a nodata line
+            if tmp_isotope in self.no_data_lines.keys():
+
+                # check if the ion has a nodata line
+                for tmp_ion in self.no_data_lines[tmp_isotope].keys():
+
+                    # check that the ion has a subdict
+                    if tmp_ion not in self.plasma_state[tmp_isotope].keys():
+                        self.plasma_state[tmp_isotope][tmp_ion] = {}
+
+                    # update the 'conc*tec*jj_frac' parameter
+                    for tmp_line in self.no_data_lines[tmp_isotope][tmp_ion].keys():
+
+                        try:
+                            self.plasma_state[tmp_isotope][tmp_ion][tmp_line] = {}
+                            self.plasma_state[tmp_isotope][tmp_ion][tmp_line]['conc*tec*jj_frac'] = \
+                                theta[no_data_index + tmp_nodata_shift]
+                        except KeyError:
+                            print(tmp_isotope, tmp_ion, tmp_line)
+                            raise
+                        except IndexError:
+                            print(tmp_isotope, tmp_ion, tmp_line)
+                            print(len(theta), no_data_index, tmp_nodata_shift)
+                            raise
+                        except:
+                            raise
+
+
+                        tmp_nodata_shift += 1
+
+            pass
+
+
+        self.calc_total_impurity_electrons()
+        self.plasma_state['main_ion_density'] = self.plasma_state['electron_density'] - self.total_impurity_electrons
+
+        pass
+
+    def test(self):
+
+        for tag in self.tags:
+            t = theta[self.slices[tag]]
+            info = self.info_map[tag]
+
+            for key in info:
+                self.plasma_dict[key] = t
+
+    def gets_the_slices_for_each_ion_given_chosen_flags(self, theta):
+
+        theta = copy.copy(theta) # avoids theta changing external varriables
+
+        # check is the chords are calibrated
+        if any(self.is_chord_not_calibrated):
+            tmp_a_cal_array = theta[self.all_the_indicies['calibration_index']:
+                                    self.all_the_indicies['intercept_index']]
+
+            self.plasma_state['a_cal'] = np.power(10, tmp_a_cal_array)
+
+        self.plasma_state['intercept'] = np.power(10, theta[self.all_the_indicies['intercept_index']])
+
+        if self.hydrogen_isotope:
+            self.plasma_state['B-field'] = theta[self.all_the_indicies['b_index']]
+            self.plasma_state['view_angle'] = theta[self.all_the_indicies['view_angle_index']] * 180
+
+        ne_theta = theta[self.all_the_indicies['ne_index']:
+                         self.all_the_indicies['te_index']]
+
+        ne_theta = theta[self.theta_slices['electron_density']]
 
         te_theta = []
 
@@ -707,30 +898,30 @@ class PlasmaLine():
 
                 for counter1, ion in enumerate(self.plasma['physics'][species]['ions']):
 
-                    for counter2, line in enumerate(self.plasma['physics'][species][ion]['lines']):
+                    for counter2, line in enumerate(self.plasma['physics'][species][ion].keys()):
 
-                        # print(species, ion, line)
+                        if line != 'no_data_lines':
 
-                        if not any([k=='tec' for k in self.plasma['physics'][species][ion][line].keys()]):
+                            if not 'tec' in self.plasma['physics'][species][ion][line]:
 
-                            # check if there is a species subdict in the first places
-                            # then if there are species there is the one wanted there
-                            if not any([t == species for t in no_data_lines.keys()]):
-                                no_data_lines[species] = {}
-                                no_data_lines[species][ion] = {}
-                                no_data_lines[species][ion][line] = 0
-                            # so now we have accounted for not have the species
-                            #
-                            # what if the the species doesn't have any ion subdicts
-                            # what if the the species doesn't have the wanted ion
-                            elif not any([t == ion for t in no_data_lines[species].keys()]):
-                                no_data_lines[species][ion] = {}
-                                no_data_lines[species][ion][line] = 0
-                            # so now we have accounted for not having the ions of a species
-                            #
-                            # what if the ion does not have any lines - then we shall add it
-                            else:
-                                no_data_lines[species][ion][line] = 0
+                                # check if there is a species subdict in the first places
+                                # then if there are species there is the one wanted there
+                                if not any([t == species for t in no_data_lines.keys()]):
+                                    no_data_lines[species] = {}
+                                    no_data_lines[species][ion] = {}
+                                    no_data_lines[species][ion][line] = 0
+                                # so now we have accounted for not have the species
+                                #
+                                # what if the the species doesn't have any ion subdicts
+                                # what if the the species doesn't have the wanted ion
+                                elif not any([t == ion for t in no_data_lines[species].keys()]):
+                                    no_data_lines[species][ion] = {}
+                                    no_data_lines[species][ion][line] = 0
+                                # so now we have accounted for not having the ions of a species
+                                #
+                                # what if the ion does not have any lines - then we shall add it
+                                else:
+                                    no_data_lines[species][ion][line] = 0
 
                             # print(species, ion, line)
 
@@ -749,120 +940,5 @@ class PlasmaLine():
 
 
 if __name__ == '__main__':
-
-    input_dict = {}
-
-    num_chords = 1
-
-    input_dict['number_of_chords'] = num_chords
-
-    input_dict['chords'] = {}
-
-    wavelength_axes = [[]]
-    experimental_emission = [[]]
-
-    instrument_function = [[]]
-    emission_constant = [...]
-    noise_region = [[]]
-
-    for counter0, chord in enumerate(np.arange(num_chords)):
-        # tmp = 'chord' + str(counter0)
-        tmp = counter0
-
-        input_dict['chords'][tmp] = {}
-        input_dict['chords'][tmp]['meta'] = {}
-
-        input_dict['chords'][tmp]['meta']['wavelength_axis'] = wavelength_axes[counter0]
-        input_dict['chords'][tmp]['meta']['experimental_emission'] = experimental_emission[counter0]
-
-        input_dict['chords'][tmp]['meta']['instrument_function'] = instrument_function[counter0]
-        input_dict['chords'][tmp]['meta']['emission_constant'] = emission_constant[counter0]
-        input_dict['chords'][tmp]['meta']['noise_region '] = noise_region[counter0]
-
-        pass
-
-    '''
-    n_ii_cwls = [3995., 4026.09, 4039.35, 4041.32, 4035.09, 4043.54, 4044.79, 4056.92]
-    n_ii_jjr = [1, 0.92, 0.08, 0.456, 0.211, 0.197, 0.026, 0.022]
-    # n_ii_pec_keys = [0, 2, 2, 3, 3, 3, 3, 3]
-    n_ii_pec_keys = [3, 6, 6, 7, 7, 7, 7, 7]
-
-    # n_iii_cwls = [3998.63, 4003.58, 4097.33, 4103.34]
-    # n_iii_jjr = [0.375, 0.625, 0.665, 0.335]
-    # n_iii_pec_keys = [1, 1, 4, 4]    
-    '''
-
-    chord0_dict = {}
-
-    species = ['D', 'N', 'X']
-    ions = [['0'], ['1', '2']]
-
-    cwl = [[[3968.99, 4100.58]],
-           [[3995., 4026.09, 4039.35, 4041.32, 4035.09, 4043.54, 4044.79, 4056.92],
-            [3998.63, 4003.58, 4097.33, 4103.34]]]
-    n_pec = [[[3968.99, 4100.58]],
-             [[3995., 4026.09, 4039.35, 4041.32, 4035.09, 4043.54, 4044.79, 4056.92],
-              [3998.63, 4003.58, 4097.33, 4103.34]]]
-    f_jj = [[[3968.99, 4100.58]],
-            [[3995., 4026.09, 4039.35, 4041.32, 4035.09, 4043.54, 4044.79, 4056.92],
-             [3998.63, 4003.58, 4097.33, 4103.34]]]
-
-    atomic_charge = [1, 7]
-    ma = [2, 14]
-
-    for counter0, isotope in enumerate(species):
-
-        # if counter0 == 0:
-        #     input_dict['isotopes'] = species
-
-        chord0_dict[isotope] = {}
-        chord0_dict[isotope]['atomic_mass'] = ma[counter0]
-        chord0_dict[isotope]['atomic_charge'] = atomic_charge[counter0]
-
-        for counter1, ion in enumerate(ions[counter0]):
-
-            if counter1 == 0:
-                chord0_dict[isotope]['ions'] = ions[counter0]
-
-            chord0_dict[isotope][ion] = {}
-
-            for counter2, line in enumerate(cwl[counter0][counter1]):
-
-                if counter2 == 0:
-                    chord0_dict[isotope][ion]['lines'] = []
-
-                chord0_dict[isotope][ion]['lines'].append(str(line))
-
-                chord0_dict[isotope][ion][str(line)] = {}
-
-                chord0_dict[isotope][ion][str(line)]['wavelength'] = line
-                chord0_dict[isotope][ion][str(line)]['pec_key'] = n_pec[counter0][counter1][counter2]
-                chord0_dict[isotope][ion][str(line)]['jj_frac'] = f_jj[counter0][counter1][counter2]
-
-                pass
-
-            pass
-
-        pass
-
-    input_dict['chords'][0]['physics'] = chord0_dict
-
-    profile_funciton = Gaussian( x=np.arange(-50., 50., 3) )
-
-    plasma = PlasmaLine(input_dict=input_dict['chords'][0]['physics'],
-                        profile_fucntion=profile_funciton, profile_fucntion_num_varriables=3)
-
-    theta = [1e12,
-             -5, 30, 1e13,
-                  5, 10,
-             0.8, 0.2,
-             1e-4, 1e-4,
-             5, 10]
-
-    plasma(theta)
-
-    print( plasma.plasma_state )
-
-
 
     pass

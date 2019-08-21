@@ -34,41 +34,42 @@ def clip_data(x_data, y_data, x_range):
         raise
 
 
-def within(points, bounds):
+# def within(points, bounds):
+#
+#     if type(points) == str:
+#         try:
+#             float(points)
+#         except ValueError:
+#             # print(ValueError)
+#             return False
+#         except:
+#             raise
+#     elif type(points) == list:
+#         try:
+#             _ = [float(p) for p in points]
+#         except ValueError:
+#             # print(ValueError)
+#             return False
+#         except:
+#             raise
+#         pass
+#     else:
+#         pass
+#
+#
+#     try:
+#         try:
+#             return any([min(bounds) < p and p < max(bounds) for p in points])
+#         except TypeError:
+#             return any([min(bounds) < float(p) and float(p) < max(bounds) for p in points])
+#         except:
+#             raise
+#     except TypeError:
+#         return any([min(bounds) < points and points < max(bounds)])
+#     except:
+#         raise
 
-    if type(points) == str:
-        try:
-            float(points)
-        except ValueError:
-            # print(ValueError)
-            return False
-        except:
-            raise
-    elif type(points) == list:
-        try:
-            _ = [float(p) for p in points]
-        except ValueError:
-            # print(ValueError)
-            return False
-        except:
-            raise
-        pass
-    else:
-        pass
-
-
-    try:
-        try:
-            return any([min(bounds) < p and p < max(bounds) for p in points])
-        except TypeError:
-            return any([min(bounds) < float(p) and float(p) < max(bounds) for p in points])
-        except:
-            raise
-    except TypeError:
-        return any([min(bounds) < points and points < max(bounds)])
-    except:
-        raise
-
+from baysar.input_functions import within
 
 class SpectrometerChord(object):
 
@@ -121,7 +122,6 @@ class SpectrometerChord(object):
         pass
 
     def __call__(self, *args, **kwargs):
-         # TODO: do this in the posterior not in the spectrometer chord
 
         return self.likelihood()
 
@@ -200,7 +200,7 @@ class SpectrometerChord(object):
         #                      wavelength=self.x_data, z_effective=z_effective,
         #                      path_length=diff(self.plasma.profile_fucntion.x)[0])
 
-        self.continuum = self.plasma.plasma_state['intercept'] # + continuum
+        self.continuum = self.plasma.plasma_state['intercept'] # [self.chord_number]
 
 
         if self.calibrated:
@@ -283,7 +283,9 @@ class SpectrometerChord(object):
                     except:
                         raise
 
-                    if within(tmp_check , self.x_data):
+                    if not any(line == c for c in ('lines', 'no_data_lines')):
+
+                      if within(tmp_check , [self.x_data]):
 
                         try:
                             tmp_cwl = self.plasma.input_dict['physics'][isotope][line]['wavelength']
@@ -311,13 +313,6 @@ class SpectrometerChord(object):
 
                         self.lines.append(tmp_line)
 
-                    else:
-
-                        pass
-
-                    pass
-
-                pass
 
             elif any([isotope == i for i in ('H', 'D', 'T')]):
 
@@ -325,38 +320,28 @@ class SpectrometerChord(object):
 
                     for counter2, line in enumerate(self.plasma.input_dict['physics'][isotope][ion].keys()): # ['lines']):
 
-                        try:
-                            tmp_check = float(line)
-                        except ValueError:
-                            tmp_check = line.split()
-                        except:
-                            raise
+                        if not any(line == c for c in ('lines', 'no_data_lines')):
 
-                        if within(tmp_check, self.x_data):
+                            if within(line, [self.x_data]):
 
-                            tmp_cwl = self.plasma.input_dict['physics'][isotope][ion][line]['wavelength']
+                                tmp_cwl = self.plasma.input_dict['physics'][isotope][ion][line]['wavelength']
 
-                            tmp_wavelengths = self.x_data
+                                tmp_wavelengths = self.x_data
 
-                            n_upper = self.plasma.input_dict['physics'][isotope][ion][line]['n_upper']
-                            tmp_ma = self.plasma.input_dict['physics'][isotope]['atomic_mass']
+                                n_upper = self.plasma.input_dict['physics'][isotope][ion][line]['n_upper']
+                                tmp_ma = self.plasma.input_dict['physics'][isotope]['atomic_mass']
 
-                            tmp_pec = [ self.plasma.input_dict['physics'][isotope][ion][line]['exc_tec'] , \
-                                        self.plasma.input_dict['physics'][isotope][ion][line]['rec_pec'] ]
+                                tmp_pec = [ self.plasma.input_dict['physics'][isotope][ion][line]['exc_tec'] , \
+                                            self.plasma.input_dict['physics'][isotope][ion][line]['rec_pec'] ]
 
-                            tmp_line = BalmerHydrogenLine(cwl=tmp_cwl, wavelengths=tmp_wavelengths, n_upper=n_upper,
-                                                          atomic_mass=tmp_ma, pec=tmp_pec, species=isotope, ion=ion,
-                                                          plasma=self.plasma.plasma_state)
+                                tmp_line = BalmerHydrogenLine(cwl=tmp_cwl, wavelengths=tmp_wavelengths, n_upper=n_upper,
+                                                              atomic_mass=tmp_ma, pec=tmp_pec, species=isotope, ion=ion,
+                                                              plasma=self.plasma.plasma_state)
 
-                            # tmp_line = HydrogenLineShape(cwl, wavelengths, n_upper, n_lower, atomic_mass, zeeman=True)
+                                # tmp_line = HydrogenLineShape(cwl, wavelengths, n_upper, n_lower, atomic_mass, zeeman=True)
 
-                            self.lines.append(tmp_line)
+                                self.lines.append(tmp_line)
 
-                            pass
-
-                        pass
-
-                    pass
 
             else:
 
@@ -364,83 +349,39 @@ class SpectrometerChord(object):
 
                     for counter2, line in enumerate(self.plasma.input_dict['physics'][isotope][ion].keys()): # ['lines']):
 
-                        try:
-
-                            try:
-                                tmp_check = float(line)
-                            except ValueError:
-                                tmp_check = line.replace(',', '')[1:-1]
-                                tmp_check = tmp_check.split()
-                            except:
-                                raise
-
-                            if within(tmp_check, self.x_data):
-
-                                '''
-                                cwl, wavelengths, lineshape, atomic_mass, tec406, length
-                                '''
-
-                                tmp_cwl = self.plasma.input_dict['physics'][isotope][ion][line]['wavelength']
-
-                                tmp_wavelengths = self.x_data
-                                tmp_lineshape = GaussiansNorm
-
-
-                                tmp_ma = self.plasma.input_dict['physics'][isotope]['atomic_mass']
-                                tmp_jj_frac = self.plasma.input_dict['physics'][isotope][ion][line]['jj_frac']
-
-                                try:
-                                    tmp_tec = self.plasma.input_dict['physics'][isotope][ion][line]['tec']
-
-
-                                    # tmp_line = ADAS406Line(cwl=tmp_cwl, wavelengths=tmp_wavelengths, lineshape=tmp_lineshape,
-                                    #                        atomic_mass=tmp_ma, tec406=tmp_tec, species=isotope,
-                                    #                        ion=ion, plasma=self.plasma.plasma_state, jj_frac=tmp_jj_frac)
-
-                                    tmp_line = ADAS406Lines(cwls=tmp_cwl, wavelengths=tmp_wavelengths, lineshape=tmp_lineshape,
-                                                            atomic_mass=tmp_ma, tec406=tmp_tec, species=isotope,
-                                                            ion=ion, plasma=self.plasma.plasma_state, jj_frac=tmp_jj_frac)
-
-
-                                except KeyError:
-                                    tmp_line = NoADASLines(cwl=tmp_cwl, wavelengths=tmp_wavelengths, lineshape=tmp_lineshape,
-                                                           atomic_mass=tmp_ma, species=isotope, ion=ion,
-                                                           plasma=self.plasma.plasma_state, jj_frac=tmp_jj_frac)
-
-                                except:
-                                    raise
-
-                                self.lines.append(tmp_line)
-
-                            else:
-
-                                pass
-
-                        except ValueError:
-
-                            if line == 'lines':
-
-                                pass
-
-                            else:
-                                print(self.plasma.input_dict['physics'][isotope][ion].keys())
-                                print(isotope, ion, line)
-                                print("Unexpected error:", sys.exc_info())  # [0])
-                                raise
-
-
-
-                        else:
-
+                        if any(line == c for c in ('lines')):
                             pass
+                        elif within(line, [self.x_data]):
 
-                    pass
+                            '''
+                            cwl, wavelengths, lineshape, atomic_mass, tec406, length
+                            '''
 
-                pass
+                            tmp_cwl = self.plasma.input_dict['physics'][isotope][ion][line]['wavelength']
 
-            pass
+                            tmp_wavelengths = self.x_data
+                            tmp_lineshape = GaussiansNorm
 
-        pass
+
+                            tmp_ma = self.plasma.input_dict['physics'][isotope]['atomic_mass']
+                            tmp_jj_frac = self.plasma.input_dict['physics'][isotope][ion][line]['jj_frac']
+
+                            if 'tec' in self.plasma.input_dict['physics'][isotope][ion][line]:
+                                tmp_tec = self.plasma.input_dict['physics'][isotope][ion][line]['tec']
+
+                                tmp_line = ADAS406Lines(cwls=tmp_cwl, wavelengths=tmp_wavelengths, lineshape=tmp_lineshape,
+                                                        atomic_mass=tmp_ma, tec406=tmp_tec, species=isotope,
+                                                        ion=ion, plasma=self.plasma.plasma_state, jj_frac=tmp_jj_frac)
+
+                            else:
+                                tmp_line = NoADASLines(cwl=tmp_cwl, wavelengths=tmp_wavelengths, lineshape=tmp_lineshape,
+                                                       atomic_mass=tmp_ma, species=isotope, ion=ion,
+                                                       plasma=self.plasma.plasma_state, jj_frac=tmp_jj_frac)
+
+
+                            self.lines.append(tmp_line)
+                        else:
+                            pass
 
     def int_func_sparce_matrix(self, theta=None):
 

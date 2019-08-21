@@ -11,46 +11,26 @@ import os, sys, io, copy
 
 from baysar.line_data import line_data_multiplet
 
-def within(sample, array):
+def within(stuff, boxes):
 
     """
     This function checks is a value or list/array of values (the sample) are 'within' an array or values.
 
-    :param sample: a list of strings, ints or floats
-    :param array: Array of values to check the sample(s) against
+    :param stuff: a list of strings, ints or floats
+    :param box: Array of values to check the sample(s) against
     :return: True or False if all the samples are in the array
     """
 
-    acceptable_types = (int, float)
+    # acceptable_types = (int, float)
 
-    if type(sample) == str:
-
-        if sample[0] == '[':
-            sample = sample[1:-1].replace(', ', ' ').split()
-        else:
-            sample = sample.replace(', ', ' ').split()
-
-    elif type(sample) == list:
-
-        try:
-            assert any([type(sample) == t for t in acceptable_types])
-        except AssertionError:
-            if type(sample[0]) == str:
-                sample = [float(s) for s in sample]
-            else:
-                print('Ahh, poop.', AssertionError)
-                print('Sample: ', sample)
-                raise
-        except:
-            print("Unexpected error:", sys.exc_info())  # [0])
-            raise
+    if type(stuff) is tuple:
+        return any( any((box.min() < s) and (s < box.max()) for s in stuff) for box in boxes)
     else:
-        sample = [sample]
+        if type(stuff) is str:
+            stuff = float(stuff)
 
-    if array[0] == acceptable_types:
-        return any([ (float(s) > min(array) and float(s) < max(array)) for s in sample])
-    else:
-        return any([ any([(float(s) > min(a) and float(s) < max(a)) for s in sample]) for a in array ])
+        return any((box.min() < stuff) and (stuff < box.max()) for box in boxes)
+
 
 
 
@@ -172,7 +152,7 @@ def make_input_dict(num_chords,
                     else:
                         try:
                             input_dict['physics'][tmp_species][ion].pop(line)
-                            input_dict['physics'][tmp_species][ion]['lines'].remove(line)
+                            # input_dict['physics'][tmp_species][ion]['lines'].remove(line)
                         except:
                             print(tmp_species, ion, line)
                             raise
