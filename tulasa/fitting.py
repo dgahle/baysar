@@ -51,7 +51,7 @@ start_time = clock.time()
 
 
 # 0.2. Inference Tools
-from inference.mcmc import PcaChain, GibbsChain, HamiltonianChain, TemperedChain #, ParallelTempering
+from inference.mcmc import PcaChain, GibbsChain, HamiltonianChain #, TemperedChain #, ParallelTempering
 
 
 # 0.3. Tulasa
@@ -164,193 +164,193 @@ def ta_temps(k, c, x):
     return (k-c) / np.power(10, x/2) + c
 
 
-def the_big_fitter(posterior, theta, chain_bounds=None, return_chain=False, upper_temp=1e3, nfm=1, fast=None):
-
-    '''
-
-    :param posterior: posterior class that contains the forward model and probability calculation
-                      for a fit
-    :param theta: the proposal for the fit
-    :param chain_bounds: a function that takes advantage of set_boundaries and set_non_negative
-    :param return_chain: boulean that will return the chain object
-    :param upper_temp: upper temperature for tempered chains
-    :return: dictionary that contains the pdf info, metadata info and exp data
-    '''
-
-    new_prob = posterior(theta)
-
-    print()
-    print(-new_prob)
-    print()
-
-
-    t2_counter = 0
-    t2_modes = []
-
-    temps = []
-
-    diff_prob_0 = 1
-
-    if fast is None:
-        condition_t2 = any([(diff_prob_0 > 0), (t2_counter < 3)])
-    else:
-        condition_t2 = any([(diff_prob_0 > fast[0]), (t2_counter < 3)])
-
-    while condition_t2:
-
-        temp = ta_temps(upper_temp, 1, t2_counter)
-        temps.append(temp)
-
-        t2_counter += 1
-
-        chain = TemperedChain(posterior=posterior, start=theta, temperature=temp)
-
-        if chain_bounds is not None: chain_bounds(chain, theta)
-
-        advance = int(1e2)
-
-        print('Chain temperature =', np.round(temp, 2))
-        print('Advance chain: ', advance)
-
-        # start_time = clock.time()
-
-        chain.advance(advance)
-
-        # chain.burn = advance / 2
-
-        theta = chain.mode()
-
-        old_prob = new_prob
-        new_prob = posterior(theta)
-
-        t2_modes.append(new_prob)
-
-        diff_prob_0 += abs(new_prob - old_prob) - diff_prob_0
-
-        condition_t2 = any([(diff_prob_0 > 0), (t2_counter < 2)])
-
-        print(-new_prob)
-        # print(condition_t2, diff_prob_0, t2_counter)
-        print()
-
-        if t2_counter > 9: break
-
-    t1_counter = 0
-    t1_modes = []
-
-    diff_prob = 10
-
-    if fast is None:
-        condition_t1 = any([(diff_prob > 0), (t1_counter < 2)])
-    else:
-        condition_t1 = any([(diff_prob > fast[1]), (t1_counter < 2)])
-
-    while condition_t1:
-
-        t1_counter += 1
-
-        chain = GibbsChain(posterior=posterior, start=theta)
-
-        if chain_bounds is not None: chain_bounds(chain, thetanfm=2)
-
-        if fast is None:
-            advance = int(1.25e3)
-        else:
-            advance = int(5e2)
-
-        print('T1 iteration: ', t1_counter)
-        print('Advance chain: ', advance)
-
-        # start_time = clock.time()
-
-        chain.advance(advance)
-        chain.burn = int(advance * 0.25)
-
-        theta = chain.mode()
-
-        old_prob = new_prob
-        new_prob = posterior(theta)
-
-        t1_modes.append(new_prob)
-
-        print(-posterior(theta))
-        print()
-
-        diff_prob += abs(old_prob - new_prob) - diff_prob
-
-        condition_t1 = any([(diff_prob > 0), (t1_counter < 1)])
-
-        if t1_counter > 5: break
-
-    t1_converge = not condition_t1
-
-    end_time = clock.time()
-    run_time = (end_time - start_time)
-
-    if nfm > 1:
-        no_data_points = 0
-
-        for tmp in np.arange(nfm):
-            no_data_points += len(posterior.x[tmp])
-
-    else:
-        no_data_points = len(posterior.x)
-
-    minimised = is_minimised(posterior(chain.mode()), no_data_points)
-
-    print()
-    print('Converged?: ', t1_converge)
-    print('Minimised?: ', minimised)
-    print()
-
-    if run_time < 60.0:
-        print('Time elapsed (s): ', run_time)
-    elif run_time < 1800:
-        print('Time elapsed (mins): ', run_time / 60)
-    else:
-        print('Time elapsed (hr): ', run_time / 3600)
-
-    # evaluate pdfs and save to dictionary
-    sample = chain.get_sample()
-    sample_95 = chain.get_interval()
-    final_theta = chain.mode()
-
-    t2_modes = t2_modes[0:t2_counter]
-
-    tx_modes = t2_modes
-    [tx_modes.append(t) for t in t1_modes]
-
-    output = {}
-    output['meta'] = {}
-    output['meta']['t1_counter'] = t1_counter
-    output['meta']['t2_counter'] = t2_counter
-    output['meta']['t1_modes'] = t1_modes
-    output['meta']['t2_modes'] = t2_modes
-    output['meta']['tx_modes'] = tx_modes
-    output['meta']['t2_temps'] = temps
-    output['meta']['t1_converge?'] = t1_converge
-    output['meta']['run_time'] = run_time
-    output['meta']['minimised?'] = minimised
-
-    output['pdf'] = {}
-    output['pdf']['space'] = np.array(sample)
-    output['pdf']['space 95'] = np.array(sample_95)
-    output['pdf']['mode'] = np.array(final_theta)
-
-    output['spectra'] = {}
-    output['spectra']['noise'] = posterior.sigma
-    output['spectra']['error'] = posterior.error
-    output['spectra']['wave'] = posterior.x
-    output['spectra']['intensity'] = posterior.y
-    output['spectra']['int_func'] = posterior.int_func
-
-    # fits[key_scan][param_key]['output'] = output
-
-
-    if return_chain:
-        return output, chain
-    else:
-        return output
+# def the_big_fitter(posterior, theta, chain_bounds=None, return_chain=False, upper_temp=1e3, nfm=1, fast=None):
+#
+#     '''
+#
+#     :param posterior: posterior class that contains the forward model and probability calculation
+#                       for a fit
+#     :param theta: the proposal for the fit
+#     :param chain_bounds: a function that takes advantage of set_boundaries and set_non_negative
+#     :param return_chain: boulean that will return the chain object
+#     :param upper_temp: upper temperature for tempered chains
+#     :return: dictionary that contains the pdf info, metadata info and exp data
+#     '''
+#
+#     new_prob = posterior(theta)
+#
+#     print()
+#     print(-new_prob)
+#     print()
+#
+#
+#     t2_counter = 0
+#     t2_modes = []
+#
+#     temps = []
+#
+#     diff_prob_0 = 1
+#
+#     if fast is None:
+#         condition_t2 = any([(diff_prob_0 > 0), (t2_counter < 3)])
+#     else:
+#         condition_t2 = any([(diff_prob_0 > fast[0]), (t2_counter < 3)])
+#
+#     while condition_t2:
+#
+#         temp = ta_temps(upper_temp, 1, t2_counter)
+#         temps.append(temp)
+#
+#         t2_counter += 1
+#
+#         chain = TemperedChain(posterior=posterior, start=theta, temperature=temp)
+#
+#         if chain_bounds is not None: chain_bounds(chain, theta)
+#
+#         advance = int(1e2)
+#
+#         print('Chain temperature =', np.round(temp, 2))
+#         print('Advance chain: ', advance)
+#
+#         # start_time = clock.time()
+#
+#         chain.advance(advance)
+#
+#         # chain.burn = advance / 2
+#
+#         theta = chain.mode()
+#
+#         old_prob = new_prob
+#         new_prob = posterior(theta)
+#
+#         t2_modes.append(new_prob)
+#
+#         diff_prob_0 += abs(new_prob - old_prob) - diff_prob_0
+#
+#         condition_t2 = any([(diff_prob_0 > 0), (t2_counter < 2)])
+#
+#         print(-new_prob)
+#         # print(condition_t2, diff_prob_0, t2_counter)
+#         print()
+#
+#         if t2_counter > 9: break
+#
+#     t1_counter = 0
+#     t1_modes = []
+#
+#     diff_prob = 10
+#
+#     if fast is None:
+#         condition_t1 = any([(diff_prob > 0), (t1_counter < 2)])
+#     else:
+#         condition_t1 = any([(diff_prob > fast[1]), (t1_counter < 2)])
+#
+#     while condition_t1:
+#
+#         t1_counter += 1
+#
+#         chain = GibbsChain(posterior=posterior, start=theta)
+#
+#         if chain_bounds is not None: chain_bounds(chain, thetanfm=2)
+#
+#         if fast is None:
+#             advance = int(1.25e3)
+#         else:
+#             advance = int(5e2)
+#
+#         print('T1 iteration: ', t1_counter)
+#         print('Advance chain: ', advance)
+#
+#         # start_time = clock.time()
+#
+#         chain.advance(advance)
+#         chain.burn = int(advance * 0.25)
+#
+#         theta = chain.mode()
+#
+#         old_prob = new_prob
+#         new_prob = posterior(theta)
+#
+#         t1_modes.append(new_prob)
+#
+#         print(-posterior(theta))
+#         print()
+#
+#         diff_prob += abs(old_prob - new_prob) - diff_prob
+#
+#         condition_t1 = any([(diff_prob > 0), (t1_counter < 1)])
+#
+#         if t1_counter > 5: break
+#
+#     t1_converge = not condition_t1
+#
+#     end_time = clock.time()
+#     run_time = (end_time - start_time)
+#
+#     if nfm > 1:
+#         no_data_points = 0
+#
+#         for tmp in np.arange(nfm):
+#             no_data_points += len(posterior.x[tmp])
+#
+#     else:
+#         no_data_points = len(posterior.x)
+#
+#     minimised = is_minimised(posterior(chain.mode()), no_data_points)
+#
+#     print()
+#     print('Converged?: ', t1_converge)
+#     print('Minimised?: ', minimised)
+#     print()
+#
+#     if run_time < 60.0:
+#         print('Time elapsed (s): ', run_time)
+#     elif run_time < 1800:
+#         print('Time elapsed (mins): ', run_time / 60)
+#     else:
+#         print('Time elapsed (hr): ', run_time / 3600)
+#
+#     # evaluate pdfs and save to dictionary
+#     sample = chain.get_sample()
+#     sample_95 = chain.get_interval()
+#     final_theta = chain.mode()
+#
+#     t2_modes = t2_modes[0:t2_counter]
+#
+#     tx_modes = t2_modes
+#     [tx_modes.append(t) for t in t1_modes]
+#
+#     output = {}
+#     output['meta'] = {}
+#     output['meta']['t1_counter'] = t1_counter
+#     output['meta']['t2_counter'] = t2_counter
+#     output['meta']['t1_modes'] = t1_modes
+#     output['meta']['t2_modes'] = t2_modes
+#     output['meta']['tx_modes'] = tx_modes
+#     output['meta']['t2_temps'] = temps
+#     output['meta']['t1_converge?'] = t1_converge
+#     output['meta']['run_time'] = run_time
+#     output['meta']['minimised?'] = minimised
+#
+#     output['pdf'] = {}
+#     output['pdf']['space'] = np.array(sample)
+#     output['pdf']['space 95'] = np.array(sample_95)
+#     output['pdf']['mode'] = np.array(final_theta)
+#
+#     output['spectra'] = {}
+#     output['spectra']['noise'] = posterior.sigma
+#     output['spectra']['error'] = posterior.error
+#     output['spectra']['wave'] = posterior.x
+#     output['spectra']['intensity'] = posterior.y
+#     output['spectra']['int_func'] = posterior.int_func
+#
+#     # fits[key_scan][param_key]['output'] = output
+#
+#
+#     if return_chain:
+#         return output, chain
+#     else:
+#         return output
 
 from concurrent.futures import ProcessPoolExecutor
 

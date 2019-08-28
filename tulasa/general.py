@@ -40,6 +40,8 @@ import argparse
 # from fort_convolve.learning import custer
 
 
+sys.path.append(os.path.expanduser('~/'))
+sys.path.append(os.path.expanduser('~/inference-tools/'))
 sys.path.append(os.path.expanduser('~/pystark/'))
 
 start_time = clock.time()
@@ -48,7 +50,7 @@ start_time = clock.time()
 
 
 # 0.2. Inference Tools
-from inference.mcmc import GibbsChain, TemperedChain #, ParallelTempering
+from inference.mcmc import GibbsChain #, TemperedChain #, ParallelTempering
 
 
 # 0.3. Gahle Tools
