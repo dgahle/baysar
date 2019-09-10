@@ -54,7 +54,7 @@ class BaysarPosterior(object):
                     print('Out of Bounds')
                 return prob
 
-        self.plasma.update_plasma(theta)
+        self.plasma(theta)
 
         prob = sum(p() for p in self.posterior_components)
 
@@ -331,6 +331,7 @@ class BaysarPosteriorFilterWrapper(BaysarPosterior):
 if __name__=='__main__':
 
     from baysar.input_functions import make_input_dict
+    from tulasa import plotting_functions as pf
 
     num_chords = 1
     wavelength_axes = [np.linspace(4000, 4100, 512)]
@@ -341,7 +342,7 @@ if __name__=='__main__':
     ions = [ ['0'], ['1', '2', '3'] ]
     noise_region = [[4040, 4050]]
     mystery_lines = [ [ [4070], [4001, 4002] ],
-                      [    1,    [0.4, 0.6]]]
+                      [    [1],    [0.4, 0.6]]]
 
     input_dict = make_input_dict(num_chords=num_chords,
                                  wavelength_axes=wavelength_axes, experimental_emission=experimental_emission,
@@ -353,5 +354,9 @@ if __name__=='__main__':
 
     posterior = BaysarPosterior(input_dict=input_dict)
 
+    rand_theta = posterior.random_start()
+    print( posterior(rand_theta) )
+
+    pf.plot_fit(posterior, [rand_theta], alpha=1, size=1)
 
     pass

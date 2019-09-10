@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import os, sys, io
 
 from tulasa.data_processing import reduce_sample, hdi_estimator
-from tulasa import fitting, general
+from tulasa import general
 
 
 
@@ -1185,10 +1185,12 @@ def plot_fit(posterior, sample, size=100, alpha=0.1, ylim=(1e10, 1e16)):
 
         posterior(sample[counter0])
 
-        if posterior.posterior_components[0].calibrated:
-            tmp_fit = posterior.posterior_components[0].forward_model()
-        else:
-            tmp_fit = posterior.posterior_components[0].forward_model() * posterior.plasma.plasma_state['a_cal'][0]
+        # if posterior.posterior_components[0].calibrated:
+        #     tmp_fit = posterior.posterior_components[0].forward_model()
+        # else:
+        #     tmp_fit = posterior.posterior_components[0].forward_model() * posterior.plasma.plasma_state['a_cal'][0]
+
+        tmp_fit = posterior.posterior_components[0].forward_model() * posterior.plasma.plasma_state['cal0']
 
         ax[0].plot(waves, tmp_fit, 'pink', alpha=alpha)
 

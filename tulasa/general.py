@@ -48,7 +48,7 @@ start_time = clock.time()
 
 
 # 0.2. Inference Tools
-from inference.mcmc import GibbsChain, TemperedChain #, ParallelTempering
+# from inference.mcmc import GibbsChain, TemperedChain #, ParallelTempering
 
 
 # 0.3. Gahle Tools
