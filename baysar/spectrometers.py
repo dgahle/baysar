@@ -23,51 +23,12 @@ def clip_data(x_data, y_data, x_range):
     :return:
     '''
 
+    assert len(x_data)==len(y_data), 'len(x_data)!=len(y_data)'
+
     x_index = where((min(x_range) < x_data) & (x_data < max(x_range)))
 
+    return x_data[x_index], y_data[x_index]
 
-    try:
-        return x_data[x_index], y_data[x_index]
-    except:
-        print(x_index)
-
-        raise
-
-
-# def within(points, bounds):
-#
-#     if type(points) == str:
-#         try:
-#             float(points)
-#         except ValueError:
-#             # print(ValueError)
-#             return False
-#         except:
-#             raise
-#     elif type(points) == list:
-#         try:
-#             _ = [float(p) for p in points]
-#         except ValueError:
-#             # print(ValueError)
-#             return False
-#         except:
-#             raise
-#         pass
-#     else:
-#         pass
-#
-#
-#     try:
-#         try:
-#             return any([min(bounds) < p and p < max(bounds) for p in points])
-#         except TypeError:
-#             return any([min(bounds) < float(p) and float(p) < max(bounds) for p in points])
-#         except:
-#             raise
-#     except TypeError:
-#         return any([min(bounds) < points and points < max(bounds)])
-#     except:
-#         raise
 
 from baysar.input_functions import within
 
@@ -285,7 +246,7 @@ class SpectrometerChord(object):
 
                     if not any(line == c for c in ('lines', 'no_data_lines')):
 
-                      if within(tmp_check , [self.x_data]):
+                      if within(tmp_check, [self.x_data]):
 
                         try:
                             tmp_cwl = self.plasma.input_dict['physics'][isotope][line]['wavelength']
@@ -349,7 +310,7 @@ class SpectrometerChord(object):
 
                     for counter2, line in enumerate(self.plasma.input_dict['physics'][isotope][ion].keys()): # ['lines']):
 
-                        if any(line == c for c in ('lines')):
+                        if any(line == c for c in ('lines', 'no_data_lines')):
                             pass
                         elif within(line, [self.x_data]):
 

@@ -938,10 +938,13 @@ class PlasmaLine():
         return out
 
 import collections
+from baysar.lineshapes import MeshLine
+
 
 def power10(var):
 
     return np.power(10, var)
+
 
 class arb_obj(object):
 
@@ -951,6 +954,7 @@ class arb_obj(object):
     def __call__(self, *args):
         return args
 
+
 class arb_obj_single_input(object):
 
     def __init__(self, **kwargs):
@@ -958,10 +962,6 @@ class arb_obj_single_input(object):
 
     def __call__(self, theta):
         return theta
-
-
-
-from baysar.lineshapes import MeshLine
 
 
 class NewPlasmaLine():
@@ -984,7 +984,7 @@ class NewPlasmaLine():
         self.hydrogen_isotope = any(['H' == t or 'D' == t or 'T' == t
                                      for t in list(self.input_dict['physics'].keys())])
 
-        self.build_slices_and_tags()
+        self.build_tags_slices_and_bounds()
         self.build_impurity_average_charge()
 
     def __call__(self, theta):
@@ -992,9 +992,10 @@ class NewPlasmaLine():
         return self.new_update_plasma(theta)
 
     # Todo: Add in automated boundaries
-    def build_slices_and_tags(self):
+    def build_tags_slices_and_bounds(self):
 
         self.tags = []
+        bounds = []
         slice_lengths = []
 
         for chord, cal_func, back_func in zip(np.arange(self.num_chords), self.cal_functions, self.background_functions):
@@ -1005,48 +1006,50 @@ class NewPlasmaLine():
             slice_lengths.append(cal_func.number_of_variables)
             slice_lengths.append(back_func.number_of_variables)
 
-        # for counter in np.arange(self.profile_function.number_of_variables_ne):
-        #     self.tags.append('electron_density')
-        #     slice_lengths.append(self.profile_function.number_of_variables_ne)
-        #
-        # for counter in np.arange(self.profile_function.number_of_variables_te):
-        #     self.tags.append('electron_temperature')
-        #     slice_lengths.append(self.profile_function.number_of_variables_te)
+            bounds.append(cal_func.bounds)
+            bounds.append(back_func.bounds)
 
         self.tags.append('electron_density')
-        slice_lengths.append(self.profile_function.number_of_variables_ne)
-
         self.tags.append('electron_temperature')
+
+        slice_lengths.append(self.profile_function.number_of_variables_ne)
         slice_lengths.append(self.profile_function.number_of_variables_te)
 
-        self.species = list(self.input_dict['physics'])
-        species = list(self.input_dict['physics'])
+        [bounds.append(self.profile_function.bounds_ne) for num in np.arange(self.profile_function.number_of_variables_ne)]
+        [bounds.append(self.profile_function.bounds_te) for num in np.arange(self.profile_function.number_of_variables_te)]
 
-        hydrogen_shape_tags = ['b-field', 'viewangle'] # , 'H_dens', 'H_Ti']
+        self.species = list(self.input_dict['physics'])
+        hydrogen_shape_tags = ['b-field', 'viewangle']
+        hydrogen_shape_bounds = [[0, 10], [0, 2]]
 
         if self.hydrogen_isotope:
-            # self.tags = [self.tags.append(tag) for tag in hydrogen_shape_tags]
-            for tag in hydrogen_shape_tags:
+            for tag, b in zip(hydrogen_shape_tags, hydrogen_shape_bounds):
                 self.tags.append(tag)
                 slice_lengths.append(1)
+                bounds.append(b)
 
         impurity_tags = ['_dens', '_Ti', '_tau']
-
+        impurity_bounds = [[9, 15], [-1, 3], [-6, 3]]
         for tag in impurity_tags:
             for s in species:
                 if ((tag == '_tau') and (s in self.hydrogen_isotopes)) or s=='X':
                     pass
                 else:
                     for ion in self.input_dict['physics'][s]['ions']:
-                        sion = s+'_'+ion
-                        self.tags.append(sion+tag)
-                        slice_lengths.append(1)
+                        sion = s+'_'+ion+tag
+                        tmp_b = impurity_bounds[np.where([t in sion for t in impurity_tags])[0][0]]
 
-        if 'X' in species:
-            # print(self.input_dict['physics']['X'])
+                        self.tags.append(sion)
+                        slice_lengths.append(1)
+                        bounds.append(tmp_b)
+
+                        # print(self.tags[-1], bounds[-1], bounds)
+
+        if 'X' in self.species:
             for line in self.input_dict['physics']['X'].keys():
                 self.tags.append('X_' + line.replace(' ', '_'))
                 slice_lengths.append(1)
+                bounds.append([0, 20])
 
         # building dictionary to have flags for which parameters are resoloved
         self.is_resolved = collections.OrderedDict()
@@ -1061,9 +1064,14 @@ class NewPlasmaLine():
                 zip(self.tags, ti_resolution_check, dens_tau_resolution_check, res_not_apply):
             self.is_resolved[tag] = is_ti_r or is_tau_r or rna
 
+            # # adding the bounds for the impurity_tags
+            # if any([t in tag for t in impurity_tags]):
+            #     bounds.append(impurity_bounds[ np.where([t in tag for t in impurity_tags]) ])
+
         # building the slices to map BaySAR input to model parameters
         slices = []
-        for p, L in zip(self.tags, slice_lengths):
+        bounds_to_remove_indicies = []
+        for p, L, b, n in zip(self.tags, slice_lengths, bounds, np.arange(len(bounds))):
             if len(slices) is 0:
                 slices.append( (p, slice(0, L)) )
             elif self.is_resolved[p]:
@@ -1077,12 +1085,17 @@ class NewPlasmaLine():
 
                 if len(slc) != 0:
                     slices.append((p, slc[0]))
+                    bounds_to_remove_indicies.append(n)
                 else:
                     last = slices[-1][1].stop
                     slices.append((p, slice(last, last+L)))
 
-        self.num_params = slices[-1][1].stop
+        self.n_params = slices[-1][1].stop
         self.slices = collections.OrderedDict(slices)
+        self.theta_bounds = [np.array(b) for b, n in zip(bounds, np.arange(len(bounds))) if not any([n==check for check in bounds_to_remove_indicies])]
+        self.bounds = bounds
+
+        assert self.n_params==len(self.theta_bounds), 'self,n_params!=len(self.theta_bounds)'
 
         self.assign_theta_functions()
 
@@ -1097,7 +1110,7 @@ class NewPlasmaLine():
 
     def new_update_plasma(self, theta):
 
-        assert len(theta)==self.num_params, 'len(theta)!=self.num_params'
+        assert len(theta)==self.n_params, 'len(theta)!=self.n_params'
 
         self.update_plasma_theta_tags(theta)
 
@@ -1119,15 +1132,15 @@ class NewPlasmaLine():
         if profile_function is None:
             x = np.linspace(1, 2, 3)
             profile_function = MeshLine(x=x, zero_bounds=-2, bounds=[0, 3], log=True)
-
-            self.profile_function = arb_obj_single_input(electron_density=profile_function,
-                                                         electron_temperature=profile_function,
-                                                         number_of_variables_ne=3,
-                                                         number_of_variables_te=3)
+            self.profile_function = arb_obj(electron_density=profile_function,
+                                            electron_temperature=profile_function,
+                                            number_of_variables_ne=3,
+                                            number_of_variables_te=3,
+                                            bounds_ne=[11, 16], bounds_te=[-1, 2])
         else:
             self.profile_function = profile_function
 
-        tmp_func = arb_obj_single_input(number_of_variables=1)
+        tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[5, 20])
 
         if cal_functions is None:
             self.cal_functions = [tmp_func for num in np.arange(self.num_chords)]
@@ -1177,18 +1190,18 @@ class NewPlasmaLine():
                 tau_tag = [tag for tag in plasma.tags if tmp_element in tag and tag.endswith('_tau')]
                 dens_tag = [tag for tag in plasma.tags if tmp_element in tag and tag.endswith('_dens')]
 
-                tau = self.plasma_state_tags[tau_tag[0]]
-                conc = self.plasma_state_tags[dens_tag[0]]
+                for t_tag, d_tag in zip(tau_tag, dens_tag):
 
-                tau = np.zeros(len(ne)) + tau
+                    tau = self.plasma_state_tags[t_tag]
+                    conc = self.plasma_state_tags[d_tag]
 
-                tmp_in = np.array([tau, ne, te]).T
+                    tau = np.zeros(len(ne)) + tau
 
-                average_charge = self.impurity_average_charge[tmp_element](tmp_in)
+                    tmp_in = np.array([tau, ne, te]).T
 
-                total_impurity_electrons += average_charge * conc
+                    average_charge = self.impurity_average_charge[tmp_element](tmp_in)
 
-                pass
+                    total_impurity_electrons += average_charge * conc
 
         if set:
             self.total_impurity_electrons = np.nan_to_num(total_impurity_electrons)
@@ -1210,255 +1223,6 @@ class NewPlasmaLine():
         self.impurity_average_charge = tmp_impurity_average_charge
 
     # TODO: Need to add functionality for no data lines and mystery lines
-    def chain_bounds(self):
-
-        '''
-        self.all_the_indicies = [intercept_index,
-                                 ne_index, te_index,
-                                 conc_index, tau_index, ti_index,
-                                 x_index, no_data_index]
-
-        e.g. theta = [1e0
-                      -2 10 1e13 8 4
-                      1.0 0.1
-                      1e-1 1e-1
-                      10 20]
-
-        :return:
-        '''
-
-        # print(self.all_the_indicies)
-
-        theta_bounds = []
-        theta_widths = []
-
-        self.default_start = []
-
-        # Bounds
-        cal_bounds = [0, 17]
-        cal_widths = 1
-
-        intercept_bounds = [0, 17]
-        intercept_widths = 2
-
-        dr_bounds = [-10, 10]
-        fwhm_bounds = [0.05, 5.0]
-
-        dr_widths = 0.5
-        fwhm_widths = 1
-
-        ne_bounds = [12, 16]
-        # te_bounds = [11, 18] # if log(Pe)
-
-        if self.logte:
-            te_bounds = [-1, 3]
-        else:
-            te_bounds = [0.5, 50]
-
-        ne_widths = 2
-        te_widths = 5
-
-        b_field_bounds = [0, 3]  # 5]
-        viewangle_bounds = [0, 2]
-
-        b_field_widths = 0.1
-        viewangle_widths = 10
-
-        if self.conc:
-            conc_bounds = [-5, 0]
-        else:
-            conc_bounds = [0, 15]
-
-        if self.netau:
-            tau_bounds = [8.7, 17]  # sampled as log10(ne*tau)
-        else:
-            tau_bounds = [-7, 0]
-
-        ti_bounds = [-1, 2]
-
-        conc_widths = 0.5
-        tau_widths = 2
-        ti_widths = 1
-
-        ems_bounds = [0, 20]
-
-        ems_widths = 1
-
-        atomic_bounds = [conc_bounds, ti_bounds, tau_bounds]
-        atomic_widths = [conc_widths, ti_widths, tau_widths]
-
-        # Structuring theta_bounds and widths
-
-        num_not_calibrated = len(np.where(self.is_chord_not_calibrated == True)[0])
-
-        if num_not_calibrated > 0:
-
-            for counter in np.arange(num_not_calibrated):
-                theta_bounds.append(cal_bounds)
-                theta_widths.append(cal_widths)
-
-                self.default_start.append(10)
-
-            self.default_start.append(1)
-        else:
-            self.default_start.append(11)
-
-        theta_bounds.append(intercept_bounds)
-        theta_widths.append(intercept_widths)
-
-        if self.profile_function.dr:
-            theta_bounds.append(dr_bounds)
-            theta_widths.append(dr_widths)
-
-            self.default_start.append(-0.1)
-
-            for counter in np.arange(self.profile_function.number_of_varriables - 2):
-                theta_bounds.append(fwhm_bounds)
-                theta_widths.append(fwhm_widths)
-
-                self.default_start.append(1)
-
-            theta_bounds.append(ne_bounds)
-            theta_widths.append(ne_widths)
-
-            self.default_start.append(13.7)
-
-            for counter in np.arange(self.profile_function.number_of_varriables - 2):
-                theta_bounds.append(fwhm_bounds)
-                theta_widths.append(fwhm_widths)
-
-                self.default_start.append(1)
-
-            theta_bounds.append(te_bounds)
-            theta_widths.append(te_widths)
-
-            self.default_start.append(10)
-            # self.default_start.append(15) # if log(Pe)
-        else:
-            for counter in np.arange(self.profile_function.number_of_varriables - 1):
-                theta_bounds.append(fwhm_bounds)
-                theta_widths.append(fwhm_widths)
-
-                self.default_start.append(1)
-
-            theta_bounds.append(ne_bounds)
-            theta_widths.append(ne_widths)
-
-            self.default_start.append(13.7)
-
-            for counter in np.arange(self.profile_function.number_of_varriables - 1):
-                theta_bounds.append(fwhm_bounds)
-                theta_widths.append(fwhm_widths)
-
-                self.default_start.append(1)
-
-            theta_bounds.append(te_bounds)
-            theta_widths.append(te_widths)
-
-            self.default_start.append(10)
-            # self.default_start.append(15) # if log(Pe)
-
-        if self.hydrogen_isotope:
-
-            theta_bounds.append(b_field_bounds)
-            theta_bounds.append(viewangle_bounds)
-
-            theta_widths.append(b_field_widths)
-            theta_widths.append(viewangle_widths)
-
-            for tmp in [1, 1]:
-                self.default_start.append(tmp)
-
-            # conc bounds
-            if self.inference_resolution['ion_resolved_tau']:
-                number_of_things_tc = self.number_of_ions
-            else:
-                number_of_things_tc = self.number_of_isotopes
-
-            counter = 0
-            while counter < (number_of_things_tc):
-                theta_bounds.append(atomic_bounds[0])
-                theta_widths.append(atomic_widths[0])
-
-                self.default_start.append(-1)
-
-                counter += 1
-
-            # ti bounds
-            if self.inference_resolution['ion_resolved_temperatures']:
-                number_of_things_ti = self.number_of_ions
-            else:
-                number_of_things_ti = self.number_of_isotopes
-
-            counter = 0
-            while counter < (number_of_things_ti):
-                theta_bounds.append(ti_bounds)  # atomic_bounds[-1])
-                theta_widths.append(ti_widths)  # atomic_widths[-1])
-
-                self.default_start.append(1)
-
-                counter += 1
-
-            # tau bounds
-            if self.inference_resolution['ion_resolved_tau']:
-                number_of_things_tau = self.number_of_ions
-            else:
-                number_of_things_tau = self.number_of_isotopes
-
-            counter = 0
-            while counter < (number_of_things_tau - 1):
-                theta_bounds.append(tau_bounds)  # atomic_bounds[1])
-                theta_widths.append(tau_widths)  # atomic_widths[1])
-
-                self.default_start.append(11.5)
-
-                counter += 1
-
-        else:
-            if self.netau:
-                default_tau = 11.5
-            else:
-                default_tau = -1
-
-            atomic_default_start = [-1, 1, default_tau]
-
-            key_checks = ['ion_resolved_tau', 'ion_resolved_temperatures', 'ion_resolved_tau']
-
-            for counter, tmp_atomic_bounds in enumerate(atomic_bounds):
-
-                if self.inference_resolution[key_checks[counter]]:
-                    number_of_things = self.number_of_ions
-                else:
-                    number_of_things = self.number_of_isotopes
-
-                counter1 = 0
-                while counter1 < number_of_things:
-                    theta_bounds.append(tmp_atomic_bounds)
-                    theta_widths.append(atomic_widths[counter])
-
-                    self.default_start.append(atomic_default_start[counter])
-
-                    counter1 += 1
-
-                if self.inference_resolution['ion_resolved_tau']: pass
-                if self.inference_resolution['ion_resolved_temperatures']: pass
-
-        num_of_ems = self.number_of_xlines + self.number_of_no_data_lines
-
-        if num_of_ems > 0:
-            counter = 0
-
-            while counter < num_of_ems:
-                self.default_start.append(11)
-
-                theta_bounds.append(ems_bounds)
-                theta_widths.append(ems_widths)
-
-                counter += 1
-
-        self.theta_bounds = np.array(theta_bounds)
-        self.theta_widths = np.array(theta_widths)
-
     def is_theta_within_bounds(self, theta):
 
         out = []
@@ -1492,9 +1256,16 @@ if __name__ == '__main__':
 
     plasma = NewPlasmaLine(input_dict)
 
-    plasma(np.random.rand(plasma.num_params))
+    rand_theta = np.random.rand(plasma.n_params)
+    plasma(rand_theta)
 
-    for k in plasma.plasma_state_tags.keys():
-        print(k, plasma.plasma_state_tags[k], type(plasma.plasma_state_tags[k]))
+    # # for k in plasma.plasma_state_tags.keys():
+    # for k in plasma.slices.keys():
+    #     print(k, plasma.plasma_state_tags[k], type(plasma.plasma_state_tags[k]), plasma.slices[k],
+    #           plasma.theta_bounds[plasma.slices[k]], type(plasma.theta_bounds[plasma.slices[k]]))
+    #
+    # print(plasma.bounds)
+    # print(plasma.is_theta_within_bounds(rand_theta))
+
 
     pass

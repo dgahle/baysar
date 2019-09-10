@@ -21,18 +21,14 @@ def within(stuff, boxes):
     :return: True or False if all the samples are in the array
     """
 
-    # acceptable_types = (int, float)
-
-    if type(stuff) is tuple:
-        return any( any((box.min() < s) and (s < box.max()) for s in stuff) for box in boxes)
+    if type(stuff) in (tuple, list):
+        return any([any([(box.min() < float(s)) and (float(s) < box.max()) for s in stuff])
+                    for box in boxes])
     else:
         if type(stuff) is str:
             stuff = float(stuff)
 
         return any((box.min() < stuff) and (stuff < box.max()) for box in boxes)
-
-
-
 
 def make_input_dict(num_chords,
                     wavelength_axes, experimental_emission, instrument_function,

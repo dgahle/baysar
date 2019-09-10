@@ -330,136 +330,29 @@ class BaysarPosteriorFilterWrapper(BaysarPosterior):
 
 if __name__=='__main__':
 
-    input_dict = {}
-    num_chords = 3
+    from baysar.input_functions import make_input_dict
 
-    input_dict['number_of_chords'] = num_chords
-
-    input_dict['chords'] = {}
-
-    from BaySAR.BaySAR.lineshapes import Gaussian, GaussianNorm
-
-    instrument_function = GaussianNorm(cwl=15, x=np.arange(31))
-    instrument_function = instrument_function([10, 1])
-
-    a_cal = 1e11
-
-    continuum = [3960, 3990]
-    x_data = np.arange(3950, 4150, 0.18)
-    y_data = np.zeros( len( x_data ) )
-
-    for tmp in np.arange( len(y_data) ):
-        y_data[tmp] = a_cal + random.rand() * a_cal
-
-    wavelength_axes = [x_data]
-
-
-    experimental_emission = [y_data]
-
-    instrument_function = [instrument_function]
-    emission_constant = [a_cal]
-    noise_region = [[3960, 3990]]
-
-    for counter0, chord in enumerate(np.arange(num_chords)):
-
-        # tmp = 'chord' + str(counter0)
-        tmp = counter0
-        counter0=0
-
-        input_dict['chords'][tmp] = {}
-        input_dict['chords'][tmp]['data'] = {}
-
-        input_dict['chords'][tmp]['data']['wavelength_axis'] = wavelength_axes[counter0]
-        input_dict['chords'][tmp]['data']['experimental_emission'] = experimental_emission[counter0]
-
-        input_dict['chords'][tmp]['data']['instrument_function'] = instrument_function[counter0]
-        input_dict['chords'][tmp]['data']['emission_constant'] = emission_constant[counter0]
-        input_dict['chords'][tmp]['data']['noise_region'] = noise_region[counter0]
-
-        pass
-
-    '''
-    n_ii_cwls = [3995., 4026.09, 4039.35, 4041.32, 4035.09, 4043.54, 4044.79, 4056.92]
-    n_ii_jjr = [1, 0.92, 0.08, 0.456, 0.211, 0.197, 0.026, 0.022]
-    # n_ii_pec_keys = [0, 2, 2, 3, 3, 3, 3, 3]
-    n_ii_pec_keys = [3, 6, 6, 7, 7, 7, 7, 7]
-    
-    # n_iii_cwls = [3998.63, 4003.58, 4097.33, 4103.34]
-    # n_iii_jjr = [0.375, 0.625, 0.665, 0.335]
-    # n_iii_pec_keys = [1, 1, 4, 4]    
-    '''
-
-    chord0_dict = {}
-
+    num_chords = 1
+    wavelength_axes = [np.linspace(4000, 4100, 512)]
+    experimental_emission = [np.array([1e12*np.random.rand() for w in wavelength_axes[0]])]
+    instrument_function = [np.array([0, 1, 0])]
+    emission_constant = [1e11]
     species = ['D', 'N']
-    ions = [['0'], ['1', '2']]
+    ions = [ ['0'], ['1', '2', '3'] ]
+    noise_region = [[4040, 4050]]
+    mystery_lines = [ [ [4070], [4001, 4002] ],
+                      [    1,    [0.4, 0.6]]]
 
-    cwl = [[[3968.99, 4100.58]],
-           [[3995., 4026.09, 4039.35, 4041.32, 4035.09, 4043.54, 4044.79, 4056.92],
-            [3998.63, 4003.58, 4097.33, 4103.34]]]
-    n_pec = [[[0,   0]],
-             [[0,      0,      0,      0,      0,      0,      0,      0      ],
-              [0,      0,      0,      0]]]  # TODO need the real values
-    f_jj = [[[3968.99, 4100.58]],
-            [[3995., 4026.09, 4039.35, 4041.32, 4035.09, 4043.54, 4044.79, 4056.92],
-             [3998.63, 4003.58, 4097.33, 4103.34]]]  # TODO need the real values
+    input_dict = make_input_dict(num_chords=num_chords,
+                                 wavelength_axes=wavelength_axes, experimental_emission=experimental_emission,
+                                 instrument_function=instrument_function, emission_constant=emission_constant,
+                                 noise_region=noise_region, species=species, ions=ions,
+                                 mystery_lines=mystery_lines, refine=[0.01],
+                                 ion_resolved_temperatures=False, ion_resolved_tau=True)
 
-    atomic_charge = [1, 7]
-    ma = [2, 14]
-
-    for counter0, isotope in enumerate(species):
-
-        # if counter0 == 0:
-        #     input_dict['isotopes'] = species
-
-        chord0_dict[isotope] = {}
-        chord0_dict[isotope]['atomic_mass'] = ma[counter0]
-        chord0_dict[isotope]['atomic_charge'] = atomic_charge[counter0]
-
-        for counter1, ion in enumerate(ions[counter0]):
-
-            if counter1 == 0:
-                chord0_dict[isotope]['ions'] = ions[counter0]
-
-            chord0_dict[isotope][ion] = {}
-
-            for counter2, line in enumerate(cwl[counter0][counter1]):
-
-                if counter2 == 0:
-                    chord0_dict[isotope][ion]['lines'] = []
-
-                chord0_dict[isotope][ion]['lines'].append(str(line))
-
-                chord0_dict[isotope][ion][str(line)] = {}
-
-                chord0_dict[isotope][ion][str(line)]['wavelength'] = line
-                chord0_dict[isotope][ion][str(line)]['pec_key'] = n_pec[counter0][counter1][counter2]
-                chord0_dict[isotope][ion][str(line)]['jj_frac'] = f_jj[counter0][counter1][counter2]
-
-                chord0_dict[isotope][ion][str(line)]['tec'] = tmp_func
-                chord0_dict[isotope][ion][str(line)]['tec_file'] = None
-
-                pass
-
-            pass
-
-        pass
-
-    input_dict['physics'] = chord0_dict
-
-
-
-    # if __name__=='__main__':
 
     posterior = BaysarPosterior(input_dict=input_dict)
 
-    theta = [1e12,
-             -5, 30, 1e13,
-             5, 10,
-             0.8, 0.2,
-             1e-4, 1e-4,
-             5, 10]
-
-    print(posterior(theta))
+    [print(l) for l in posterior.posterior_components[0].lines]
 
     pass
