@@ -26,7 +26,7 @@ class BaysarPosterior(object):
 
         self.input_dict = input_dict
 
-        self.plasma = PlasmaLine(input_dict=input_dict, profile_fucntion=profile_function)
+        self.plasma = PlasmaLine(input_dict=input_dict, profile_function=profile_function)
 
         self.posterior_components = self.build_posterior_components()
         self.priors = priors

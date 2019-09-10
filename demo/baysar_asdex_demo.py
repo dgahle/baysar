@@ -272,7 +272,7 @@ if __name__=='__main__':
     from baysar.lineshapes import MeshLine
 
     x = np.linspace(1, 11, 7)
-    profile_function = MeshLine(x=x, edge_value=-1, bounds=[0, 12], zero_bounds=True)
+    profile_function = MeshLine(x=x, zero_bounds=-1, bounds=[0, 12])
 
     profile_function.number_of_varriables = len(x)
     profile_function.dr = False

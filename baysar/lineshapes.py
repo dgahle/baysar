@@ -540,15 +540,16 @@ from scipy.interpolate import InterpolatedUnivariateSpline
 
 class MeshLine(object):
 
-    def __init__(self, x, edge_value=0, bounds=[-10, 10], zero_bounds=None, resolution=0.1, kind='quadratic'):
+    def __init__(self, x, bounds=[-10, 10], zero_bounds=None, resolution=0.1, log=False, kind='quadratic'):
 
         self.x_points = x
         self.x = np.arange(min(bounds), max(bounds), resolution)
 
+        self.log = log
         self.kind = kind
         self.zero_bounds = zero_bounds
 
-        if self.zero_bounds:
+        if self.zero_bounds is not None:
             tmp_x = np.zeros(len(self.x_points)+2)
             tmp_x[0] = min(bounds)
             tmp_x[-1] = max(bounds)
@@ -557,12 +558,12 @@ class MeshLine(object):
             self.x_points = tmp_x
 
             self.empty_theta = np.zeros(len(self.x_points))
-            self.empty_theta[0] = edge_value
-            self.empty_theta[-1] = edge_value
+            self.empty_theta[0] = zero_bounds
+            self.empty_theta[-1] = zero_bounds
 
     def __call__(self, theta, *args, **kwargs):
 
-        if self.zero_bounds:
+        if self.zero_bounds is not None:
 
             self.empty_theta[1:-1] = theta
 
@@ -574,7 +575,10 @@ class MeshLine(object):
         # get_new_profile = InterpolatedUnivariateSpline(self.x, theta)
         get_new_profile = interp1d(self.x_points, theta, self.kind)
 
-        return get_new_profile(self.x)
+        if self.log:
+            return np.power(10, get_new_profile(self.x))
+        else:
+            return get_new_profile(self.x)
 
 class PlasmaMeshLine(object):
 

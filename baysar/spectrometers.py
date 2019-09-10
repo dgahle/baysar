@@ -198,7 +198,7 @@ class SpectrometerChord(object):
         # continuum = continuo(electron_temperature=self.plasma.plasma_state['electron_temperature'],
         #                      electron_density=self.plasma.plasma_state['electron_density'],
         #                      wavelength=self.x_data, z_effective=z_effective,
-        #                      path_length=diff(self.plasma.profile_fucntion.x)[0])
+        #                      path_length=diff(self.plasma.profile_function.x)[0])
 
         self.continuum = self.plasma.plasma_state['intercept'] # [self.chord_number]
 
@@ -576,7 +576,7 @@ if __name__=='__main__':
     # profile_funciton = Gaussian(x=arange(-50., 50., 3))
     #
     # plasma = PlasmaLine(input_dict=input_dict['chords'][0]['physics'],
-    #                     profile_fucntion=profile_funciton, profile_fucntion_num_varriables=3)
+    #                     profile_function=profile_funciton, profile_function_num_varriables=3)
     # # plasma()
     #
     # instrument_function = GaussianNorm(cwl=15, x=arange(31))
