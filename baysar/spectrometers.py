@@ -54,8 +54,6 @@ class SpectrometerChord(object):
         else:
             self.refine = refine
 
-        self.calibrated = not self.plasma.is_chord_not_calibrated[self.chord_number]
-
         self.y_data = self.input_dict['data']['experimental_emission']
 
         if self.refine is not None:
@@ -161,15 +159,18 @@ class SpectrometerChord(object):
         #                      wavelength=self.x_data, z_effective=z_effective,
         #                      path_length=diff(self.plasma.profile_function.x)[0])
 
-        self.continuum = self.plasma.plasma_state['intercept'] # [self.chord_number]
+        self.continuum = self.plasma.plasma_state['background'+str(self.chord_number)]
 
 
-        if self.calibrated:
-            spectra = spectra + self.continuum # + sum(continuum]
-        else:
-            tmp_a_cal = self.plasma.plasma_state['a_cal'][self.chord_number]
+        # if self.calibrated:
+        #     spectra = spectra + self.continuum # + sum(continuum]
+        # else:
+        #     tmp_a_cal = self.plasma.plasma_state['a_cal'][self.chord_number]
+        #
+        #     spectra = (spectra / tmp_a_cal) + self.continuum
 
-            spectra = (spectra / tmp_a_cal) + self.continuum
+        tmp_a_cal = self.plasma.plasma_state['cal'+str(self.chord_number)]
+        spectra = (spectra / tmp_a_cal) + self.continuum
 
 
         try:
@@ -269,7 +270,7 @@ class SpectrometerChord(object):
                         tmp_lineshape = GaussiansNorm
 
                         tmp_line = XLine(cwl=tmp_cwl, fwhm=diff(tmp_wavelengths)[0],
-                                         plasma=self.plasma.plasma_state, wavelengths=tmp_wavelengths,
+                                         plasma=self.plasma, wavelengths=tmp_wavelengths,
                                          lineshape=tmp_lineshape, species=isotope, fractions=tmp_fractions)
 
                         self.lines.append(tmp_line)
@@ -332,7 +333,7 @@ class SpectrometerChord(object):
 
                                 tmp_line = ADAS406Lines(cwls=tmp_cwl, wavelengths=tmp_wavelengths, lineshape=tmp_lineshape,
                                                         atomic_mass=tmp_ma, tec406=tmp_tec, species=isotope,
-                                                        ion=ion, plasma=self.plasma.plasma_state, jj_frac=tmp_jj_frac)
+                                                        ion=ion, plasma=self.plasma, jj_frac=tmp_jj_frac)
 
                             else:
                                 tmp_line = NoADASLines(cwl=tmp_cwl, wavelengths=tmp_wavelengths, lineshape=tmp_lineshape,
@@ -418,171 +419,36 @@ class SpectrometerChord(object):
 
 if __name__=='__main__':
 
-    pass
+    import numpy as np
 
-    # pass
-    #
-    # # input files
-    # input_dict = {}
-    # num_chords = 1
-    #
-    # input_dict['number_of_chords'] = num_chords
-    #
-    # input_dict['chords'] = {}
-    #
-    # wavelength_axes = [[]]
-    # experimental_emission = [[]]
-    #
-    # instrument_function = [[]]
-    # emission_constant = [...]
-    # noise_region = [[]]
-    #
-    # for counter0, chord in enumerate(arange(num_chords)):
-    #     # tmp = 'chord' + str(counter0)
-    #     tmp = counter0
-    #
-    #     input_dict['chords'][tmp] = {}
-    #     input_dict['chords'][tmp]['meta'] = {}
-    #
-    #     input_dict['chords'][tmp]['meta']['wavelength_axis'] = wavelength_axes[counter0]
-    #     input_dict['chords'][tmp]['meta']['experimental_emission'] = experimental_emission[counter0]
-    #
-    #     input_dict['chords'][tmp]['meta']['instrument_function'] = instrument_function[counter0]
-    #     input_dict['chords'][tmp]['meta']['emission_constant'] = emission_constant[counter0]
-    #     input_dict['chords'][tmp]['meta']['noise_region '] = noise_region[counter0]
-    #
-    #     pass
-    #
-    # '''
-    # n_ii_cwls = [3995., 4026.09, 4039.35, 4041.32, 4035.09, 4043.54, 4044.79, 4056.92]
-    # n_ii_jjr = [1, 0.92, 0.08, 0.456, 0.211, 0.197, 0.026, 0.022]
-    # # n_ii_pec_keys = [0, 2, 2, 3, 3, 3, 3, 3]
-    # n_ii_pec_keys = [3, 6, 6, 7, 7, 7, 7, 7]
-    #
-    # # n_iii_cwls = [3998.63, 4003.58, 4097.33, 4103.34]
-    # # n_iii_jjr = [0.375, 0.625, 0.665, 0.335]
-    # # n_iii_pec_keys = [1, 1, 4, 4]
-    # '''
-    #
-    # chord0_dict = {}
-    #
-    # species = ['D', 'N']
-    # ions = [['0'], ['1', '2']]
-    #
-    # cwl = [[[3968.99, 4100.58]],
-    #        [[3995., 4026.09, 4039.35, 4041.32, 4035.09, 4043.54, 4044.79, 4056.92],
-    #         [3998.63, 4003.58, 4097.33, 4103.34]]]
-    # n_pec = [[[0, 0]],
-    #          [[0, 0, 0, 0, 0, 0, 0, 0],
-    #           [0, 0, 0, 0]]]  # TODO need the real values
-    # f_jj = [[[3968.99, 4100.58]],
-    #         [[3995., 4026.09, 4039.35, 4041.32, 4035.09, 4043.54, 4044.79, 4056.92],
-    #          [3998.63, 4003.58, 4097.33, 4103.34]]]  # TODO need the real values
-    #
-    # atomic_charge = [1, 7]
-    # ma = [2, 14]
-    #
-    # for counter0, isotope in enumerate(species):
-    #
-    #     # if counter0 == 0:
-    #     #     input_dict['isotopes'] = species
-    #
-    #     chord0_dict[isotope] = {}
-    #     chord0_dict[isotope]['atomic_mass'] = ma[counter0]
-    #     chord0_dict[isotope]['atomic_charge'] = atomic_charge[counter0]
-    #
-    #     for counter1, ion in enumerate(ions[counter0]):
-    #
-    #         if counter1 == 0:
-    #             chord0_dict[isotope]['ions'] = ions[counter0]
-    #
-    #         chord0_dict[isotope][ion] = {}
-    #
-    #         for counter2, line in enumerate(cwl[counter0][counter1]):
-    #
-    #             if counter2 == 0:
-    #                 chord0_dict[isotope][ion]['lines'] = []
-    #
-    #             chord0_dict[isotope][ion]['lines'].append(str(line))
-    #
-    #             chord0_dict[isotope][ion][str(line)] = {}
-    #
-    #             chord0_dict[isotope][ion][str(line)]['wavelength'] = line
-    #             chord0_dict[isotope][ion][str(line)]['pec_key'] = n_pec[counter0][counter1][counter2]
-    #             chord0_dict[isotope][ion][str(line)]['jj_frac'] = f_jj[counter0][counter1][counter2]
-    #
-    #             chord0_dict[isotope][ion][str(line)]['tec'] = tmp_func
-    #             chord0_dict[isotope][ion][str(line)]['tec_file'] = None
-    #
-    #             pass
-    #
-    #         pass
-    #
-    #     pass
-    #
-    # input_dict['chords'][0]['physics'] = chord0_dict
-    #
-    # # from tulasa import general
-    # #
-    # # general.save(input_dict, filename='./input_dict.p')
-    #
-    # # interpolaters = {}
-    # # interpolaters[0] = tmp_func()
-    #
-    # # make plasma object
-    # from BaySAR.BaySAR.plasmas import PlasmaLine
-    #
-    # # from BaySAR.BaySAR.lineshapes import Gaussian, GaussianNorm
-    #
-    # profile_funciton = Gaussian(x=arange(-50., 50., 3))
-    #
-    # plasma = PlasmaLine(input_dict=input_dict['chords'][0]['physics'],
-    #                     profile_function=profile_funciton, profile_function_num_varriables=3)
-    # # plasma()
-    #
-    # instrument_function = GaussianNorm(cwl=15, x=arange(31))
-    # instrument_function = instrument_function([10, 1])
-    #
-    # a_cal = 1e11
-    #
-    # continuum = [3960, 3990]
-    # x_data = arange(3950, 4150, 0.18)
-    # y_data = zeros( len( x_data ) )
-    #
-    # for tmp in arange( len(y_data) ):
-    #     y_data[tmp] = a_cal + random.rand() * a_cal
-    #
-    # theta = [1e12,
-    #          -5, 30, 1e13,
-    #          5, 15,
-    #          0.8, 0.2,
-    #          1e-4, 1e-4,
-    #          5, 10]
-    #
-    # plasma(theta)
-    #
-    # chord = SpectrometerChord(plasma=plasma, input_file=input_dict['chords'][0],
-    #                           instrument_function=instrument_function, a_cal=a_cal,
-    #                           x_data=x_data, y_data=y_data, continuum=continuum)
-    #
-    # from tulasa import general
-    #
-    # general.plot([chord.y_data, chord.forward_model()], [chord.x_data, chord.x_data], multi='fake')
-    #
-    # print( chord(theta=theta) )
-    #
-    # def time_eval(num=500):
-    #
-    #     from time import time
-    #
-    #     tmp_time = time()
-    #
-    #     for tmp in arange(num):
-    #         chord(theta=theta)
-    #
-    #     print(str(num) + ' chord evaluations', time()-tmp_time)
-    #     print('average time', (time()-tmp_time) / num)
-    #
-    # time_eval()
-    #
-    # pass
+    from baysar.input_functions import make_input_dict
+    from baysar.plasmas import PlasmaLine
+
+    num_chords = 1
+    wavelength_axes = [np.linspace(4000, 4100, 512)]
+    experimental_emission = [np.array([1e12*np.random.rand() for w in wavelength_axes[0]])]
+    instrument_function = [np.array([0, 1, 0])]
+    emission_constant = [1e11]
+    species = ['D', 'N']
+    ions = [ ['0'], ['1', '2', '3'] ]
+    noise_region = [[4040, 4050]]
+    mystery_lines = [[[4070], [4001, 4002]], [[1], [0.4, 0.6]]]
+
+    input_dict = make_input_dict(num_chords=num_chords,
+                                 wavelength_axes=wavelength_axes, experimental_emission=experimental_emission,
+                                 instrument_function=instrument_function, emission_constant=emission_constant,
+                                 noise_region=noise_region, species=species, ions=ions,
+                                 mystery_lines=mystery_lines, refine=[0.01],
+                                 ion_resolved_temperatures=False, ion_resolved_tau=True)
+
+    plasma = PlasmaLine(input_dict)
+
+    [print(t) for t in plasma.tags]
+
+    chord = SpectrometerChord(plasma, refine=0.01, chord_number=0)
+
+    [print(l, type(l())) for l in chord.lines]
+
+    print(chord())
+
+    pass

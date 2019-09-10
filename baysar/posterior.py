@@ -22,7 +22,7 @@ class BaysarPosterior(object):
     """
 
     def __init__(self, input_dict, profile_function=None, priors=None, check_bounds=False,
-                     temper=1, curvature=None, print_errors=False):
+                       temper=1, curvature=None, print_errors=False):
 
         self.input_dict = input_dict
 
@@ -353,6 +353,5 @@ if __name__=='__main__':
 
     posterior = BaysarPosterior(input_dict=input_dict)
 
-    [print(l) for l in posterior.posterior_components[0].lines]
 
     pass
