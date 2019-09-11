@@ -357,6 +357,36 @@ if __name__=='__main__':
     rand_theta = posterior.random_start()
     print( posterior(rand_theta) )
 
-    pf.plot_fit(posterior, [rand_theta], alpha=1, size=1)
+    # adas speed checks
+    from adas import read_adf15, run_adas405, run_adas406
+
+    # pec_file = '/home/adas/adas/adf15/pec12#h/pec12#h_balmer#h0.dat'
+    # num = 10
+    # te = np.zeros(num) + 10
+    # ne = np.zeros(num) + 1e14
+    # tau = np.zeros(num) + 1e-3
+    #
+    # start_time = clock.time()
+    # for n in np.arange(num):
+    #     posterior(rand_theta) # < 17 ms per iter
+    # print(clock.time()-start_time)
+    #
+    # start_time = clock.time()
+    # for n in np.arange(num):
+    #     pec = read_adf15(pec_file, 1, te, ne) # < 50 ms per iter
+    # print(clock.time()-start_time)
+    #
+    # start_time = clock.time()
+    # for n in np.arange(num):
+    #     run_adas405(elem='N', te=te, dens=ne) # < 240 ms per iter
+    # print(clock.time()-start_time)
+    #
+    # meta = np.zeros(8)
+    # meta[0] = 1
+    # start_time = clock.time()
+    # for n in np.arange(num):
+    #     run_adas406(elem='N', te=te, dens=ne, tint=1e-3, meta=meta) # < x ms per iter
+    # print(clock.time()-start_time)
+
 
     pass

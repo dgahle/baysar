@@ -361,6 +361,89 @@ line_data_multiplet['N']['4'][(4603.73, 4619.98)] = {'wavelength': [4603.73, 461
              'tec': data_pathroot + '/n_data/tec_grids/tec_406_grid_n4_25_4610.sav' }
 
 # N V 2 TECs down to 1
+def add_ion_info(dictionary, wavelenghts, jj_fraction, pecs, exc_block, rec_block, **kwargs):
+    keywords = ['n_upper', 'n_lower']
+
+    counter = 0
+    for wave, jj_f, file, exc, rec in zip(wavelenghts, jj_fraction, pecs, exc_block, rec_block):
+
+        if file is None:
+            file = dictionary['default_pecs']
+
+        dictionary[wave] = {'wavelength': wave, 'jj_frac': jj_f, 'pec': file,
+                            'exc_block': exc, 'rec_block': rec}
+
+        for key in keywords:
+            if key in kwargs:
+                dictionary[wave][key] = kwargs[key][counter]
+
+        counter += 1
+
+    return dictionary
+
+adas_root = '/home/adas/adas/'
+
+adas_line_data = {}
+
+adas_line_data['D'] = {'atomic_mass': 2, 'atomic_charge': 1,
+                       'ionisation_balance_year': 12,
+                       'ions': ['0']}
+
+adas_line_data['D']['0'] = {'default_pecs': adas_root+'adf15/pec12#h/pec12#h_pju#h0.dat'}
+
+wavelenghts = [3834.34, 3887.99, 3968.99, 4100.61, 4339.28]
+jj_fraction = [1 for wave in wavelenghts]
+pecs = [None, None, None, None, None]
+exc_block = [30, 23, 17, 12, 8]
+rec_block = [96, 89, 83, 78, 74]
+
+n_upper = [9, 8, 7, 6, 5]
+n_lower = [2, 2, 2, 2, 2]
+
+adas_line_data['D']['0'] = add_ion_info(adas_line_data['D']['0'], wavelenghts, jj_fraction,
+                                        pecs, exc_block, rec_block, n_upper=n_upper, n_lower=n_lower)
+
+
+adas_line_data['C'] = {'atomic_mass': 12, 'atomic_charge': 6,
+                       'ionisation_balance_year': 96,
+                       'ions': ['1', '2', '3', '4']}
+
+adas_line_data['N'] = {'atomic_mass': 14, 'atomic_charge': 7,
+                       'ionisation_balance_year': 96,
+                       'ions': ['1', '2', '3', '4']}
+
+adas_line_data['N']['2'] = {'default_pecs': adas_root+'adf15/pec96#n/pec96#n_vsu#n2.dat'}
+
+wavelenghts = [(3998.63, 4003.58), (4634.14, 4640.64, 4641.85), (4591.98, 4610.55, 4610.74), (4097.33, 4103.34)]
+jj_fraction = [[0.375, 0.625], [0.291, 0.512, 0.197], [0.312, 0.245, 0.443], [0.667, 0.333]]
+pecs = [None, None, None, None]
+exc_block = [1]
+rec_block = [58]
+
+adas_line_data['N']['2'] = add_ion_info(adas_line_data['N']['2'], wavelenghts, jj_fraction,
+                                        pecs, exc_block, rec_block)
+
+adas_line_data['N']['3'] = {'default_pecs': adas_root+'adf15/pec96#n/pec96#n_vsu#n3.dat'}
+
+wavelenghts = [4057.76]
+jj_fraction = [1]
+pecs = [None]
+exc_block = [17]
+rec_block = [58]
+
+adas_line_data['N']['3'] = add_ion_info(adas_line_data['N']['3'], wavelenghts, jj_fraction,
+                                        pecs, exc_block, rec_block)
+
+adas_line_data['N']['4'] = {'default_pecs': adas_root+'adf15/pec96#n/pec96#n_pju#n4.dat'}
+
+wavelenghts = [[4603.73, 4619.98]]
+jj_fraction = [[0.545, 0.455]]
+pecs = [None]
+exc_block = [25]
+rec_block = [72]
+
+adas_line_data['N']['4'] = add_ion_info(adas_line_data['N']['4'], wavelenghts, jj_fraction,
+                                        pecs, exc_block, rec_block)
 
 if __name__=='__main__':
 

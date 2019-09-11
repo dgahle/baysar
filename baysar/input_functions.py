@@ -178,8 +178,72 @@ def make_input_dict(num_chords,
 
     return input_dict
 
+def new_input_dict(wavelength_axes, experimental_emission, instrument_function,
+                   emission_constant, noise_region,
+                   species, ions, mystery_lines=None,
+                   refine=0.01, ion_resolved_temperatures=False, ion_resolved_tau=False):
 
+    experimental_data_checks = [len(wavelength_axes)==len(experimental_emission),
+                                len(wavelength_axes)==len(instrument_function),
+                                len(wavelength_axes)==len(emission_constant),
+                                len(wavelength_axes)==len(noise_region)]
+
+    experimental_data_checks_fail_statement = 'Not all (wavelength_axes, experimental_emission, instrument_function, noise_region) are the same length'
+
+    assert all(experimental_data_checks), experimental_data_checks_fail_statement
+    assert len(species)==len(ions), 'len(species)!=len(ions)'
+    assert len(mystery_lines[0])==len(mystery_lines[1]), 'len(mystery_lines[0])!=len(mystery_lines[1]) each X line needs to be given multiplet fractions'
+
+    if type(refine) in (float, int):
+        refine = [refine for wa in wavelength_axes]
+    elif type(refine) in (list, tuple, np.ndarray):
+        assert len(refine)==len(wavelength_axes), 'len(refine)!=len(wavelength_axes)'
+    else:
+        raise TypeError('type(refine) must be in (float, int, list, tuple, np.ndarray).' +
+                        ' If type(refine) in (list, tuple, np.ndarray) then len(refine)==len(wavelength_axes)')
+
+    input_dict = {}
+
+    data = [wavelength_axes, experimental_emission, instrument_function,
+            emission_constant, noise_region, refine]
+    data_string = ['wavelength_axes', 'experimental_emission', 'instrument_function',
+                   'emission_constant', 'noise_region', 'refine']
+
+    for d, d_str in zip(data, data_string):
+        input_dict[d_str] = d
+
+    input_dict['ion_resolved_temperatures'] = ion_resolved_temperatures
+    input_dict['ion_resolved_tau'] = ion_resolved_tau
+
+    input_dict['X_lines'] = mystery_lines[0]
+    input_dict['X_fractions'] = mystery_lines[1]
+
+    return input_dict
 
 if __name__=='__main__':
+
+    num_chords = 1
+    wavelength_axes = [np.linspace(4000, 4100, 512)]
+    experimental_emission = [np.array([1e12*np.random.rand() for w in wavelength_axes[0]])]
+    instrument_function = [np.array([0, 1, 0])]
+    emission_constant = [1e11]
+    species = ['D', 'N']
+    ions = [ ['0'], ['1', '2', '3'] ]
+    noise_region = [[4040, 4050]]
+    mystery_lines = [ [ [4070], [4001, 4002] ],
+                      [    [1],    [0.4, 0.6]]]
+
+    input_dict = make_input_dict(num_chords=num_chords,
+                                 wavelength_axes=wavelength_axes, experimental_emission=experimental_emission,
+                                 instrument_function=instrument_function, emission_constant=emission_constant,
+                                 noise_region=noise_region, species=species, ions=ions,
+                                 mystery_lines=mystery_lines, refine=[0.01],
+                                 ion_resolved_temperatures=False, ion_resolved_tau=True)
+
+    new_id = new_input_dict(wavelength_axes=wavelength_axes, experimental_emission=experimental_emission,
+                            instrument_function=instrument_function, emission_constant=emission_constant,
+                            noise_region=noise_region, species=species, ions=ions,
+                            mystery_lines=mystery_lines, refine=0.01,
+                            ion_resolved_temperatures=False, ion_resolved_tau=True)
 
     pass
