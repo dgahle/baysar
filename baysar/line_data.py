@@ -370,8 +370,8 @@ def add_ion_info(dictionary, wavelenghts, jj_fraction, pecs, exc_block, rec_bloc
         if file is None:
             file = dictionary['default_pecs']
 
-        dictionary[wave] = {'wavelength': wave, 'jj_frac': jj_f, 'pec': file,
-                            'exc_block': exc, 'rec_block': rec}
+            dictionary[wave] = {'wavelength': wave, 'jj_frac': jj_f, 'pec': file,
+                                'exc_block': exc, 'rec_block': rec}
 
         for key in keywords:
             if key in kwargs:
@@ -412,13 +412,30 @@ adas_line_data['N'] = {'atomic_mass': 14, 'atomic_charge': 7,
                        'ionisation_balance_year': 96,
                        'ions': ['1', '2', '3', '4']}
 
+adas_line_data['N']['1'] = {'default_pecs': adas_root+'adf15/pec96#n/pec96#n_vsu#n1.dat'}
+
+my_n_ii_file = '/home/dgahle/adas/idl_spectra/use_adas208/n_ii_3900_4900_te_1_100.pass'
+
+wavelenghts = [3995, (4026.09, 4039.35), (4035.09, 4041.32, 4043.54, 4044.79, 4056.92),
+               (4601.48, 4607.16, 4613.87, 4621.39, 4630.54, 4643.08)]
+jj_fraction = [[1], [0.944, 0.056], [0.205, 0.562, 0.175, 0.029, 0.029],
+               [4601.48, 4607.16, 4613.87, 4621.39, 4630.54, 4643.08]]
+pecs = [my_n_ii_file, my_n_ii_file, my_n_ii_file, my_n_ii_file]
+exc_block = [3, 6, 7, 42]
+rec_block = [53, 56, 57, 92]
+
+adas_line_data['N']['1'] = add_ion_info(adas_line_data['N']['1'], wavelenghts, jj_fraction,
+                                        pecs, exc_block, rec_block)
+
 adas_line_data['N']['2'] = {'default_pecs': adas_root+'adf15/pec96#n/pec96#n_vsu#n2.dat'}
 
-wavelenghts = [(3998.63, 4003.58), (4634.14, 4640.64, 4641.85), (4591.98, 4610.55, 4610.74), (4097.33, 4103.34)]
-jj_fraction = [[0.375, 0.625], [0.291, 0.512, 0.197], [0.312, 0.245, 0.443], [0.667, 0.333]]
-pecs = [None, None, None, None]
-exc_block = [1]
-rec_block = [58]
+my_n_iii_file = '/home/dgahle/adas/idl_spectra/use_adas208/n_iii_3900_4900_te_1_100.pass'
+
+wavelenghts = [(3998.63, 4003.58), (4097.33, 4103.34), (4591.98, 4610.55, 4610.74), (4634.14, 4640.64, 4641.85)]
+jj_fraction = [[0.375, 0.625], [0.667, 0.333], [0.312, 0.245, 0.443], [0.291, 0.512, 0.197]]
+pecs = [my_n_iii_file, my_n_iii_file, my_n_iii_file, my_n_iii_file]
+exc_block = [6, 11, 35, 38]
+rec_block = [56, 61, 85, 88]
 
 adas_line_data['N']['2'] = add_ion_info(adas_line_data['N']['2'], wavelenghts, jj_fraction,
                                         pecs, exc_block, rec_block)
@@ -436,7 +453,7 @@ adas_line_data['N']['3'] = add_ion_info(adas_line_data['N']['3'], wavelenghts, j
 
 adas_line_data['N']['4'] = {'default_pecs': adas_root+'adf15/pec96#n/pec96#n_pju#n4.dat'}
 
-wavelenghts = [[4603.73, 4619.98]]
+wavelenghts = [(4603.73, 4619.98)]
 jj_fraction = [[0.545, 0.455]]
 pecs = [None]
 exc_block = [25]

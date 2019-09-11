@@ -9,7 +9,7 @@ from numpy import random
 
 import os, sys, io, copy
 
-from baysar.line_data import line_data_multiplet
+from baysar.line_data import line_data_multiplet, adas_line_data
 
 def within(stuff, boxes):
 
@@ -180,7 +180,7 @@ def make_input_dict(num_chords,
 
 def new_input_dict(wavelength_axes, experimental_emission, instrument_function,
                    emission_constant, noise_region,
-                   species, ions, mystery_lines=None,
+                   species, ions, line_data=adas_line_data, mystery_lines=None,
                    refine=0.01, ion_resolved_temperatures=False, ion_resolved_tau=False):
 
     experimental_data_checks = [len(wavelength_axes)==len(experimental_emission),
@@ -203,6 +203,17 @@ def new_input_dict(wavelength_axes, experimental_emission, instrument_function,
                         ' If type(refine) in (list, tuple, np.ndarray) then len(refine)==len(wavelength_axes)')
 
     input_dict = {}
+
+    for s, i in zip(species, ions):
+        if s in line_data:
+            for ion in i:
+                sion = s+'_'+ion
+                if ion in line_data[s]:
+                    input_dict[sion] = line_data[s][ion]
+                else:
+                    print(sion + ' is not in adas_line_data')
+        else:
+            print(s + ' is not in adas_line_data')
 
     data = [wavelength_axes, experimental_emission, instrument_function,
             emission_constant, noise_region, refine]
