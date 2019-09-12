@@ -9,7 +9,6 @@ from baysar.spectrometers import SpectrometerChord, within
 
 
 def tmp_func(*args, **kwargs):
-
     return random.rand() * 1e1
 
 class BaysarPosterior(object):
@@ -28,7 +27,7 @@ class BaysarPosterior(object):
 
         self.plasma = PlasmaLine(input_dict=input_dict, profile_function=profile_function)
 
-        self.posterior_components = self.build_posterior_components()
+        self.build_posterior_components()
         self.priors = priors
         self.check_bounds = check_bounds
 
@@ -96,22 +95,13 @@ class BaysarPosterior(object):
         return sum(np.square(grad2) / np.power((1 + np.square(grad1)), 3))
 
     def cost(self, theta):
-
         return - self.__call__(theta)
 
     def build_posterior_components(self):
-
-        components = []
-
-        for chord_num in self.input_dict['chords'].keys():
-
-            chord = SpectrometerChord(plasma=self.plasma, chord_number=chord_num)
-
-            components.append(chord)
-
-            pass
-
-        return components
+        self.posterior_components = []
+        for chord_num, refine in enumerate(self.input_dict['refine']):
+            chord = SpectrometerChord(plasma=self.plasma, refine=refine, chord_number=chord_num)
+            self.posterior_components.append(chord)
 
     def stormbreaker_start(self, num, min_logp=-1e10, high_prob=False, normal=False):
 
@@ -330,12 +320,12 @@ class BaysarPosteriorFilterWrapper(BaysarPosterior):
 
 if __name__=='__main__':
 
-    from baysar.input_functions import make_input_dict
+    from baysar.input_functions import new_input_dict
     from tulasa import plotting_functions as pf
 
     num_chords = 1
-    wavelength_axes = [np.linspace(4000, 4100, 512)]
-    experimental_emission = [np.array([1e12*np.random.rand() for w in wavelength_axes[0]])]
+    wavelength_axis = [np.linspace(3900, 4150, 512)]
+    experimental_emission = [np.array([1e12*np.random.rand() for w in wavelength_axis[0]])]
     instrument_function = [np.array([0, 1, 0])]
     emission_constant = [1e11]
     species = ['D', 'N']
@@ -344,49 +334,16 @@ if __name__=='__main__':
     mystery_lines = [ [ [4070], [4001, 4002] ],
                       [    [1],    [0.4, 0.6]]]
 
-    input_dict = make_input_dict(num_chords=num_chords,
-                                 wavelength_axes=wavelength_axes, experimental_emission=experimental_emission,
-                                 instrument_function=instrument_function, emission_constant=emission_constant,
-                                 noise_region=noise_region, species=species, ions=ions,
-                                 mystery_lines=mystery_lines, refine=[0.01],
-                                 ion_resolved_temperatures=False, ion_resolved_tau=True)
+    input_dict = new_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
+                                instrument_function=instrument_function, emission_constant=emission_constant,
+                                noise_region=noise_region, species=species, ions=ions,
+                                mystery_lines=mystery_lines, refine=[0.05],
+                                ion_resolved_temperatures=False, ion_resolved_tau=True)
 
 
     posterior = BaysarPosterior(input_dict=input_dict)
 
     rand_theta = posterior.random_start()
-    print( posterior(rand_theta) )
-
-    # adas speed checks
-    from adas import read_adf15, run_adas405, run_adas406
-
-    # pec_file = '/home/adas/adas/adf15/pec12#h/pec12#h_balmer#h0.dat'
-    # num = 10
-    # te = np.zeros(num) + 10
-    # ne = np.zeros(num) + 1e14
-    # tau = np.zeros(num) + 1e-3
-    #
-    # start_time = clock.time()
-    # for n in np.arange(num):
-    #     posterior(rand_theta) # < 17 ms per iter
-    # print(clock.time()-start_time)
-    #
-    # start_time = clock.time()
-    # for n in np.arange(num):
-    #     pec = read_adf15(pec_file, 1, te, ne) # < 50 ms per iter
-    # print(clock.time()-start_time)
-    #
-    # start_time = clock.time()
-    # for n in np.arange(num):
-    #     run_adas405(elem='N', te=te, dens=ne) # < 240 ms per iter
-    # print(clock.time()-start_time)
-    #
-    # meta = np.zeros(8)
-    # meta[0] = 1
-    # start_time = clock.time()
-    # for n in np.arange(num):
-    #     run_adas406(elem='N', te=te, dens=ne, tint=1e-3, meta=meta) # < x ms per iter
-    # print(clock.time()-start_time)
-
+    print(posterior(rand_theta))
 
     pass

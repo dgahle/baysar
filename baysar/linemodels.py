@@ -12,7 +12,7 @@ from scipy.interpolate import RegularGridInterpolator, RectBivariateSpline
 from scipy.signal import fftconvolve
 import scipy.constants
 
-from numpy import diff
+import numpy as np
 
 import warnings
 
@@ -401,8 +401,8 @@ class ADAS406Lines(object):
     each jj transition is scaled by a fixed scalar (ne*TEC(tau, ne, Te)*f_jj).
     """
 
-    def __init__(self, cwls, wavelengths, lineshape, atomic_mass, tec406,
-                 species, ion, plasma, jj_frac, half_range=10, fractions=[]):
+    def __init__(self, plasma, species, cwls, wavelengths, lineshape=GaussiansNorm,
+                       half_range=10):
 
         '''
         tmp_line = ADAS406Line(cwl=tmp_cwl, wavelengths=tmp_wavelengths, lineshape=tmp_lineshape,
@@ -421,52 +421,40 @@ class ADAS406Lines(object):
         '''
 
         self.plasma = plasma
-
-        self.species = species+'_'+ion
+        self.species = species
+        self.get_atomic_mass()
+        # if type(cwls) not in (list, tuple):
+        #     self.cwls = [cwls]
+        # else:
+        #     self.cwls = cwls
+        # print(self.cwls, type(self.cwls))
+        self.cwls = cwls
+        self.line = self.species+'_'+str(self.cwls)[1:-1].replace(', ', '_')
+        jj_frac = plasma.input_dict[self.species][self.cwls]['jj_frac']
 
         self.wavelengths = wavelengths
         self.los = self.plasma.profile_function.electron_density.x
         self.vectorise = len(self.los)
 
-        if type(cwls) != list:
-            self.cwls = [cwls]
-        else:
-            self.cwls = cwls
-
         self.lines = []
+        self.jj_frac = []
 
-        for counter, tmp_cwl in enumerate(self.cwls):
+        if type(cwls) not in (list, tuple):
+            iter_cwls = [self.cwls]
+        else:
+            iter_cwls = self.cwls
 
+        for counter, tmp_cwl in enumerate(iter_cwls):
             out_of_bounds = ( (tmp_cwl < min(self.wavelengths)) or
                               (tmp_cwl > max(self.wavelengths))     )
-
-            if out_of_bounds:
-                pass
-            else:
-
-                tmp_line = DopplerLine(tmp_cwl, self.wavelengths, lineshape, atomic_mass,
+            if not out_of_bounds:
+                tmp_line = DopplerLine(tmp_cwl, self.wavelengths, lineshape, self.atomic_mass,
                                        vectorise=self.vectorise)
 
                 self.lines.append(tmp_line)
+                self.jj_frac.append(jj_frac[counter])
 
-
-        # super(ADAS406Line, self).__init__(cwl, self.wavelengths, lineshape, atomic_mass,
-        #                                   vectorise=len(plasma['electron_density']))
-
-        # length = diff (self.plasma['los'] )[0]
-        # self.length_per_sr = length / (4 * pi)
-
-        if type(jj_frac) != list:
-            self.jj_frac = [jj_frac]
-        else:
-            self.jj_frac = jj_frac
-
-        if type(tec406)==str:
-            self.tec406 = build_tec406(tec406)
-        else:
-            self.tec406 = tec406
-
-        self.tec_input = []
+        self.tec406 = self.plasma.impurity_tecs[self.line]
 
     def __call__(self):
 
@@ -478,11 +466,9 @@ class ADAS406Lines(object):
 
         ne = self.plasma.plasma_state['electron_density']
         te = self.plasma.plasma_state['electron_temperature']
-        tau = zeros(len(ne)) + self.plasma.plasma_state[self.species+'_tau']
+        tau = np.array([self.plasma.plasma_state[self.species+'_tau'][0] for n in ne])
 
-        # tec_in = log10( array([tau, ne, te]).T )
-        tec_in = array([tau, ne, te]).T
-        # self.tec_input.append(tec_in)
+        tec_in = (tau, ne, te)
 
         length = diff(self.los)[0]
         length_per_sr = length / (4 * pi)
@@ -490,12 +476,11 @@ class ADAS406Lines(object):
         self.times.append(clock.time())
         self.time_labels.append('before tec evaluation')
 
-        tec = nan_to_num( self.tec406( tec_in ) )
+        tec = self.tec406(tec_in)
+        tec = np.power(10, tec)
+        tec = np.nan_to_num(tec)
 
-        ems = n0 * ne * tec * length_per_sr
-        # ems = n0 * power(10, self.tec406(tec_in)) * length_per_sr # * self.jj_frac
-        # TODO only takes one at a time or returns NaNs
-
+        ems = n0 * tec * length_per_sr
         ems = ems.clip(min=1e-20)
 
         self.emission_profile = ems
@@ -507,23 +492,20 @@ class ADAS406Lines(object):
         self.times.append(clock.time())
         self.time_labels.append('after tec evaluation')
 
-        try:
-            peaks = [ l(ti, ems) * self.jj_frac[counter] for counter, l in enumerate(self.lines) ]
-        except TypeError:
-            print(self.jj_frac)
-            print(self.lines)
-            raise
-        except:
-            raise
-
-        # return super(ADAS406Line, self).__call__(ti, ems)
-
+        peaks = [frac*l(ti, ems) for frac, l in zip(self.jj_frac, self.lines)]
         sum_peaks = sum(peaks)
 
         self.times.append(clock.time())
         self.time_labels.append('end of call')
 
         return sum_peaks
+
+    def get_atomic_mass(self):
+
+        if 'N_' in self.species:
+            mass = 7
+
+        self.atomic_mass = mass
 
 
 class HydrogenLineShape(object):
@@ -658,6 +640,8 @@ class HydrogenLineShape(object):
 
     def comparison(self, theta, line_model='stehle_param'):
 
+        from pystark import BalmerLineshape, ls_norm
+
         electron_density, ion_temperature, b_field, viewangle = theta
 
         line = BalmerLineshape(self.n_upper, electron_density, ion_temperature, bfield=b_field,
@@ -668,47 +652,29 @@ class HydrogenLineShape(object):
         return line.ls_szd / trapz(line.ls_szd, self.wavelengths)
 
 
-
-from pystark import BalmerLineshape, ls_norm
-
-
 class BalmerHydrogenLine(object):
 
-    def __init__(self, cwl, wavelengths, n_upper, atomic_mass, pec,
-                 species, ion, plasma, half_range=40, zeeman=True):
+    def __init__(self, plasma, species, cwl, wavelengths, half_range=40, zeeman=True):
 
         self.plasma = plasma
-        self.los = self.plasma.profile_function.electron_density.x
-
-        self.n_upper = n_upper
-        self.atomic_mass = atomic_mass
-
+        self.species = species
         self.cwl = cwl
+        self.line = self.species+'_'+str(self.cwl)
         self.wavelengths = wavelengths
+        self.n_upper = self.plasma.input_dict['D_0'][self.cwl]['n_upper']
+        self.get_atomic_mass()
+        self.los = self.plasma.profile_function.electron_density.x
 
         self.reduced_wavelength, self.reduced_wavelength_indicies = \
             reduce_wavelength(wavelengths, cwl, half_range, return_indicies=True)
 
         self.zeros_peak = zeros(len(self.wavelengths))
 
-
-        self.species = species+'_'+ion
-
-        # if type(pec) == str:
-        #     self.pec = build_pec(pec)
-        # else:
-        #     self.pec = pec
-
-        # self.exc_tec = build_tec406(pec[0])
-        self.exc_pec = build_pec(pec[1], 0)
-        self.rec_pec = build_pec(pec[1], 1)
+        self.exc_pec = self.plasma.hydrogen_pecs[self.line+'_exc']
+        self.rec_pec = self.plasma.hydrogen_pecs[self.line+'_rec']
 
         self.lineshape = HydrogenLineShape(self.cwl, self.reduced_wavelength, self.n_upper, n_lower=2,
                                            atomic_mass=self.atomic_mass, zeeman=zeeman)
-
-        self.tec_input = []
-
-        self.two_pi = 2 * pi
 
     def __call__(self):
 
@@ -717,21 +683,18 @@ class BalmerHydrogenLine(object):
         ti = self.plasma.plasma_state[self.species+'_Ti']
 
         bfield = self.plasma.plasma_state['b-field']
-        viewangle = self.plasma.plasma_state['viewangle'] / self.two_pi
+        viewangle = self.plasma.plasma_state['viewangle']
 
         ne = self.plasma.plasma_state['electron_density']
         te = self.plasma.plasma_state['electron_temperature']
-        # tau = zeros(len(ne)) + self.plasma[self.species]['tau']
-        #
-        # tec_in = array([tau, ne, te]).T
 
         length = diff(self.los)[0]
         length_per_sr = length / (4 * pi)
 
-        rec_pec = [ self.rec_pec(tmp_ne, te[counter])[0][0] for counter, tmp_ne in enumerate(ne) ]
+        rec_pec = np.power(10, self.rec_pec(ne, te))
         rec_profile = n1 * ne * length_per_sr * rec_pec
 
-        exc_pec = [self.exc_pec(tmp_ne, te[counter])[0][0] for counter, tmp_ne in enumerate(ne)]
+        exc_pec = np.power(10, self.exc_pec(ne, te))
         exc_profile = n0 * ne * length_per_sr * nan_to_num( exc_pec )
         # exc_profile = n0 * length_per_sr * nan_to_num( self.exc_tec(tec_in) )
 
@@ -741,11 +704,9 @@ class BalmerHydrogenLine(object):
         low_te_indicies = where(te < low_te)
         low_ne_indicies = where(ne < low_ne)
 
-        rec_profile[low_te_indicies] = 0.0
-        exc_profile[low_te_indicies] = 0.0
-
-        rec_profile[low_ne_indicies] = 0.0
-        exc_profile[low_ne_indicies] = 0.0
+        for indicies in [low_te_indicies, low_ne_indicies]:
+            rec_profile[indicies] = 0.0
+            exc_profile[indicies] = 0.0
 
         self.f_rec = sum(rec_profile) / sum(rec_profile + exc_profile)
 
@@ -804,6 +765,11 @@ class BalmerHydrogenLine(object):
 
         return peak
 
+    def get_atomic_mass(self):
+
+        mass = {'H': 1, 'D': 2, 'T': 3}
+
+        self.atomic_mass = mass[self.species[0]]
 
 
 class NoADASLine(DopplerLine):
@@ -940,7 +906,7 @@ class NoADASLines(object):
 
 class XLine(BasicLine):
 
-    def __init__(self, cwl, fwhm, wavelengths, lineshape, plasma, species, fractions=[]):
+    def __init__(self, cwl, fwhm, wavelengths, plasma, species, fractions=[], lineshape=GaussiansNorm):
 
         self.plasma = plasma
 
@@ -999,42 +965,39 @@ class XLine(BasicLine):
 
         ems = self.plasma.plasma_state[self.line_tag]
 
-        return super(XLine, self).__call__(self.fwhm, ems)
+        return super(XLine, self).__call__(self.fwhm, ems) # .sum()
 
 
 if __name__=='__main__':
 
     import numpy as np
-
-    from baysar.input_functions import make_input_dict
+    from baysar.input_functions import new_input_dict
     from baysar.plasmas import PlasmaLine
 
     num_chords = 1
-    wavelength_axes = [np.linspace(4000, 4100, 512)]
-    experimental_emission = [np.array([1e12*np.random.rand() for w in wavelength_axes[0]])]
+    wavelength_axis = [np.linspace(3900, 4200, 512)]
+    experimental_emission = [np.array([1e12*np.random.rand() for w in wavelength_axis[0]])]
     instrument_function = [np.array([0, 1, 0])]
     emission_constant = [1e11]
     species = ['D', 'N']
-    ions = [ ['0'], ['1', '2', '3'] ]
+    ions = [ ['0'], ['1'] ]
     noise_region = [[4040, 4050]]
     mystery_lines = [ [[4070], [4001, 4002]],
                       [[1], [0.4, 0.6]] ]
 
-    input_dict = make_input_dict(num_chords=num_chords,
-                                 wavelength_axes=wavelength_axes, experimental_emission=experimental_emission,
-                                 instrument_function=instrument_function, emission_constant=emission_constant,
-                                 noise_region=noise_region, species=species, ions=ions,
-                                 mystery_lines=mystery_lines, refine=[0.01],
-                                 ion_resolved_temperatures=False, ion_resolved_tau=True)
-
+    input_dict = new_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
+                                instrument_function=instrument_function, emission_constant=emission_constant,
+                                noise_region=noise_region, species=species, ions=ions,
+                                mystery_lines=mystery_lines, refine=[0.01],
+                                ion_resolved_temperatures=False, ion_resolved_tau=True)
     plasma = PlasmaLine(input_dict)
 
     rand_theta = [min(b)+np.random.rand()*(max(b)-min(b)) for b in plasma.theta_bounds]
     plasma(rand_theta)
 
-    [print(plasma.plasma_state[p], type(plasma.plasma_state[p])) for p in plasma.plasma_state.keys()]
-
-    [print(t) for t in plasma.tags]
+    # [print(plasma.plasma_state[p], type(plasma.plasma_state[p])) for p in plasma.plasma_state.keys()]
+    #
+    # [print(t) for t in plasma.tags]
 
     tmp_cwl = mystery_lines[0][0]
     tmp_fractions = mystery_lines[1][0]
@@ -1048,32 +1011,18 @@ if __name__=='__main__':
 
     xline()
 
-    cwls = [4050, 4090]
     wavelengths = tmp_wavelengths
-    lineshape = GaussiansNorm
-    atomic_mass = 14
-    import os
-    data_pathroot = os.path.expanduser('~/baysar/data/')
-    tec406 = data_pathroot+'/n_data/tec_grids/tec_406_grid_n1_3_3996.sav'
-    species = 'N'
-    ion = '1'
-    jj_frac = [0.3, 0.7]
+    species = 'N_1'
+    cwls = (4026.09, 4039.35)
 
-    line406 = ADAS406Lines(cwls, wavelengths, lineshape, atomic_mass, tec406,
-                           species, ion, plasma, jj_frac)
+    line406 = ADAS406Lines(plasma, species, cwls, wavelengths)
 
     line406()
 
-    cwl = 4020
-    n_upper=7
-    atomic_mass=2
-    pec = [data_pathroot + '/balmer/neutral_exc_tec_406_grid_h0_5_3970.sav',
-           data_pathroot + '/balmer/pec_grid_h0_5_3970.sav']
-    species = 'D'
-    ion = '0'
+    species = 'D_0'
+    cwl = 3968.99
 
-    hline = BalmerHydrogenLine(cwl, wavelengths, n_upper, atomic_mass, pec,
-                               species, ion, plasma)
+    hline = BalmerHydrogenLine(plasma, species, cwl, wavelengths)
 
     hline()
 

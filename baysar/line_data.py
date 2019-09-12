@@ -370,8 +370,8 @@ def add_ion_info(dictionary, wavelenghts, jj_fraction, pecs, exc_block, rec_bloc
         if file is None:
             file = dictionary['default_pecs']
 
-            dictionary[wave] = {'wavelength': wave, 'jj_frac': jj_f, 'pec': file,
-                                'exc_block': exc, 'rec_block': rec}
+        dictionary[wave] = {'wavelength': wave, 'jj_frac': jj_f, 'pec': file,
+                            'exc_block': exc, 'rec_block': rec}
 
         for key in keywords:
             if key in kwargs:
@@ -443,7 +443,7 @@ adas_line_data['N']['2'] = add_ion_info(adas_line_data['N']['2'], wavelenghts, j
 adas_line_data['N']['3'] = {'default_pecs': adas_root+'adf15/pec96#n/pec96#n_vsu#n3.dat'}
 
 wavelenghts = [4057.76]
-jj_fraction = [1]
+jj_fraction = [[1]]
 pecs = [None]
 exc_block = [17]
 rec_block = [58]
