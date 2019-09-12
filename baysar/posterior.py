@@ -321,9 +321,7 @@ class BaysarPosteriorFilterWrapper(BaysarPosterior):
 if __name__=='__main__':
 
     from baysar.input_functions import new_input_dict
-    from tulasa import plotting_functions as pf
 
-    num_chords = 1
     wavelength_axis = [np.linspace(3900, 4150, 512)]
     experimental_emission = [np.array([1e12*np.random.rand() for w in wavelength_axis[0]])]
     instrument_function = [np.array([0, 1, 0])]
