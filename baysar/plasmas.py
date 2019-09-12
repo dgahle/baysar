@@ -418,11 +418,7 @@ class PlasmaLine():
         self.hydrogen_pecs = dict(pecs)
 
     def is_theta_within_bounds(self, theta):
-        out = []
-        for counter, bound in enumerate(self.theta_bounds):
-            out.append(within(theta[counter], bound))
-
-        return out
+        return [(b.min()<r) and (r<b.max()) for b, r in zip(self.theta_bounds, theta)]
 
 
 if __name__ == '__main__':

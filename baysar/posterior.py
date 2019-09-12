@@ -36,17 +36,13 @@ class BaysarPosterior(object):
         self.curvature = curvature
 
         self.nan_thetas = []
-
         self.runtimes = []
 
     def __call__(self, theta, skip_error=True):
 
         theta = list(theta)
-
         self.last_proposal = theta
-
         if self.check_bounds:
-
             if not all(self.plasma.is_theta_within_bounds(theta)):
                 prob = -1e50
                 if self.print_errors:
@@ -54,9 +50,7 @@ class BaysarPosterior(object):
                 return prob
 
         self.plasma(theta)
-
         prob = sum(p() for p in self.posterior_components)
-
         if self.priors is not None:
             prob += sum(p(self) for p in self.priors)
 
@@ -74,12 +68,9 @@ class BaysarPosterior(object):
 
 
         if np.isnan(prob):
-
             self.nan_thetas.append(theta)
-
             if self.print_errors:
                 print('logP = NaNs')
-
             return -1e50
         elif type(prob) == np.float64:
             return prob / self.temper

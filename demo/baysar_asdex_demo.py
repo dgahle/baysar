@@ -27,11 +27,11 @@ from tulasa import plotting_functions as pf
 from tulasa.data_processing import wave_cal, add_noise, time_posterior, \
                                    add_chain_bounds
 
-from tulasa import general, fitting
+from tulasa import general # , fitting
 # from tulasa.plotting_functions import plot_fit
 
 from baysar.lineshapes import GaussianNorm, Eich
-from baysar.input_functions import make_input_dict
+from baysar.input_functions import new_input_dict
 from baysar.posterior import BaysarPosterior, BaysarPosteriorFilterWrapper
 
 import emcee as thor
@@ -241,7 +241,7 @@ if __name__=='__main__':
     a_cal = 1e11 # fake-calibration constant
 
     experimental_emission = [tmp_ems]
-    wavelength_axes = [tmp_wave]
+    wavelength_axis = [tmp_wave]
 
     num_chords = 1
     emission_constant = [a_cal]
@@ -261,64 +261,16 @@ if __name__=='__main__':
 
 
     # Creating input dictionary to create BaySAR posterior object
-    indict = make_input_dict(num_chords=num_chords,
-                             wavelength_axes=wavelength_axes, experimental_emission=experimental_emission,
-                             instrument_function=instrument_function, emission_constant=emission_constant,
-                             noise_region=noise_region, species=species, ions=ions,
-                             mystery_lines=mystery_lines, refine=[0.01],
-                             ion_resolved_temperatures=False, ion_resolved_tau=True)
+    indict = new_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
+                            instrument_function=instrument_function, emission_constant=emission_constant,
+                            noise_region=noise_region, species=species, ions=ions,
+                            mystery_lines=mystery_lines, refine=[0.05],
+                            ion_resolved_temperatures=False, ion_resolved_tau=True)
 
-    # Creating plamsa profile model
-    from baysar.lineshapes import MeshLine
+    posterior = BaysarPosterior(input_dict=indict, check_bounds=True,
+                                curvature=1e4, print_errors=False)
 
-    x = np.linspace(1, 11, 7)
-    profile_function = MeshLine(x=x, zero_bounds=-1, bounds=[0, 12])
+    random_start = posterior.random_start()
+    print(posterior(random_start)) # evaluation of the posterior (fit probability)
 
-    profile_function.number_of_varriables = len(x)
-    profile_function.dr = False
-
-    # Creating posterior objects
-    posterior = BaysarPosterior(input_dict=indict, profile_function=profile_function,
-                                check_bounds=True, curvature=1e4, print_errors=True)
-
-    # Updating parameterisation
-    posterior.plasma.conc = False # impurity/neutral density not concentration is sampled
-    posterior.plasma.logte = True # log10(Te) not Te is sampled
-
-    # Updating bounds for the updates parameterisation
-    posterior.plasma.chain_bounds()
-
-    # Manual updating bounds - as the Te and ne automated bounds function needs to be updated to work with the MeshLine
-    posterior.plasma.theta_bounds[
-    posterior.plasma.all_the_indicies['ne_index']:posterior.plasma.all_the_indicies['te_index']] = [12, 15]
-    posterior.plasma.theta_bounds[
-    posterior.plasma.all_the_indicies['te_index']:posterior.plasma.all_the_indicies['upper_te_index']] = [-1, 2]
-
-    # Makes initial guess
-    start = np.zeros(len(posterior.plasma.theta_bounds))
-
-    start[0] = 12 # log10(background)
-    start[posterior.plasma.all_the_indicies['ne_index']:posterior.plasma.all_the_indicies['te_index']] = \
-        np.array([13.7, 14.5, 14.8, 14.5, 14.3, 14, 13.7]) # log10(ne) at each knot point in the MeshLine
-    start[posterior.plasma.all_the_indicies['te_index']:posterior.plasma.all_the_indicies['upper_te_index']] = \
-        np.array([-0.5, 0.1, 0.3, 0.5, 0.7, 1., .2]) # log10(Te) at each knot point in the MeshLine
-    start[-12:-10] = 1 # B-field/los angle & B-field (Zeeman)
-    start[-10:-6] = [13, 12.7, 11.5, 11] # log10(neutral, N II, N III, N IV)
-    start[-6:-4] = 0.1 # log10(Ti) - D and N
-    start[-4:-1] = [-1, -4, -4] # log10(tau) N II-IV
-    start[-1] = 12.3 # X line spectral radiance (contaiminant lines)
-
-    print(posterior(start)) # evaluation of the posterior (fit probability)
-
-    pf.plot_fit(posterior, [start], alpha=1, size=1) # plots fit and plasma profiles from a given sample
-
-
-    """
-    Useful places
-    
-    posterior.posterior_components # list of spectrometer chord objects
-    posterior.posterior_components() # returns the likelihood of fitting the spectra of this chord (there can be multiple)
-    posterior.posterior_components[0].forward_model()  # returns the forward modelled spectra of this chord 
-    posterior.posterior_components[0].lines # list of linemodels in each spectrometer chord objects
-    [l() for l in posterior.posterior_components[0].lines] # list of all the evaluated lineshapes (before instrument convolution)
-    """
+    # pf.plot_fit(posterior, [start], alpha=1, size=1) # plots fit and plasma profiles from a given sample
