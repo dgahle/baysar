@@ -36,8 +36,6 @@ from baysar.posterior import BaysarPosterior, BaysarPosteriorFilterWrapper
 
 import emcee as thor
 
-# from inference.mcmc import GibbsChain, HamiltonianChain, PcaChain
-
 
 def blackouts(data, regions, level):
     for r in regions:
@@ -270,7 +268,61 @@ if __name__=='__main__':
     posterior = BaysarPosterior(input_dict=indict, check_bounds=True,
                                 curvature=1e4, print_errors=False)
 
-    random_start = posterior.random_start()
-    print(posterior(random_start)) # evaluation of the posterior (fit probability)
+    # posterior.plasma.theta_bounds[posterior.plasma.slices['cal0']] = [10, 13]
+    posterior.plasma.theta_bounds[posterior.plasma.slices['back0']] = [10, 13]
+    posterior.plasma.theta_bounds[posterior.plasma.slices['electron_temperature']] = [-1, 1]
+    posterior.plasma.theta_bounds[posterior.plasma.slices['N_1_dens']] = [13, 14]
+    posterior.plasma.theta_bounds[posterior.plasma.slices['N_1_tau']] = [-1, 2]
 
-    # pf.plot_fit(posterior, [start], alpha=1, size=1) # plots fit and plasma profiles from a given sample
+    start = posterior.random_start()
+    print(posterior(start)) # evaluation of the posterior (fit probability)
+    # pf.plot_fm(posterior, start)
+
+    #
+
+    sys.path.append(os.path.expanduser('~/inference-tools'))
+    from inference.mcmc import GibbsChain, PcaChain, ParallelTempering
+
+    # pf.plot_fm(posterior, chain.mode()) # plots fit and plasma profiles from a given sample
+
+    # temps = np.logspace(0, 3, 7)[:-1]
+    # chains = [GibbsChain(posterior=posterior, start=start, temperature=T) for T in temps]
+    #
+    # # When an instance of ParallelTempering is created, a dedicated process for each chain is spawned.
+    # # These separate processes will automatically make use of the available cpu cores, such that the
+    # # computations to advance the separate chains are performed in parallel.
+    # PT = ParallelTempering(chains=chains)
+    #
+    # # These processes wait for instructions which can be sent using the methods of the
+    # # ParallelTempering object:
+    # for i in range(1):
+    #     for j in range(10): # min per iteration
+    #         print(i, j)
+    #         PT.advance(5) # advance each chain by 10 steps
+    #         PT.swap() # attempt a swap for all chains
+    #
+    #     # To recover a copy of the chains held by the processes
+    #     # we can use the return_chains method:
+    #     chains = PT.return_chains()
+    #
+    #     # try:
+    #     #     chains[0].plot_diagnostics(show=False, filename='./tmp_plot_diagnostics')
+    #     # except:
+    #     #     pass
+    #     #
+    #     # # by looking at the trace plot for the T = 1 chain, we see that it makes
+    #     # # large jumps across the parameter space due to the swaps.
+    #     # chains[0].trace_plot(show=False, filename='./tmp_trace_plot')
+    #     #
+    #     # # Even though the posterior has strongly separated peaks, the T = 1 chain
+    #     # # was able to explore all of them due to the swaps.
+    #     # chains[0].matrix_plot(show=False, filename='./tmp_matrix_plot')
+    #     #
+    #     # chains[0].save('./tmp_chain')
+    #     #
+    #     # pf.plot_fit(posterior, chains[0].get_sample()[-250:], alpha=0.05, size=100, plasma_ref=plasma_ref, filename='tmp_plot_fit')
+    #
+    # # Because each process waits for instructions from the ParallelTempering object,
+    # # they will not self-terminate. To terminate all the processes we have to trigger
+    # # a shutdown even using the shutdown method:
+    # PT.shutdown()

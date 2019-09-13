@@ -44,10 +44,10 @@ class arb_obj_single_input(object):
 
     def __call__(self, theta):
 
-        if type(theta) in (float, int):
-            return theta
-        else:
-            return theta[0]
+        if type(theta) not in (float, int):
+            theta = theta[0]
+
+        return np.power(10, theta)
 
 
 from adas import run_adas406, read_adf15
@@ -78,13 +78,13 @@ class PlasmaLine():
 
         self.get_impurities()
         self.get_impurity_ion_bal()
+        self.build_impurity_average_charge()
         self.get_impurity_tecs()
         if self.contains_hydrogen:
             self.get_hydrogen_pecs()
 
         self.set_up_theta_functions(profile_function, cal_functions, background_functions)
         self.build_tags_slices_and_bounds()
-        self.build_impurity_average_charge()
 
         self.los = self.profile_function.electron_density.x
 
@@ -142,9 +142,7 @@ class PlasmaLine():
         for tag in impurity_tags:
             for s in self.species:
                 is_h_isotope = any([s[0:2]==h+'_' for h in self.hydrogen_isotopes])
-                if tag == '_tau' and is_h_isotope:
-                    pass
-                else:
+                if not (tag == '_tau' and is_h_isotope):
                     sion = s+tag
                     tmp_b = impurity_bounds[np.where([t in sion for t in impurity_tags])[0][0]]
 
@@ -178,8 +176,9 @@ class PlasmaLine():
 
         # building the slices to map BaySAR input to model parameters
         slices = []
-        bounds_to_remove_indicies = []
-        for p, L, b, n in zip(self.tags, slice_lengths, bounds, np.arange(len(bounds))):
+        keep_theta_bound = []
+        for p, L, b, n in zip( self.tags, slice_lengths, bounds, np.arange(len(bounds)) ):
+            [keep_theta_bound.append(self.is_resolved[p]) for counter in np.arange(L)]
             if len(slices) is 0:
                 slices.append( (p, slice(0, L)) )
             elif self.is_resolved[p]:
@@ -188,19 +187,17 @@ class PlasmaLine():
             # if the parameter is not resolved there is a check for previous tags that it will share a slice with
             else:
                 current_imp_tag = [imp_tag for imp_tag in impurity_tags if p.endswith(imp_tag)]
-
                 slc = [s for tag, s in slices if (tag.startswith(p[:1]) and tag.endswith(current_imp_tag[0]))]
-
                 if len(slc) != 0:
                     slices.append((p, slc[0]))
-                    bounds_to_remove_indicies.append(n)
                 else:
                     last = slices[-1][1].stop
                     slices.append((p, slice(last, last+L)))
+                    keep_theta_bound[-1] = True
 
         self.n_params = slices[-1][1].stop
         self.slices = collections.OrderedDict(slices)
-        self.theta_bounds = [np.array(b) for b, n in zip(bounds, np.arange(len(bounds))) if not any([n==check for check in bounds_to_remove_indicies])]
+        self.theta_bounds = np.array([np.array(b) for n, b in enumerate(bounds) if keep_theta_bound[n]])
         self.bounds = bounds
 
         assert self.n_params==len(self.theta_bounds), 'self,n_params!=len(self.theta_bounds)'
@@ -236,18 +233,17 @@ class PlasmaLine():
     def set_up_theta_functions(self, profile_function=None, cal_functions=None, background_functions=None):
 
         if profile_function is None:
-            x = np.linspace(1, 2, 3)
-            profile_function = MeshLine(x=x, zero_bounds=-2, bounds=[0, 3], log=True)
+            x = np.linspace(1, 9, 5)
+            profile_function = MeshLine(x=x, zero_bounds=-2, bounds=[0, 10], log=True)
             self.profile_function = arb_obj(electron_density=profile_function,
                                             electron_temperature=profile_function,
-                                            number_of_variables_ne=3,
-                                            number_of_variables_te=3,
+                                            number_of_variables_ne=len(x),
+                                            number_of_variables_te=len(x),
                                             bounds_ne=[11, 16], bounds_te=[-1, 2])
         else:
             self.profile_function = profile_function
 
         tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[5, 20])
-
         if cal_functions is None:
             self.cal_functions = [tmp_func for num in np.arange(self.num_chords)]
         else:
@@ -431,7 +427,7 @@ if __name__ == '__main__':
     instrument_function = [np.array([0, 1, 0])]
     emission_constant = [1e11]
     species = ['D', 'N']
-    ions = [ ['0'], ['1'] ] # , '2', '3'] ]
+    ions = [ ['0'], ['1', '2', '3'] ]
     noise_region = [[4040, 4050]]
     mystery_lines = [[[4070], [4001, 4002]], [1, [0.4, 0.6]]]
 
@@ -443,18 +439,18 @@ if __name__ == '__main__':
 
     plasma = PlasmaLine(input_dict)
 
-    rand_theta = np.random.rand(plasma.n_params)
-    plasma(rand_theta)
-
-    # for k in plasma.plasma_state_tags.keys():
-    for k in plasma.slices.keys():
-        print(k, plasma.plasma_state[k], type(plasma.plasma_state[k]), plasma.slices[k],
-              plasma.theta_bounds[plasma.slices[k]], type(plasma.theta_bounds[plasma.slices[k]]))
-
-    k = 'main_ion_density'
-    print(k, plasma.plasma_state[k])
-    print(plasma.bounds)
-    print(plasma.is_theta_within_bounds(rand_theta))
+    # rand_theta = np.random.rand(plasma.n_params)
+    # plasma(rand_theta)
+    #
+    # # for k in plasma.plasma_state_tags.keys():
+    # for k in plasma.slices.keys():
+    #     print(k, plasma.plasma_state[k], type(plasma.plasma_state[k]), plasma.slices[k],
+    #           plasma.theta_bounds[plasma.slices[k]], type(plasma.theta_bounds[plasma.slices[k]]))
+    #
+    # k = 'main_ion_density'
+    # print(k, plasma.plasma_state[k])
+    # print(plasma.bounds)
+    # print(plasma.is_theta_within_bounds(rand_theta))
 
 
     pass

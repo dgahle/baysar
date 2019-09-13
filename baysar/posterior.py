@@ -57,7 +57,7 @@ class BaysarPosterior(object):
         if any(self.plasma.plasma_state['main_ion_density'] < 0):
             if self.print_errors:
                 print('contains antiprotons')
-            prob -= sum(np.log10(abs(self.plasma.plasma_state['main_ion_density'].clip(max=0))).clip(0))
+            prob += sum(np.log10( abs(self.plasma.plasma_state['main_ion_density'].clip(max=-1e-20)) ))
             # return -1e50
 
         if self.curvature is not None:

@@ -124,7 +124,7 @@ def plot_fm(posterior, theta, error_res=True, ylim=[1e11, 1e15]):
     te = posterior.plasma.plasma_state['electron_temperature']
     ne = posterior.plasma.plasma_state['electron_density']
 
-    los = posterior.plasma.plasma_state['los']
+    los = posterior.plasma.los
 
     ax[2].plot(los, ne/1e13, 'r', label=r'$n_{e} \ / \ 10^{13} cm^{-3}$')
     ax[2].plot(los, te, 'b', label=r'$T_{e} \ / \ eV$')
