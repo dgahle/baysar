@@ -243,7 +243,7 @@ class PlasmaLine():
         else:
             self.profile_function = profile_function
 
-        tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[5, 20])
+        tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[-5, 20])
         if cal_functions is None:
             self.cal_functions = [tmp_func for num in np.arange(self.num_chords)]
         else:
@@ -371,7 +371,8 @@ class PlasmaLine():
                                               pecs_rec.T*ionbal[t_counter, :, :, ion+1])
 
         # log10 is spitting out errors ::( but it still runs ::)
-        return RegularGridInterpolator((tau, ne, te), np.log10(tec406.clip(1e-50)), bounds_error=False)
+        # What about scipy.interpolate.Rbf ?
+        return RegularGridInterpolator((tau, ne, te), np.log10(tec406.clip(1e-40)), bounds_error=False)
 
     def get_impurity_tecs(self):
         tecs = []

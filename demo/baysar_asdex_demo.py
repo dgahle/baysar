@@ -269,19 +269,21 @@ if __name__=='__main__':
                                 curvature=1e4, print_errors=False)
 
     # posterior.plasma.theta_bounds[posterior.plasma.slices['cal0']] = [10, 13]
-    posterior.plasma.theta_bounds[posterior.plasma.slices['back0']] = [10, 13]
+    posterior.plasma.theta_bounds[posterior.plasma.slices['background0']] = [10, 13]
     posterior.plasma.theta_bounds[posterior.plasma.slices['electron_temperature']] = [-1, 1]
     posterior.plasma.theta_bounds[posterior.plasma.slices['N_1_dens']] = [13, 14]
     posterior.plasma.theta_bounds[posterior.plasma.slices['N_1_tau']] = [-1, 2]
 
     start = posterior.random_start()
     print(posterior(start)) # evaluation of the posterior (fit probability)
-    # pf.plot_fm(posterior, start)
-
-    #
 
     sys.path.append(os.path.expanduser('~/inference-tools'))
     from inference.mcmc import GibbsChain, PcaChain, ParallelTempering
+
+    chain = PcaChain.load('tmp_chain.npz')
+    chain.posterior = posterior
+
+    print(posterior(chain.mode()))
 
     # pf.plot_fm(posterior, chain.mode()) # plots fit and plasma profiles from a given sample
 

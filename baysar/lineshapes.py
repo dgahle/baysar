@@ -7,7 +7,8 @@ from scipy.constants import pi
 from scipy.integrate import trapz
 from scipy.interpolate import interp1d
 
-
+from scipy import interpolate
+from scipy.interpolate import UnivariateSpline # , BSpline
 
 
 class Eich(object):
@@ -533,9 +534,7 @@ def supergaussian(x, theta):
 
     return np.exp(log_peak)
 
-from scipy import interpolate
 
-from scipy.interpolate import InterpolatedUnivariateSpline
 
 
 class MeshLine(object):
@@ -573,7 +572,8 @@ class MeshLine(object):
                                              str(len(theta)) + ' ' + str(len(self.x_points))
 
         # get_new_profile = InterpolatedUnivariateSpline(self.x, theta)
-        get_new_profile = interp1d(self.x_points, theta, self.kind)
+        # get_new_profile = interp1d(self.x_points, theta, self.kind)
+        get_new_profile = UnivariateSpline (self.x_points, theta)
 
         if self.log:
             return np.power(10, get_new_profile(self.x))
