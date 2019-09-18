@@ -23,6 +23,10 @@ class BaysarPosterior(object):
     def __init__(self, input_dict, profile_function=None, priors=None, check_bounds=False,
                        temper=1, curvature=None, print_errors=False):
 
+        'input_dict input has been checked if created with make_input_dict'
+
+        self.check_inputs(priors, check_bounds, temper, curvature, print_errors)
+
         self.input_dict = input_dict
 
         self.plasma = PlasmaLine(input_dict=input_dict, profile_function=profile_function)
@@ -37,6 +41,31 @@ class BaysarPosterior(object):
 
         self.nan_thetas = []
         self.runtimes = []
+
+    def check_inputs(self, priors, check_bounds, temper, curvature, print_errors):
+
+        if priors is not None:
+            if type(priors) is not list:
+                raise TypeError("If priors are being passed then it must be a list of functions")
+
+        if type(check_bounds) is not bool:
+            raise TypeError("check_bounds must be True or False and is False by default")
+
+        if type(temper) not in (int, float, np.int64, np.float64):
+            raise TypeError("temper must be an int or float")
+        elif temper < 0:
+            raise ValueError("temper must be positive (should, but doesn't have to, be greater than 1)")
+        else:
+            pass
+
+        if curvature is not None:
+            if type(curvature) not in (int, float, np.int64, np.float64):
+                raise TypeError("curvature must be an int or float")
+            elif curvature < 1:
+                raise ValueError("curvature must be greater than 1")
+
+        if type(print_errors) is not bool:
+            raise TypeError("print_errors must be True or False and is False by default")
 
     def __call__(self, theta, skip_error=True):
 
@@ -213,7 +242,8 @@ class BaysarPosterior(object):
 
 
 # TODO: Write wrapper posteriorS to be able to do low dimentional fits - produce with a demo
-
+# Todo: update to use with new BaysarPosterior
+# Todo: add a check input function
 class BaysarPosteriorFilterWrapper(BaysarPosterior):
 
     """
@@ -311,7 +341,7 @@ class BaysarPosteriorFilterWrapper(BaysarPosterior):
 
 if __name__=='__main__':
 
-    from baysar.input_functions import new_input_dict
+    from baysar.input_functions import make_input_dict
 
     wavelength_axis = [np.linspace(3900, 4150, 512)]
     experimental_emission = [np.array([1e12*np.random.rand() for w in wavelength_axis[0]])]
@@ -323,7 +353,7 @@ if __name__=='__main__':
     mystery_lines = [ [ [4070], [4001, 4002] ],
                       [    [1],    [0.4, 0.6]]]
 
-    input_dict = new_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
+    input_dict = make_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
                                 instrument_function=instrument_function, emission_constant=emission_constant,
                                 noise_region=noise_region, species=species, ions=ions,
                                 mystery_lines=mystery_lines, refine=[0.05],

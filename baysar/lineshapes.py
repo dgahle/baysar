@@ -11,100 +11,11 @@ from scipy import interpolate
 from scipy.interpolate import UnivariateSpline # , BSpline
 
 
-class Eich(object):
-
-    def __init__(self, x=None, cwl=None, vectorise=1, height_norm=True, reduced=False, centre=True):
-
-         # Useful constants
-        # self.fwhm_to_sigma = 1 / np.sqrt(8 * np.log(2))
-
-        self.vectorise = vectorise
-
-        if self.vectorise > 1:
-            self.x = np.tile(x, (vectorise, 1))
-        else:
-            self.x = x
-
-        self.cwl = cwl
-
-        self.height_norm = height_norm
-        self.reduced = reduced
-        self.centre = centre
-
-    def __call__(self, theta, *args, **kwargs):
-
-        if self.reduced:
-            if self.cwl is not None:
-                spreding, hieght = theta
-                lambda_q, s_factor, flux_expansion = spreding, spreding, 1 # spreding
-
-                centre = self.cwl
-            else:
-                centre, spreding, hieght = theta
-                lambda_q, s_factor, flux_expansion = spreding, spreding, 1 # spreding
-                pass
-        else:
-            if self.cwl is not None:
-                lambda_q, s_factor, hieght = theta
-                centre = self.cwl
-                flux_expansion = 1
-                pass
-            else:
-                centre, lambda_q, s_factor, hieght = theta
-                flux_expansion = 1
-
-        if self.centre:
-            exp_in = np.square(s_factor / (2 * lambda_q)) - \
-                     (0 - self.x) / (lambda_q * flux_expansion)
-            exp_part = np.exp(exp_in)
-
-            erfc_in = s_factor / (2 * lambda_q) - (0 - self.x) / (s_factor * flux_expansion)
-            erfc_part = special.erfc(erfc_in)
-
-            tmp_eich = exp_part * erfc_part
-
-            try:
-                centre_index = np.where(tmp_eich==max(tmp_eich))
-            except:
-                print(tmp_eich)
-                raise
-
-            dr = centre - self.x[centre_index]
-
-            try:
-                x_prime = self.x + dr
-            except:
-                print(dr, centre_index, any(np.isnan(tmp_eich)))
-
-            eich_interp1d = interp1d(x_prime, tmp_eich, fill_value='extrapolate')
-
-            tmp_eich = eich_interp1d(self.x)
-
-            # old_centre = self.x[]
-
-        else:
-            exp_in = np.square(s_factor / (2 * lambda_q)) - \
-                     (centre - self.x) / (lambda_q * flux_expansion)
-            exp_part = np.exp(exp_in)
-
-            erfc_in = s_factor / (2 * lambda_q) - (centre - self.x) / (s_factor * flux_expansion)
-            erfc_part = special.erfc(erfc_in)
-
-            tmp_eich = exp_part * erfc_part
-
-
-        if self.height_norm:
-            return hieght * tmp_eich / max(tmp_eich)
-        else:
-            # This is area normalised
-            return hieght * tmp_eich / sum(tmp_eich)
-
-        ...
-
-
 class Gaussian(object):
 
     def __init__(self, x=None, cwl=None, vectorise=1):
+
+        self.check_input(x, cwl, vectorise)
 
         # Useful constants
         self.fwhm_to_sigma = 1 / np.sqrt(8 * np.log(2))
@@ -118,125 +29,53 @@ class Gaussian(object):
 
         self.cwl = cwl
 
-
+    def check_input(self, x, cwl, vectorise):
+        if type(x)!=np.ndarray:
+            raise TypeError("x must be an numpy array")
+        if type(cwl) not in (int, float, np.int64, np.float64):
+            raise TypeError("cwl must be an int or float")
+        if type(vectorise) not in (int, np.int64):
+            raise TypeError("vectorise must be an int")
 
     def __call__(self, theta, *args, **kwargs):
 
         if self.cwl is not None:
             fwhm, intensity = theta
             cwl = self.cwl
-            pass
         else:
-            try:
-                cwl, fwhm, intensity = theta
-            except ValueError:
-                print(theta)
-                raise
-            except:
-                raise
-
-        # try:
-        #     fwhm /= 2
-        # except:
-        #     fwhm = [f/2 for f in fwhm]
-
+            cwl, fwhm, intensity = theta
 
         if self.vectorise > 1:
-
             if any([tmp_fwhm != np.mean(fwhm) for tmp_fwhm in fwhm]):
                 # tiling
                 fwhm = np.array([np.zeros(len(self.x[0])) + t for t in fwhm])
-
-                try:
-                    intensity = np.array([np.zeros(len(self.x[0])) + t for t in intensity])
-                except ValueError:
-                    intensity = np.array([np.zeros(len(self.x[0])) + t for t in intensity[0]])
-                except:
-
-                    print(intensity)
-
-                    raise
-
-                # print(self.x.shape)
-                # print(self.x)
-                #
-                # intensity = np.array([np.zeros(len(self.x[0])) + t for t in intensity])
-
+                intensity = np.array([np.zeros(len(self.x[0])) + t for t in intensity.flatten()])
+                # intensity = np.array([np.zeros(len(self.x[0])) + t for t in intensity[0]])
             else:
-
-                # print( len(intensity), len(intensity[0]) )
-
                 intensity = sum(intensity)
-
                 sigma = np.mean(fwhm) * self.fwhm_to_sigma
-
                 peak = np.exp(-0.5 * ( (self.x[0] - cwl) / sigma) ** 2)
 
-                # print('hello')
-
-                try:
-                    final_peak = intensity * peak.flatten() # np.array([ peak for counter in np.arange(self.vectorise) ])
-                    return final_peak # .flatten()
-                except ValueError:
-                    final_peak = sum(intensity) * peak.flatten() # np.array([peak for counter in np.arange(self.vectorise)])
-                    return final_peak# .flatten()
-                except:
-                    raise
-
-        else: pass
+                return sum( np.array(intensity).flatten() )  * peak.flatten()
 
         # guassian function
-        try:
-            sigma = fwhm * self.fwhm_to_sigma
-        except TypeError:
-            sigma = np.array(fwhm) * self.fwhm_to_sigma
-        except TypeError:
-            print('fwhm', fwhm)
-            print('self.fwhm_to_sigma', self.fwhm_to_sigma)
-            raise
-        except:
-            print("Unexpected error:", sys.exc_info())  # [0])
-            raise
-
-        with warnings.catch_warnings():
-
-            warnings.simplefilter("ignore")
-
-            peak = np.exp(-0.5 * ( (self.x - cwl) / sigma) ** 2)
-
-        try:
-            return intensity * peak
-        except ValueError:
-            print( len(intensity), len(peak) )
-            raise
-        except:
-            raise
-
-    def grad(self, theta):
-
-        if self.cwl is not None:
-            fwhm, intensity = theta
-            cwl = self.cwl
-            pass
-        else:
-            try:
-                cwl, fwhm, intensity = theta
-            except ValueError:
-                print(theta)
-                raise
-            except:
-                raise
-
+        if type(fwhm)==list:
+            fwhm = np.array(fwhm)
         sigma = fwhm * self.fwhm_to_sigma
 
-        d_by_d_sigm = -2 * np.square(self.x)
 
-        pass
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            peak = np.exp(-0.5 * ( (self.x - cwl) / sigma) ** 2)
+
+        return intensity * peak
 
 
 class Gaussians(object):
 
     def __init__(self, x=None, cwl=None, vectorise=1):
+
+        'type checking done by Gaussian object'
 
         self.cwl = cwl
 
@@ -269,6 +108,11 @@ class Gaussians(object):
 class GaussianNorm(Gaussian): # TODO: Needs fixing/making ?
 
     def __init__(self, x=None, cwl=None, vectorise=1, scaler=1):
+
+        'type checking done by Gaussian object apart from scaler'
+
+        if any([scaler < 0, scaler > 1, type(scaler) not in (int, float, np.int64, np.float64)]):
+            raise AssertionError("scaler must be an int or a float greater than 0 and no greater than 1")
 
         self.x = x
         self.cwl = cwl
@@ -389,121 +233,6 @@ class GaussiansNorm(object): # TODO: Needs fixing/making
             raise
 
 
-class Lorentzian(object): # TODO: This has not been thuroughly debugged
-
-
-    def __init__(self, x, cwl):
-
-        self.x = x
-
-        self.x_shape = x.shape
-
-        self.cwl = np.tile(cwl, self.x_shape[1])
-
-    def __call__(self, fwhm, intensity):
-
-        # tiling
-        fwhm = np.tile(fwhm, self.x_shape[1])
-        intensity = np.tile(intensity, self.x_shape[1])
-
-        hwhm = fwhm / 2.0
-
-        return intensity / (pi * hwhm * (1 + ((self.x - self.cwl) / hwhm) ** 2))
-
-
-class LorentzianNorm(Lorentzian):
-
-    def __init__(self, x, cwl):
-
-        super(LorentzianNorm, self).__init__(x, cwl)
-
-    def __call__(self, fwhm, intesity):
-
-        peak = super(LorentzianNorm, self).__call__(fwhm, intesity)
-
-        norm_k = trapz(peak, self.x)
-
-        return peak / norm_k
-
-
-class TmpLorentzian(object):
-
-    def __init__(self, x, cwl=None, fwhm=None):
-
-        self.x = x
-
-        self.cwl = cwl
-        self.fwhm = fwhm
-
-        pass
-
-    def __call__(self, theta):
-
-        if all([ c == None for c in [self.fwhm, self.cwl] ]):
-
-            cwl, fwhm, intensity = theta
-
-        elif self.fwhm is not None and self.cwl is None:
-
-            cwl, intensity = theta
-
-            fwhm = self.fwhm
-
-        elif self.cwl is not None and self.fwhm is None:
-
-            fwhm, intensity = theta
-
-            cwl = self.cwl
-
-        else:
-            intensity = theta
-
-            fwhm = self.fwhm
-
-        try:
-            hwhm = fwhm / 2.0
-        except:
-            print(fwhm)
-            raise
-
-        peak = 1 / (pi * hwhm * (1 + ((self.x - cwl) / (hwhm)) ** 2))
-
-        return (intensity / max(peak)) * peak
-
-
-class TmpLorentzianNorm(TmpLorentzian):
-
-    def __call__(self, theta):
-
-        peak = super().__call__(theta)
-
-        k = trapz(peak, self.x)
-
-        peak_norm = peak / k
-
-        return theta[1] * peak_norm
-
-
-class DoubleTmpLorentzian(TmpLorentzian):
-
-    def __call__(self, theta):
-
-        if self.cwl is None:
-            cwl, w0, w1, tune, h = theta
-
-            l0_theta = [cwl, w0, h]
-            l1_theta = [cwl, w1, h]
-        else:
-            w0, w1, tune, h = theta
-
-            l0_theta = [w0, h]
-            l1_theta = [w1, h]
-
-        peak0 = super().__call__(l0_theta)
-        peak1 = super().__call__(l1_theta)
-
-        return (peak0 + tune*peak1) / (1 + tune)
-
 class SuperGaussian(object):
 
     def __init__(self, mean, sigma, half_power):
@@ -523,18 +252,6 @@ class SuperGaussian(object):
             return log_peak
         else:
             return np.exp(log_peak)
-
-def supergaussian(x, theta):
-
-    mean, sigma, half_power = theta
-
-    inside = (x - mean) / sigma
-
-    log_peak = -0.5 * np.power(inside, 2 * half_power)
-
-    return np.exp(log_peak)
-
-
 
 
 class MeshLine(object):
@@ -579,6 +296,7 @@ class MeshLine(object):
             return np.power(10, get_new_profile(self.x))
         else:
             return get_new_profile(self.x)
+
 
 class PlasmaMeshLine(object):
 

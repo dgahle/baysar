@@ -661,7 +661,7 @@ if __name__=='__main__':
 
     import numpy as np
 
-    from baysar.input_functions import new_input_dict
+    from baysar.input_functions import make_input_dict
     from baysar.plasmas import PlasmaLine
 
     num_chords = 1
@@ -674,7 +674,7 @@ if __name__=='__main__':
     noise_region = [[4040, 4050]]
     mystery_lines = [[[4070], [4001, 4002]], [[1], [0.4, 0.6]]]
 
-    input_dict = new_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
+    input_dict = make_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
                                 instrument_function=instrument_function, emission_constant=emission_constant,
                                 noise_region=noise_region, species=species, ions=ions,
                                 mystery_lines=mystery_lines, refine=[0.01],

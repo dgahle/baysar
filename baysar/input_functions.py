@@ -27,180 +27,143 @@ def within(stuff, boxes):
     else:
         if type(stuff) is str:
             stuff = float(stuff)
+        elif type(stuff) in (int, float, np.float):
+            pass
+        else:
+            raise TypeError("Input stuff is not of an appropriate type.")
 
         return any((box.min() < stuff) and (stuff < box.max()) for box in boxes)
 
-def make_input_dict(num_chords,
-                    wavelength_axis, experimental_emission, instrument_function,
-                    emission_constant, noise_region,
-                    species, ions, line_data=line_data_multiplet,
-                    mystery_lines=None, refine=None,
-                    ion_resolved_temperatures=False, ion_resolved_tau=False):
+def check_input_dict_input(wavelength_axis, experimental_emission, instrument_function,
+                           emission_constant, noise_region,
+                           species, ions, line_data=adas_line_data, mystery_lines=None,
+                           refine=0.01, ion_resolved_temperatures=False, ion_resolved_tau=False):
 
-    """
-    This function takes in information about the spectrometer settings, experimental data, and plamsa contents
-    and returns a dictionary needed to instantiate the BaySARPosterior class for spectral fitting.
+    '''
+    Checks all the input for make_input_dict.
 
-    :param num_chords: Number (int) of spectrometer chords sampling the same/symetrical plamsma that are wanted to be fit
-    :param wavelength_axis / A: List of wavelength arrays for each spectrometer chord
-    :param experimental_emission / ph cm^-2 A^-1 sr^-1 s^-1: List of spectra arrays for each spectrometer chord
-    :param instrument_function: List of instrument functions for each spectrometer chord
-    :param emission_constant: List of calibration constants to convert from counts to spectral radiance (ph cm^-2 A^-1 sr^-1 s^-1)
-    :param noise_region: List of 2 element list(s) which have the upper and lower bound of the wavelength region to have the noise calculated
-    :param species: List of strings of the elements in the plasma to be forward modeled
-    :param ions: List of list of strings of the ionisation stages of the ions of the elements in the plasma to be forward modeled
-    :param line_data: Dictionary of line data which contains relavent atomic information such as atomic mass and infomation on LS
-                      transitions such as the rate data and multiplet splitting. This is set by default but can be changed by the
-                      user if desired
-    :param mystery_lines: List of central wavelengths of unknown lines which need to be fited by emmissivities. The structure is a list of two lists.
-                          The first list (mystery_lines[0]) is of the central wavelengths of the lines. For multiplets mystery_lines[0][i] is a list
-                          of the lines in the multiplet to be fitted. The second list (mystery_lines[1]) is a list of list of the multiplet fractions
-    :return: dictionary needed to instantiate the BaySARPosterior class
-    """
+    :param (list, array of arrays) wavelength_axis: Wavelength axis of each spectrometer chord.
+    :param (list, array of arrays) experimental_emission: Spectra of each spectrometer chord.
+    :param (list, array of arrays) instrument_function: Instrumental function for each spectrometer.
+    :param (int, float or list, array of arrays) emission_constant: Calibration constant from counts to spectral radiance.
+    :param (list, array of list, arrays) noise_region: Regions of background/continuum that can be used to estimate the measurement noise.
+    :param (list of str) species: The elements in the plasma and experimental regions.
+    :param (list of list of str) ions: The ions of the elements in the plasma.
+    :param (dict) line_data: Line information such as central wavelengths, multiplet info and references to atomic data.
+    :param (list of int, float) mystery_lines: Wavelengths and branching ratios of mystery lines in the experimental data.
+    :param (int, float or list of int, float) refine: Resolution that the spectral forward model is evaluated on.
+    :param (bool) ion_resolved_temperatures: If False there is an single ion temperature per element not per ion.
+    :param (bool) ion_resolved_tau: If False there is an single particle density and ion confinement time (tau) per element not per ion.
+    '''
 
-    input_dict = {}
+    '''
+    The checks that need to be done
+    '''
 
-    input_dict['number_of_chords'] = num_chords
+    # Spectrometer data/input all needs to have the same lengths and be lists or arrays of lists or arrays
+    exp_stuff = [wavelength_axis, experimental_emission, instrument_function, noise_region, emission_constant]
+    # len check
+    exp_len_check = [len(e)==len(exp_stuff[0]) for e in exp_stuff]
+    if not all(exp_len_check):
+        raise ValueError("[wavelength_axis, experimental_emission, instrument_function, noise_region, emission_constant] are not all the same length")
+    # type check
+    exp_type_check0 = [type(e) in (list, np.ndarray) for e in exp_stuff]
+    if not all(exp_type_check0):
+        raise TypeError("[wavelength_axis, experimental_emission, instrument_function, noise_region, emission_constant] are not all lists or arrays")
+    exp_type_check1 = [type(e) in (list, np.ndarray) for exp in exp_stuff[:-1] for e in exp]
+    if not all(exp_type_check1):
+        raise TypeError("Contents of [wavelength_axis, experimental_emission, instrument_function, "
+                        "noise_region] are not all lists or arrays")
+    exp_type_check2 = [type(e0) in (int, float, np.float64, np.int64) for exp in exp_stuff[:-1] for e in exp for e0 in e]
+    if not all(exp_type_check2):
+        raise TypeError("Data given in [wavelength_axis, experimental_emission, instrument_function, noise_region] are not all ints or floats")
+    if not all([type(e) in (int, float, np.float64, np.int64) for e in emission_constant]):
+        raise TypeError("Emission constants type must be in (int, float, np.float64, np.int64)")
 
-    input_dict['inference_resolution'] = \
-        {'ion_resolved_temperatures': ion_resolved_temperatures, 'ion_resolved_tau': ion_resolved_tau}
+    # species and ions must be the same lengths and only conatain strings
+    if len(species)!=len(ions):
+        raise ValueError("len(species)!=len(ions)")
+    if not all([type(species)==list, all([type(s)==str for s in species])]):
+        raise TypeError("species must be a list strings")
+    if not all([ type(ions)==list,
+                 all([type(i)==list for i in ions]),
+                 all([type(i)==str for s in ions for i in s]) ]):
+        raise TypeError("All ions must be a list of list of strings")
 
-    input_dict['chords'] = {}
+    # line_data must be a dictionary
+    if type(line_data)!=dict:
+        raise TypeError('type(line_data)!=dict. Input line_data must be a dict')
 
-    for counter0, chord in enumerate(np.arange(num_chords)):
+    # All species and ions must be in the line_data dict
+    check_emitters_in_line_data = []
+    emitter_fails = []
+    for counter, s in enumerate(species):
+        for i in ions[counter]:
+            s_true = s in line_data
+            i_true = i in line_data[s]
+            check_emitters_in_line_data.append(s_true and i_true)
+            if not check_emitters_in_line_data[-1]:
+                emitter_fails.append(s+'_'+i)
 
-        input_dict['chords'][counter0] = {}
-        input_dict['chords'][counter0]['data'] = {}
+    if not all(check_emitters_in_line_data):
+        raise KeyError(emitter_fails, "not in given line_data")
 
-        input_dict['chords'][counter0]['data']['wavelength_axis'] = wavelength_axis[counter0]
-        input_dict['chords'][counter0]['data']['experimental_emission'] = experimental_emission[counter0]
+    # mystery_lines must be a list of two lists of the same length which only contains lists
+    if type(mystery_lines)!=list:
+        raise TypeError("type(mystery_lines)!=list")
+    if len(mystery_lines[0])!=len(mystery_lines[1]):
+        raise ValueError("len(mystery_lines[0])!=len(mystery_lines[1]) each mystery line needs a branching ratio even is it is a singlet ([1])")
+    if not all([ len(mystery_lines)==2,
+                 all([type(ml)==list for ml in mystery_lines]),
+                 all([type(l)==list for ml in mystery_lines for l in ml]) ]):
+        raise TypeError("mystery_lines must be a list of two lists than only contain lists")
+    if not all([type(m) in (int, float) for ml in mystery_lines for l in ml for m in l]):
+        raise TypeError("Some of the give mystery line central wavelengths and/or branching ratios are not ints or floats")
 
-        input_dict['chords'][counter0]['data']['instrument_function'] = instrument_function[counter0]
-        input_dict['chords'][counter0]['data']['emission_constant'] = emission_constant[counter0]
-        input_dict['chords'][counter0]['data']['noise_region'] = noise_region[counter0]
-
-        if refine is not None:
-            input_dict['chords'][counter0]['data']['refine'] = refine[counter0]
-
-
-
-    input_dict['physics'] = line_data
-
-    # do we want to keep the species?
-    input_dict['physics'] = {key: value for key, value in input_dict['physics'].items() if key in species}
-
-    # do we want to keep the ion?
-    for tmp_species in input_dict['physics'].keys():
-
-        # what are the ions
-        tmp_boul_list = [s == tmp_species for s in species]
-
-        tmp_ion_index = np.where(tmp_boul_list)
-
-        bad_types = [tuple, list, np.ndarray]
-
-        try:
-            while any([t == type(tmp_ion_index) for t in bad_types]):
-                tmp_ion_index = tmp_ion_index[0]
-        except IndexError:
-            print(tmp_species)
-            print(tmp_boul_list)
-            print(input_dict['physics'].keys())
-            raise
-        except:
-            raise
-
-        ion_str = [str(i) for i in ions[tmp_ion_index]]
-
-        tmp_dict = input_dict['physics'][tmp_species]
-        keep_ion_keys = ['atomic_mass', 'atomic_charge', 'effective_charge_406']
-
-        input_dict['physics'][tmp_species] = {key: value for key, value in tmp_dict.items() if key in ion_str+keep_ion_keys}
-
-        input_dict['physics'][tmp_species]['ions'] = ion_str
-
-        # what lines do we want to keep
-        for ion in input_dict['physics'][tmp_species]['ions']:
-
-            # input_dict['physics'][tmp_species][ion]['no_data_lines'] = 0
-
-            # filter for cwl from list of lists wavelength axis
-            all_lines = list( input_dict['physics'][tmp_species][ion].keys() )
-            for line in all_lines:
-
-                # print(tmp_species, ion, line)
-
-                input_dict['physics'][tmp_species][ion]['no_data_lines'] = 0
-
-                # if line != 'lines':
-                if not any([line == l for l in ('lines', 'no_data_lines')]):
-                    if within(line, wavelength_axis):
-
-                        try:
-                            input_dict['physics'][tmp_species][ion][line]['tec']
-                        except KeyError:
-                            input_dict['physics'][tmp_species][ion]['no_data_lines'] += 1
-                        except:
-                            raise
-
-                        pass
-
-                    else:
-                        try:
-                            input_dict['physics'][tmp_species][ion].pop(line)
-                            # input_dict['physics'][tmp_species][ion]['lines'].remove(line)
-                        except:
-                            print(tmp_species, ion, line)
-                            raise
-        pass
-
-    # add mystery lines
-    if mystery_lines is not None:
-
-        input_dict['physics']['X'] = {}
-
-        xmultiplet_couter = 0
-
-        for tmp_line in mystery_lines[0]:
-
-            if type(tmp_line) == list:
-
-                tmp = str(tmp_line).replace(',', '')
-
-                input_dict['physics']['X'][tmp[1:len(tmp)-1]] = {'wavelength': tmp_line,
-                                                                 'fractions': mystery_lines[1][xmultiplet_couter]}
-                xmultiplet_couter += 1
-            else:
-                input_dict['physics']['X'][str(tmp_line)] = {'wavelength': tmp_line}
-
-
-    else: pass
-
-    return input_dict
-
-def new_input_dict(wavelength_axis, experimental_emission, instrument_function,
-                   emission_constant, noise_region,
-                   species, ions, line_data=adas_line_data, mystery_lines=None,
-                   refine=0.01, ion_resolved_temperatures=False, ion_resolved_tau=False):
-
-    experimental_data_checks = [len(wavelength_axis)==len(experimental_emission),
-                                len(wavelength_axis)==len(instrument_function),
-                                len(wavelength_axis)==len(emission_constant),
-                                len(wavelength_axis)==len(noise_region)]
-
-    experimental_data_checks_fail_statement = 'Not all (wavelength_axis, experimental_emission, instrument_function, noise_region) are the same length'
-
-    assert all(experimental_data_checks), experimental_data_checks_fail_statement
-    assert len(species)==len(ions), 'len(species)!=len(ions)'
-    assert len(mystery_lines[0])==len(mystery_lines[1]), 'len(mystery_lines[0])!=len(mystery_lines[1]) each X line needs to be given multiplet fractions'
-
+    # refine must either a float or a list or array of the same length of all the other spectrometer input
     if type(refine) in (float, int):
         refine = [refine for wa in wavelength_axis]
     elif type(refine) in (list, tuple, np.ndarray):
-        assert len(refine)==len(wavelength_axis), 'len(refine)!=len(wavelength_axis)'
+        if len(refine)!=len(wavelength_axis):
+            raise ValueError('len(refine)!=len(wavelength_axis) ' +
+                             'type(refine) must be in (float, int, list, tuple, np.ndarray).' +
+                             ' If type(refine) in (list, tuple, np.ndarray) then len(refine)==len(wavelength_axis)')
     else:
         raise TypeError('type(refine) must be in (float, int, list, tuple, np.ndarray).' +
                         ' If type(refine) in (list, tuple, np.ndarray) then len(refine)==len(wavelength_axis)')
+
+    # The resolution parameters must be bools
+    if not all([type(v)==bool for v in [ion_resolved_temperatures, ion_resolved_tau]]):
+        raise TypeError('Not all ion resolutions are booleans')
+
+
+
+def make_input_dict(wavelength_axis, experimental_emission, instrument_function,
+                    emission_constant, noise_region,
+                    species, ions, line_data=adas_line_data, mystery_lines=None,
+                    refine=0.01, ion_resolved_temperatures=False, ion_resolved_tau=False):
+
+    '''
+    Returns a dict that is needed to instantiate both BaysarPosterior and SpectrometerChord classes.
+
+    :param (list, array of arrays) wavelength_axis: Wavelength axis of each spectrometer chord.
+    :param (list, array of arrays) experimental_emission: Spectra of each spectrometer chord.
+    :param (list, array of arrays) instrument_function: Instrumental function for each spectrometer.
+    :param (int, float or list, array of arrays) emission_constant: Calibration constant from counts to spectral radiance.
+    :param (list, array of list, arrays) noise_region: Regions of background/continuum that can be used to estimate the measurement noise.
+    :param (list of str) species: The elements in the plasma and experimental regions.
+    :param (list of list of str) ions: The ions of the elements in the plasma.
+    :param (dict) line_data: Line information such as central wavelengths, multiplet info and references to atomic data.
+    :param (list of int, float) mystery_lines: Wavelengths and branching ratios of mystery lines in the experimental data.
+    :param (int, float or list of int, float) refine: Resolution that the spectral forward model is evaluated on.
+    :param (bool) ion_resolved_temperatures: If False there is an single ion temperature per element not per ion.
+    :param (bool) ion_resolved_tau: If False there is an single particle density and ion confinement time (tau) per element not per ion.
+    :return (dict) input_dict: Contains all the needed info instantiate both BaysarPosterior and SpectrometerChord classes.
+    '''
+
+    check_input_dict_input(wavelength_axis, experimental_emission, instrument_function,
+                           emission_constant, noise_region, species, ions, line_data, mystery_lines,
+                           refine, ion_resolved_temperatures, ion_resolved_tau)
 
     input_dict = {}
 
@@ -253,17 +216,10 @@ if __name__=='__main__':
     mystery_lines = [ [ [4070], [4001, 4002] ],
                       [    [1],    [0.4, 0.6]]]
 
-    input_dict = make_input_dict(num_chords=num_chords,
-                                 wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
-                                 instrument_function=instrument_function, emission_constant=emission_constant,
-                                 noise_region=noise_region, species=species, ions=ions,
-                                 mystery_lines=mystery_lines, refine=[0.01],
-                                 ion_resolved_temperatures=False, ion_resolved_tau=True)
-
-    new_id = new_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
-                            instrument_function=instrument_function, emission_constant=emission_constant,
-                            noise_region=noise_region, species=species, ions=ions,
-                            mystery_lines=mystery_lines, refine=0.01,
-                            ion_resolved_temperatures=False, ion_resolved_tau=True)
+    new_id = make_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
+                             instrument_function=instrument_function, emission_constant=emission_constant,
+                             noise_region=noise_region, species=species, ions=ions,
+                             mystery_lines=mystery_lines, refine=0.01,
+                             ion_resolved_temperatures=False, ion_resolved_tau=True)
 
     pass

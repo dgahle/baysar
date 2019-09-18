@@ -31,7 +31,7 @@ from tulasa import general # , fitting
 # from tulasa.plotting_functions import plot_fit
 
 from baysar.lineshapes import GaussianNorm, Eich
-from baysar.input_functions import new_input_dict
+from baysar.input_functions import make_input_dict
 from baysar.posterior import BaysarPosterior, BaysarPosteriorFilterWrapper
 
 import emcee as thor
@@ -259,7 +259,7 @@ if __name__=='__main__':
 
 
     # Creating input dictionary to create BaySAR posterior object
-    indict = new_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
+    indict = make_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
                             instrument_function=instrument_function, emission_constant=emission_constant,
                             noise_region=noise_region, species=species, ions=ions,
                             mystery_lines=mystery_lines, refine=[0.05],
