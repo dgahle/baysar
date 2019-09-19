@@ -50,99 +50,99 @@ def oplot_markers(ax, posterior):
     # print(x)
 
 
-def plot_fm_old(posterior, lims=[1e11, 2e15]):
-
-    fig, ax = plt.subplots(2, 1, sharey=True)
-
-    linewidth = 3
-
-    for counter in np.arange( len(posterior.posterior_components) ):
-        ax[counter].plot(posterior.posterior_components[counter].x_data,
-                         posterior.posterior_components[counter].forward_model(),
-                         linewidth=linewidth)
-        # , label=labels[counter], linewidth=linewidth)
-
-        oplot_markers(ax[counter], posterior)
-
-        ax[counter].set_xlim([min(posterior.posterior_components[counter].x_data),
-                              max(posterior.posterior_components[counter].x_data)])
-
-
-        ax[counter].set_ylabel(r'$I \ / \ phcm^{-2}sr^{-1}\AA^{-1}s^{-1}$')
-    # ax[1].set_ylabel(r'$Spectral \ Radiance \ / \ phcm^{-2}sr^{-1}\AA^{-1}s^{-1}$')
-
-
-    ax[1].set_xlabel(r'$Wavelength \ / \ \AA$')
-
-    ax[0].set_yscale('log')
-    ax[0].set_ylim(lims)
-
-    fig.show()
-
-    pass
-
-def plot_fm(posterior, theta, error_res=True, ylim=[1e11, 1e15]):
-
-    print( posterior(theta) )
-
-    fig, ax = plt.subplots(3, 1)
-
-    try:
-        wave = posterior.posterior_components[0].x_data_exp
-    except AttributeError:
-        wave = posterior.posterior_components[0].x_data
-    except:
-        raise
-
-    spectra = posterior.posterior_components[0].y_data
-    error = posterior.posterior_components[0].error
-
-    fm = posterior.posterior_components[0].forward_model()
-
-    ax[0].plot(wave, spectra, label=r'$Spectra$')
-    ax[0].fill_between(wave, spectra-error, spectra+error, alpha=0.2)
-
-    ax[0].plot(wave, fm, 'pink', label=r'$Fit$')
-
-    ax[0].set_ylim(ylim)
-
-    ax[0].set_yscale('log')
-
-    if error_res:
-        res = (fm-spectra)/error
-        res_label = r'$Residuals/Error$'
-    else:
-        res = (fm - spectra) / spectra
-        res_label = r'$Residuals$'
-
-    ax[1].plot(wave, np.zeros(len(wave)), 'k')
-    ax[1].fill_between(wave, np.zeros(len(wave))-0.2, np.zeros(len(wave))+0.2, color='k', alpha=0.2)
-
-    ax[1].plot(wave, spectra/max(spectra))
-    ax[1].plot(wave, res, 'x', color='pink', label=res_label)
-
-    te = posterior.plasma.plasma_state['electron_temperature']
-    ne = posterior.plasma.plasma_state['electron_density']
-
-    los = posterior.plasma.los
-
-    ax[2].plot(los, ne/1e13, 'r', label=r'$n_{e} \ / \ 10^{13} cm^{-3}$')
-    ax[2].plot(los, te, 'b', label=r'$T_{e} \ / \ eV$')
-
-    ax[2].set_xlabel(r'$LOS \ / \ cm$')
-
-    ax[2].grid(True)
-
-    leg = []
-
-    for a in ax:
-
-        tmp_l = a.legend()
-        tmp_l.draggable()
-
-        leg.append(tmp_l)
-
-    fig.show()
+# def plot_fm_old(posterior, lims=[1e11, 2e15]):
+#
+#     fig, ax = plt.subplots(2, 1, sharey=True)
+#
+#     linewidth = 3
+#
+#     for counter in np.arange( len(posterior.posterior_components) ):
+#         ax[counter].plot(posterior.posterior_components[counter].x_data,
+#                          posterior.posterior_components[counter].forward_model(),
+#                          linewidth=linewidth)
+#         # , label=labels[counter], linewidth=linewidth)
+#
+#         oplot_markers(ax[counter], posterior)
+#
+#         ax[counter].set_xlim([min(posterior.posterior_components[counter].x_data),
+#                               max(posterior.posterior_components[counter].x_data)])
+#
+#
+#         ax[counter].set_ylabel(r'$I \ / \ phcm^{-2}sr^{-1}\AA^{-1}s^{-1}$')
+#     # ax[1].set_ylabel(r'$Spectral \ Radiance \ / \ phcm^{-2}sr^{-1}\AA^{-1}s^{-1}$')
+#
+#
+#     ax[1].set_xlabel(r'$Wavelength \ / \ \AA$')
+#
+#     ax[0].set_yscale('log')
+#     ax[0].set_ylim(lims)
+#
+#     fig.show()
+#
+#     pass
+#
+# def plot_fm(posterior, theta, error_res=True, ylim=[1e11, 1e15]):
+#
+#     print( posterior(theta) )
+#
+#     fig, ax = plt.subplots(3, 1)
+#
+#     try:
+#         wave = posterior.posterior_components[0].x_data_exp
+#     except AttributeError:
+#         wave = posterior.posterior_components[0].x_data
+#     except:
+#         raise
+#
+#     spectra = posterior.posterior_components[0].y_data
+#     error = posterior.posterior_components[0].error
+#
+#     fm = posterior.posterior_components[0].forward_model()
+#
+#     ax[0].plot(wave, spectra, label=r'$Spectra$')
+#     ax[0].fill_between(wave, spectra-error, spectra+error, alpha=0.2)
+#
+#     ax[0].plot(wave, fm, 'pink', label=r'$Fit$')
+#
+#     ax[0].set_ylim(ylim)
+#
+#     ax[0].set_yscale('log')
+#
+#     if error_res:
+#         res = (fm-spectra)/error
+#         res_label = r'$Residuals/Error$'
+#     else:
+#         res = (fm - spectra) / spectra
+#         res_label = r'$Residuals$'
+#
+#     ax[1].plot(wave, np.zeros(len(wave)), 'k')
+#     ax[1].fill_between(wave, np.zeros(len(wave))-0.2, np.zeros(len(wave))+0.2, color='k', alpha=0.2)
+#
+#     ax[1].plot(wave, spectra/max(spectra))
+#     ax[1].plot(wave, res, 'x', color='pink', label=res_label)
+#
+#     te = posterior.plasma.plasma_state['electron_temperature']
+#     ne = posterior.plasma.plasma_state['electron_density']
+#
+#     los = posterior.plasma.los
+#
+#     ax[2].plot(los, ne/1e13, 'r', label=r'$n_{e} \ / \ 10^{13} cm^{-3}$')
+#     ax[2].plot(los, te, 'b', label=r'$T_{e} \ / \ eV$')
+#
+#     ax[2].set_xlabel(r'$LOS \ / \ cm$')
+#
+#     ax[2].grid(True)
+#
+#     leg = []
+#
+#     for a in ax:
+#
+#         tmp_l = a.legend()
+#         tmp_l.draggable()
+#
+#         leg.append(tmp_l)
+#
+#     fig.show()
 
 
 
@@ -189,338 +189,338 @@ def plot_emission_profile(posterior):
     pass
 
 
-def plot_guess(posterior, theta, pc_counter=0, chain=None, lines=None, y_lim=(1e10, 1e15),
-               alpha=0.1, small=False, save=None, sample=None):
-
-    if save is None: print( posterior(theta) )
-
-
-    if small:
-        # general.plot( [posterior.posterior_components[0].y_data,
-        #                posterior.posterior_components[0].forward_model()],
-        #               [posterior.posterior_components[0].x_data,
-        #                posterior.posterior_components[0].x_data], multi='fake', log=True)
-
-        pass
-
-    else:
-        plt.ion()
-
-        fig, ax = plt.subplots(3, 1, figsize=(10, 10))
-        # fig, ax = plt.subplots(2, 1)
-
-        try:
-            x = posterior.posterior_components[pc_counter].x_data_exp
-        except:
-            x = posterior.posterior_components[pc_counter].x_data
-
-        y = posterior.posterior_components[pc_counter].y_data
-        y_err = posterior.posterior_components[pc_counter].error
-
-        ax[0].set_title('$Fit \ Summary$')
-
-        ax[0].plot(x, y, label='Exp')
-
-        if chain is not None:
-
-            # posterior( chain.mode() )
-            # fm = posterior.posterior_components[0].forward_model()
-            #
-            # ax[0].plot(x, fm, label='Mode')  # , alpha=0.5)
-
-            if sample is None:
-                try:
-                    sample = chain.get_sample()
-                except ValueError:
-
-                    sample = chain.theta[1::]
-
-                except:
-                    print('chain.get_sample() and chain.theta[1::] is not working')
-                    raise
-
-
-            if len(sample) < 100:
-                num = len(sample)
-            else:
-                num = 100
-
-            for counter in np.linspace(0, (len(sample) -1), num, dtype='int'):
-
-                if lines is not None:
-
-                    l_colours = ['yellow', 'purple', 'green']
-
-                    for lconter, l in enumerate(lines):
-
-                        try:
-                            tmp_ems = posterior.posterior_components[pc_counter].lines[l].ems_profile
-                        except AttributeError:
-                            tmp_ems = posterior.posterior_components[pc_counter].lines[l].emission_profile
-                        except:
-                            raise
-
-                        tmp_ems = 5 * tmp_ems / max(tmp_ems)
-
-                        ax[2].plot(posterior.plasma.plasma_state['los'], tmp_ems, color=l_colours[lconter],
-                                   linestyle='-', alpha=alpha)
-
-
-                if counter == 0 and chain is not None:
-                    posterior(chain.mode())
-                    fm = posterior.posterior_components[pc_counter].forward_model()
-
-                    ax[0].plot(x, fm, 'pink', label='95% Interval')
-
-                    ax[2].plot(posterior.plasma.plasma_state['los'],
-                               posterior.plasma.plasma_state['electron_density'] / 1e13,
-                               'red', label='$n_{e}[10^{13} \ cm^{-3}]$ 95% Interval')
-
-                    ax[2].plot(posterior.plasma.plasma_state['los'],
-                               posterior.plasma.plasma_state['electron_temperature'],
-                               'blue', label='$T_{e}[eV]$ 95% Interval')
-
-                else:
-
-                    posterior( sample[counter] )
-
-                    fm = posterior.posterior_components[pc_counter].forward_model()
-
-                    ax[0].plot(x, fm, 'pink', alpha=0.1)
-
-                    ax[2].plot(posterior.plasma.plasma_state['los'],
-                               posterior.plasma.plasma_state['electron_density'] / 1e13,
-                               'red', alpha=0.1)
-
-                    ax[2].plot(posterior.plasma.plasma_state['los'],
-                               posterior.plasma.plasma_state['electron_temperature'],
-                               'blue', alpha=0.1)
-
-                pass
-
-            posterior( chain.mode() )
-            fm = posterior.posterior_components[pc_counter].forward_model()
-
-            pass
-
-        else:
-            fm = posterior.posterior_components[pc_counter].forward_model()
-
-            ax[0].plot(x, fm, label='Mode')  # , alpha=0.5)
-
-            ax[2].plot(posterior.plasma.plasma_state['los'],
-                               posterior.plasma.plasma_state['electron_density'] / 1e13,
-                               'red', label='$n_{e}[10^{13} \ cm^{-3}]$ 95% Interval')
-
-            ax[2].plot(posterior.plasma.plasma_state['los'],
-                       posterior.plasma.plasma_state['electron_temperature'],
-                       'blue', label='$T_{e}[eV]$ 95% Interval')
-
-
-        ax[0].plot(x, y+y_err, 'r--', label='Exp error')
-        ax[0].plot(x, y-y_err, 'r--')
-
-        ax[0].set_ylim(y_lim)
-        ax[0].set_yscale('log')
-
-        ax[0].set_ylabel(r'$Spectral \ Radiance$')
-
-        ax[1].plot(x, np.zeros( len(x) ), 'k-', label='0.0')
-        ax[1].plot(x, np.zeros( len(x) ) + 0.2, 'k--', label='0.2')
-        ax[1].plot(x, np.zeros( len(x) ) - 0.2, 'k--')
-        ax[1].plot(x, (y - fm) / y, 'x')
-
-        ax[1].set_ylim([-1, 1])
-
-        ax[1].set_title(r'$Normalised \ Residuals$')
-        # ax[1].set_ylabel(r'$Normalised \ Residuals$')
-        ax[1].set_xlabel(r'$Wavelength \ / \ \AA$')
-
-        ax[2].set_xlim([min(posterior.plasma.plasma_state['los']), max(posterior.plasma.plasma_state['los'])])
-
-        # ax[2].set_ylabel(r'$Normalised \ Residuals$')
-        ax[2].set_xlabel(r'$x\ / \ cm$')
-
-        ax[2].grid(True)
-
-        for tmp in ax[0:2]:
-            tmp.set_xlim([min(x), max(x)])
-
-        leg = []
-
-        for counter in [0, 2]:
-            tmp_leg = ax[counter].legend()
-            tmp_leg.draggable()
-
-            leg.append(tmp_leg)
-
-        # plt.subplots_adjust(top=0.92, bottom=0.08, left=0.10, right=0.95, hspace=0.25, wspace=0.35)
-
-        if save is not None:
-            plt.tight_layout()
-
-            plt.savefig(save)
-
-            plt.close()
-
-            pass
-        else:
-            fig.show()
-
-
-def plot_guess2(posterior, sample=None, size=100, burn=int(1e4), pc_counter=0,
-                lines=None, y_lim=(1e10, 1e15), alpha=0.1, small=False, save=None):
-
-    # if save is None: print( posterior(theta) )
-
-
-    if small:
-        # general.plot( [posterior.posterior_components[0].y_data,
-        #                posterior.posterior_components[0].forward_model()],
-        #               [posterior.posterior_components[0].x_data,
-        #                posterior.posterior_components[0].x_data], multi='fake', log=True)
-
-        pass
-
-    else:
-        plt.ion()
-
-        fig, ax = plt.subplots(3, 1) # , figsize=(10, 10))
-        # fig, ax = plt.subplots(2, 1)
-
-        try:
-            x = posterior.posterior_components[pc_counter].x_data_exp
-        except:
-            x = posterior.posterior_components[pc_counter].x_data
-
-        y = posterior.posterior_components[pc_counter].y_data
-        y_err = posterior.posterior_components[pc_counter].error
-
-        ax[0].set_title('$Fit \ Summary$')
-
-        ax[0].plot(x, y, label='Exp')
-        ax[1].plot(x, y/max(y))
-
-        sample = sample[:, burn:, :]
-        sample = sample.reshape(sample.shape[0] * sample.shape[1], sample.shape[2])
-
-        indicies = np.linspace(burn, len(sample) - 1, size, dtype=int)
-
-        for counter in indicies:
-
-            test = posterior(sample[counter, :])
-
-            if test > -1e50:
-
-                if lines is not None:
-
-                    l_colours = ['yellow', 'purple', 'green']
-
-                    for lconter, l in enumerate(lines):
-
-                        try:
-                            tmp_ems = posterior.posterior_components[pc_counter].lines[l].ems_profile
-                        except AttributeError:
-                            tmp_ems = posterior.posterior_components[pc_counter].lines[l].emission_profile
-                        except:
-                            raise
-
-                        tmp_ems = 5 * tmp_ems / max(tmp_ems)
-
-                        if counter == 0:
-                            ax[2].plot(posterior.plasma.plasma_state['los'], tmp_ems, color=l_colours[lconter],
-                                       linestyle='-', label=r'$\epsilon - profile$')
-                        else:
-                            ax[2].plot(posterior.plasma.plasma_state['los'], tmp_ems, color=l_colours[lconter],
-                                       linestyle='-', alpha=alpha)
-
-                if counter == 0:
-
-                    fm = posterior.posterior_components[pc_counter].forward_model()
-
-                    ax[0].plot(x, fm, 'pink', label='95% Interval')
-
-                    ax[1].plot(x, (y - fm) / y_err, 'x', color='pink', label='residuals')
-
-                    ax[2].plot(posterior.plasma.plasma_state['los'],
-                               posterior.plasma.plasma_state['electron_density'] / 1e13,
-                               'red', label='$n_{e}[10^{13} \ cm^{-3}]$ 95% Interval')
-
-                    ax[2].plot(posterior.plasma.plasma_state['los'],
-                               posterior.plasma.plasma_state['electron_temperature'],
-                               'blue', label='$T_{e}[eV]$ 95% Interval')
-
-                else:
-
-
-                    fm = posterior.posterior_components[pc_counter].forward_model()
-
-                    ax[0].plot(x, fm, 'pink', alpha=alpha)
-
-                    ax[1].plot(x, (y - fm) / y_err, 'x', color='pink', alpha=alpha)
-
-                    ax[2].plot(posterior.plasma.plasma_state['los'],
-                               posterior.plasma.plasma_state['electron_density'] / 1e13,
-                               'red', alpha=alpha)
-
-                    ax[2].plot(posterior.plasma.plasma_state['los'],
-                               posterior.plasma.plasma_state['electron_temperature'],
-                               'blue', alpha=alpha)
-
-
-        ax[0].fill_between(x, y-y_err, y+y_err, alpha=0.2)
-        # ax[0].plot(x, y+y_err, 'r--', label='Exp error')
-        # ax[0].plot(x, y-y_err, 'r--')
-
-        ax[0].set_ylim(y_lim)
-        ax[0].set_yscale('log')
-
-        ax[0].set_ylabel(r'$Spectral \ Radiance$')
-
-        ax[1].plot(x, np.zeros( len(x) ), 'k-')
-        ax[1].fill_between(x, np.zeros( len(x) ) - 0.2,
-                              np.zeros( len(x) ) + 0.2, alpha=0.2)
-
-        # ax[1].plot(x, (y - fm) / y_err, 'x', alpha=alpha)
-
-        ax[1].set_ylim([-1, 1])
-
-        # ax[1].set_title(r'$Normalised \ Residuals$')
-        ax[1].set_title(r'$Error \ Normalised \ Residuals$')
-        # ax[1].set_ylabel(r'$Normalised \ Residuals$')
-        ax[1].set_xlabel(r'$Wavelength \ / \ \AA$')
-
-        ax[2].set_ylim([0, 100])
-        ax[2].set_xlim([min(posterior.plasma.plasma_state['los']), max(posterior.plasma.plasma_state['los'])])
-
-        # ax[2].set_ylabel(r'$Normalised \ Residuals$')
-        ax[2].set_xlabel(r'$x\ / \ cm$')
-
-        ax[2].grid(True)
-
-        for tmp in ax[0:2]:
-            tmp.set_xlim([min(x), max(x)])
-
-        leg = []
-
-        for counter in [0, 2]:
-            tmp_leg = ax[counter].legend()
-            tmp_leg.draggable()
-
-            leg.append(tmp_leg)
-
-        # plt.subplots_adjust(top=0.92, bottom=0.08, left=0.10, right=0.95, hspace=0.25, wspace=0.35)
-
-        if save is not None:
-            plt.tight_layout()
-
-            plt.savefig(save)
-
-            plt.close()
-
-            pass
-        else:
-            fig.show()
+# def plot_guess(posterior, theta, pc_counter=0, chain=None, lines=None, y_lim=(1e10, 1e15),
+#                alpha=0.1, small=False, save=None, sample=None):
+#
+#     if save is None: print( posterior(theta) )
+#
+#
+#     if small:
+#         # general.plot( [posterior.posterior_components[0].y_data,
+#         #                posterior.posterior_components[0].forward_model()],
+#         #               [posterior.posterior_components[0].x_data,
+#         #                posterior.posterior_components[0].x_data], multi='fake', log=True)
+#
+#         pass
+#
+#     else:
+#         plt.ion()
+#
+#         fig, ax = plt.subplots(3, 1, figsize=(10, 10))
+#         # fig, ax = plt.subplots(2, 1)
+#
+#         try:
+#             x = posterior.posterior_components[pc_counter].x_data_exp
+#         except:
+#             x = posterior.posterior_components[pc_counter].x_data
+#
+#         y = posterior.posterior_components[pc_counter].y_data
+#         y_err = posterior.posterior_components[pc_counter].error
+#
+#         ax[0].set_title('$Fit \ Summary$')
+#
+#         ax[0].plot(x, y, label='Exp')
+#
+#         if chain is not None:
+#
+#             # posterior( chain.mode() )
+#             # fm = posterior.posterior_components[0].forward_model()
+#             #
+#             # ax[0].plot(x, fm, label='Mode')  # , alpha=0.5)
+#
+#             if sample is None:
+#                 try:
+#                     sample = chain.get_sample()
+#                 except ValueError:
+#
+#                     sample = chain.theta[1::]
+#
+#                 except:
+#                     print('chain.get_sample() and chain.theta[1::] is not working')
+#                     raise
+#
+#
+#             if len(sample) < 100:
+#                 num = len(sample)
+#             else:
+#                 num = 100
+#
+#             for counter in np.linspace(0, (len(sample) -1), num, dtype='int'):
+#
+#                 if lines is not None:
+#
+#                     l_colours = ['yellow', 'purple', 'green']
+#
+#                     for lconter, l in enumerate(lines):
+#
+#                         try:
+#                             tmp_ems = posterior.posterior_components[pc_counter].lines[l].ems_profile
+#                         except AttributeError:
+#                             tmp_ems = posterior.posterior_components[pc_counter].lines[l].emission_profile
+#                         except:
+#                             raise
+#
+#                         tmp_ems = 5 * tmp_ems / max(tmp_ems)
+#
+#                         ax[2].plot(posterior.plasma.plasma_state['los'], tmp_ems, color=l_colours[lconter],
+#                                    linestyle='-', alpha=alpha)
+#
+#
+#                 if counter == 0 and chain is not None:
+#                     posterior(chain.mode())
+#                     fm = posterior.posterior_components[pc_counter].forward_model()
+#
+#                     ax[0].plot(x, fm, 'pink', label='95% Interval')
+#
+#                     ax[2].plot(posterior.plasma.plasma_state['los'],
+#                                posterior.plasma.plasma_state['electron_density'] / 1e13,
+#                                'red', label='$n_{e}[10^{13} \ cm^{-3}]$ 95% Interval')
+#
+#                     ax[2].plot(posterior.plasma.plasma_state['los'],
+#                                posterior.plasma.plasma_state['electron_temperature'],
+#                                'blue', label='$T_{e}[eV]$ 95% Interval')
+#
+#                 else:
+#
+#                     posterior( sample[counter] )
+#
+#                     fm = posterior.posterior_components[pc_counter].forward_model()
+#
+#                     ax[0].plot(x, fm, 'pink', alpha=0.1)
+#
+#                     ax[2].plot(posterior.plasma.plasma_state['los'],
+#                                posterior.plasma.plasma_state['electron_density'] / 1e13,
+#                                'red', alpha=0.1)
+#
+#                     ax[2].plot(posterior.plasma.plasma_state['los'],
+#                                posterior.plasma.plasma_state['electron_temperature'],
+#                                'blue', alpha=0.1)
+#
+#                 pass
+#
+#             posterior( chain.mode() )
+#             fm = posterior.posterior_components[pc_counter].forward_model()
+#
+#             pass
+#
+#         else:
+#             fm = posterior.posterior_components[pc_counter].forward_model()
+#
+#             ax[0].plot(x, fm, label='Mode')  # , alpha=0.5)
+#
+#             ax[2].plot(posterior.plasma.plasma_state['los'],
+#                                posterior.plasma.plasma_state['electron_density'] / 1e13,
+#                                'red', label='$n_{e}[10^{13} \ cm^{-3}]$ 95% Interval')
+#
+#             ax[2].plot(posterior.plasma.plasma_state['los'],
+#                        posterior.plasma.plasma_state['electron_temperature'],
+#                        'blue', label='$T_{e}[eV]$ 95% Interval')
+#
+#
+#         ax[0].plot(x, y+y_err, 'r--', label='Exp error')
+#         ax[0].plot(x, y-y_err, 'r--')
+#
+#         ax[0].set_ylim(y_lim)
+#         ax[0].set_yscale('log')
+#
+#         ax[0].set_ylabel(r'$Spectral \ Radiance$')
+#
+#         ax[1].plot(x, np.zeros( len(x) ), 'k-', label='0.0')
+#         ax[1].plot(x, np.zeros( len(x) ) + 0.2, 'k--', label='0.2')
+#         ax[1].plot(x, np.zeros( len(x) ) - 0.2, 'k--')
+#         ax[1].plot(x, (y - fm) / y, 'x')
+#
+#         ax[1].set_ylim([-1, 1])
+#
+#         ax[1].set_title(r'$Normalised \ Residuals$')
+#         # ax[1].set_ylabel(r'$Normalised \ Residuals$')
+#         ax[1].set_xlabel(r'$Wavelength \ / \ \AA$')
+#
+#         ax[2].set_xlim([min(posterior.plasma.plasma_state['los']), max(posterior.plasma.plasma_state['los'])])
+#
+#         # ax[2].set_ylabel(r'$Normalised \ Residuals$')
+#         ax[2].set_xlabel(r'$x\ / \ cm$')
+#
+#         ax[2].grid(True)
+#
+#         for tmp in ax[0:2]:
+#             tmp.set_xlim([min(x), max(x)])
+#
+#         leg = []
+#
+#         for counter in [0, 2]:
+#             tmp_leg = ax[counter].legend()
+#             tmp_leg.draggable()
+#
+#             leg.append(tmp_leg)
+#
+#         # plt.subplots_adjust(top=0.92, bottom=0.08, left=0.10, right=0.95, hspace=0.25, wspace=0.35)
+#
+#         if save is not None:
+#             plt.tight_layout()
+#
+#             plt.savefig(save)
+#
+#             plt.close()
+#
+#             pass
+#         else:
+#             fig.show()
+#
+#
+# def plot_guess2(posterior, sample=None, size=100, burn=int(1e4), pc_counter=0,
+#                 lines=None, y_lim=(1e10, 1e15), alpha=0.1, small=False, save=None):
+#
+#     # if save is None: print( posterior(theta) )
+#
+#
+#     if small:
+#         # general.plot( [posterior.posterior_components[0].y_data,
+#         #                posterior.posterior_components[0].forward_model()],
+#         #               [posterior.posterior_components[0].x_data,
+#         #                posterior.posterior_components[0].x_data], multi='fake', log=True)
+#
+#         pass
+#
+#     else:
+#         plt.ion()
+#
+#         fig, ax = plt.subplots(3, 1) # , figsize=(10, 10))
+#         # fig, ax = plt.subplots(2, 1)
+#
+#         try:
+#             x = posterior.posterior_components[pc_counter].x_data_exp
+#         except:
+#             x = posterior.posterior_components[pc_counter].x_data
+#
+#         y = posterior.posterior_components[pc_counter].y_data
+#         y_err = posterior.posterior_components[pc_counter].error
+#
+#         ax[0].set_title('$Fit \ Summary$')
+#
+#         ax[0].plot(x, y, label='Exp')
+#         ax[1].plot(x, y/max(y))
+#
+#         sample = sample[:, burn:, :]
+#         sample = sample.reshape(sample.shape[0] * sample.shape[1], sample.shape[2])
+#
+#         indicies = np.linspace(burn, len(sample) - 1, size, dtype=int)
+#
+#         for counter in indicies:
+#
+#             test = posterior(sample[counter, :])
+#
+#             if test > -1e50:
+#
+#                 if lines is not None:
+#
+#                     l_colours = ['yellow', 'purple', 'green']
+#
+#                     for lconter, l in enumerate(lines):
+#
+#                         try:
+#                             tmp_ems = posterior.posterior_components[pc_counter].lines[l].ems_profile
+#                         except AttributeError:
+#                             tmp_ems = posterior.posterior_components[pc_counter].lines[l].emission_profile
+#                         except:
+#                             raise
+#
+#                         tmp_ems = 5 * tmp_ems / max(tmp_ems)
+#
+#                         if counter == 0:
+#                             ax[2].plot(posterior.plasma.plasma_state['los'], tmp_ems, color=l_colours[lconter],
+#                                        linestyle='-', label=r'$\epsilon - profile$')
+#                         else:
+#                             ax[2].plot(posterior.plasma.plasma_state['los'], tmp_ems, color=l_colours[lconter],
+#                                        linestyle='-', alpha=alpha)
+#
+#                 if counter == 0:
+#
+#                     fm = posterior.posterior_components[pc_counter].forward_model()
+#
+#                     ax[0].plot(x, fm, 'pink', label='95% Interval')
+#
+#                     ax[1].plot(x, (y - fm) / y_err, 'x', color='pink', label='residuals')
+#
+#                     ax[2].plot(posterior.plasma.plasma_state['los'],
+#                                posterior.plasma.plasma_state['electron_density'] / 1e13,
+#                                'red', label='$n_{e}[10^{13} \ cm^{-3}]$ 95% Interval')
+#
+#                     ax[2].plot(posterior.plasma.plasma_state['los'],
+#                                posterior.plasma.plasma_state['electron_temperature'],
+#                                'blue', label='$T_{e}[eV]$ 95% Interval')
+#
+#                 else:
+#
+#
+#                     fm = posterior.posterior_components[pc_counter].forward_model()
+#
+#                     ax[0].plot(x, fm, 'pink', alpha=alpha)
+#
+#                     ax[1].plot(x, (y - fm) / y_err, 'x', color='pink', alpha=alpha)
+#
+#                     ax[2].plot(posterior.plasma.plasma_state['los'],
+#                                posterior.plasma.plasma_state['electron_density'] / 1e13,
+#                                'red', alpha=alpha)
+#
+#                     ax[2].plot(posterior.plasma.plasma_state['los'],
+#                                posterior.plasma.plasma_state['electron_temperature'],
+#                                'blue', alpha=alpha)
+#
+#
+#         ax[0].fill_between(x, y-y_err, y+y_err, alpha=0.2)
+#         # ax[0].plot(x, y+y_err, 'r--', label='Exp error')
+#         # ax[0].plot(x, y-y_err, 'r--')
+#
+#         ax[0].set_ylim(y_lim)
+#         ax[0].set_yscale('log')
+#
+#         ax[0].set_ylabel(r'$Spectral \ Radiance$')
+#
+#         ax[1].plot(x, np.zeros( len(x) ), 'k-')
+#         ax[1].fill_between(x, np.zeros( len(x) ) - 0.2,
+#                               np.zeros( len(x) ) + 0.2, alpha=0.2)
+#
+#         # ax[1].plot(x, (y - fm) / y_err, 'x', alpha=alpha)
+#
+#         ax[1].set_ylim([-1, 1])
+#
+#         # ax[1].set_title(r'$Normalised \ Residuals$')
+#         ax[1].set_title(r'$Error \ Normalised \ Residuals$')
+#         # ax[1].set_ylabel(r'$Normalised \ Residuals$')
+#         ax[1].set_xlabel(r'$Wavelength \ / \ \AA$')
+#
+#         ax[2].set_ylim([0, 100])
+#         ax[2].set_xlim([min(posterior.plasma.plasma_state['los']), max(posterior.plasma.plasma_state['los'])])
+#
+#         # ax[2].set_ylabel(r'$Normalised \ Residuals$')
+#         ax[2].set_xlabel(r'$x\ / \ cm$')
+#
+#         ax[2].grid(True)
+#
+#         for tmp in ax[0:2]:
+#             tmp.set_xlim([min(x), max(x)])
+#
+#         leg = []
+#
+#         for counter in [0, 2]:
+#             tmp_leg = ax[counter].legend()
+#             tmp_leg.draggable()
+#
+#             leg.append(tmp_leg)
+#
+#         # plt.subplots_adjust(top=0.92, bottom=0.08, left=0.10, right=0.95, hspace=0.25, wspace=0.35)
+#
+#         if save is not None:
+#             plt.tight_layout()
+#
+#             plt.savefig(save)
+#
+#             plt.close()
+#
+#             pass
+#         else:
+#             fig.show()
 
 
 def mini_matrix(chain, indicies, ref=None, burn=0, thin=1):
@@ -1122,88 +1122,88 @@ def plot_p0_probs(posterior, p0):
 
     general.plot(abs(np.array(p0_probs)), log=True)
 
-def plot_fm_old2(posterior, theta, plasma=False):
-
-    posterior(theta)
-
-    data = [posterior.posterior_components[0].y_data,
-            posterior.posterior_components[0].forward_model()]
-
-    general.plot(data, multi='fake', log=True)
-
-    if plasma:
-
-        data = [posterior.plasma.plasma_state['electron_temperature'],
-                posterior.plasma.plasma_state['electron_density'] / 1e13]
-
-        general.plot(data, multi='fake')
-
-
-def plot_fit(posterior, sample, size=100, alpha=0.1, ylim=(1e10, 1e16)):
-
-    fig, ax = plt.subplots(2, 1, sharex=True)
-
-    # ax[0] plot data and fit
-    spectra = posterior.posterior_components[0].y_data
-    error = posterior.posterior_components[0].error
-
-    try:
-        waves = posterior.posterior_components[0].x_data_exp
-    except AttributeError:
-        waves = posterior.posterior_components[0].x_data
-    except:
-        raise
-
-    ax[0].plot(waves, spectra, label='Data')
-    ax[0].plot(waves, spectra+error, 'r--', label='Error')
-    ax[0].plot(waves, spectra-error, 'r--')
-
-    ax[0].plot(np.zeros(10), 'pink', label='Fit')
-
-    ax[0].set_ylim(ylim)
-
-    ax[0].set_yscale('log')
-
-    ax[0].set_ylabel(r'$ph/cm^{2}/ sr^{1}/A^{1}/ s^{1}$')
-
-    # ax[1] plot normalies data and error normalised residuals
-    ax[1].plot(waves, spectra/max(spectra))
-    ax[1].plot(np.zeros(10), 'bx')
-
-    ax[1].plot(waves, np.zeros(len(waves))+0.2, 'k--')
-    ax[1].plot(waves, np.zeros(len(waves)), 'k--')
-    ax[1].plot(waves, np.zeros(len(waves))-0.2, 'k--')
-
-    ax[1].set_ylim([-30, 30])
-    ax[1].set_xlim([min(waves), max(waves)])
-
-    ax[1].set_ylabel(r'$\sigma - Normalised \ Residuals$')
-    ax[1].set_xlabel(r'$Wavelength \ / \ \AA$')
-
-
-    for counter0 in np.linspace(0, len(sample)-1, size, dtype=int):
-
-        posterior(sample[counter0])
-
-        # if posterior.posterior_components[0].calibrated:
-        #     tmp_fit = posterior.posterior_components[0].forward_model()
-        # else:
-        #     tmp_fit = posterior.posterior_components[0].forward_model() * posterior.plasma.plasma_state['a_cal'][0]
-
-        tmp_fit = posterior.posterior_components[0].forward_model() * posterior.plasma.plasma_state['cal0']
-
-        ax[0].plot(waves, tmp_fit, 'pink', alpha=alpha)
-
-        ax[1].plot(waves, (spectra-tmp_fit)/error, 'bx', alpha=alpha)
-
-    leg = ax[0].legend()
-    leg.draggable()
-
-    fig.show()
+# def plot_fm_old2(posterior, theta, plasma=False):
+#
+#     posterior(theta)
+#
+#     data = [posterior.posterior_components[0].y_data,
+#             posterior.posterior_components[0].forward_model()]
+#
+#     general.plot(data, multi='fake', log=True)
+#
+#     if plasma:
+#
+#         data = [posterior.plasma.plasma_state['electron_temperature'],
+#                 posterior.plasma.plasma_state['electron_density'] / 1e13]
+#
+#         general.plot(data, multi='fake')
+#
+#
+# def plot_fit(posterior, sample, size=100, alpha=0.1, ylim=(1e10, 1e16)):
+#
+#     fig, ax = plt.subplots(2, 1, sharex=True)
+#
+#     # ax[0] plot data and fit
+#     spectra = posterior.posterior_components[0].y_data
+#     error = posterior.posterior_components[0].error
+#
+#     try:
+#         waves = posterior.posterior_components[0].x_data_exp
+#     except AttributeError:
+#         waves = posterior.posterior_components[0].x_data
+#     except:
+#         raise
+#
+#     ax[0].plot(waves, spectra, label='Data')
+#     ax[0].plot(waves, spectra+error, 'r--', label='Error')
+#     ax[0].plot(waves, spectra-error, 'r--')
+#
+#     ax[0].plot(np.zeros(10), 'pink', label='Fit')
+#
+#     ax[0].set_ylim(ylim)
+#
+#     ax[0].set_yscale('log')
+#
+#     ax[0].set_ylabel(r'$ph/cm^{2}/ sr^{1}/A^{1}/ s^{1}$')
+#
+#     # ax[1] plot normalies data and error normalised residuals
+#     ax[1].plot(waves, spectra/max(spectra))
+#     ax[1].plot(np.zeros(10), 'bx')
+#
+#     ax[1].plot(waves, np.zeros(len(waves))+0.2, 'k--')
+#     ax[1].plot(waves, np.zeros(len(waves)), 'k--')
+#     ax[1].plot(waves, np.zeros(len(waves))-0.2, 'k--')
+#
+#     ax[1].set_ylim([-30, 30])
+#     ax[1].set_xlim([min(waves), max(waves)])
+#
+#     ax[1].set_ylabel(r'$\sigma - Normalised \ Residuals$')
+#     ax[1].set_xlabel(r'$Wavelength \ / \ \AA$')
+#
+#
+#     for counter0 in np.linspace(0, len(sample)-1, size, dtype=int):
+#
+#         posterior(sample[counter0])
+#
+#         # if posterior.posterior_components[0].calibrated:
+#         #     tmp_fit = posterior.posterior_components[0].forward_model()
+#         # else:
+#         #     tmp_fit = posterior.posterior_components[0].forward_model() * posterior.plasma.plasma_state['a_cal'][0]
+#
+#         tmp_fit = posterior.posterior_components[0].forward_model() * posterior.plasma.plasma_state['cal0']
+#
+#         ax[0].plot(waves, tmp_fit, 'pink', alpha=alpha)
+#
+#         ax[1].plot(waves, (spectra-tmp_fit)/error, 'bx', alpha=alpha)
+#
+#     leg = ax[0].legend()
+#     leg.draggable()
+#
+#     fig.show()
 
 
 def plot_fit(posterior, sample, size=100, alpha=0.1, ylim=(1e10, 1e16),
-             error_norm=False, plasma_ref=None):
+             error_norm=True, plasma_ref=None):
 
     # fig, ax = plt.subplots(2, 1, sharex=True)
     fig = plt.figure()
@@ -1274,7 +1274,7 @@ def plot_fit(posterior, sample, size=100, alpha=0.1, ylim=(1e10, 1e16),
     # ax[1].set_ylabel(r'$\sigma - Normalised \ Residuals$')
     ax_res.set_xlabel(r'$Wavelength \ / \ \AA$')
 
-    los = posterior.plasma.plasma_state['los']
+    los = posterior.plasma.los
 
     ax_plasma.set_xlim([min(los), max(los)])
 
@@ -1296,10 +1296,7 @@ def plot_fit(posterior, sample, size=100, alpha=0.1, ylim=(1e10, 1e16),
 
         posterior(sample[counter0])
 
-        if posterior.posterior_components[0].calibrated:
-            tmp_fit = posterior.posterior_components[0].forward_model()
-        else:
-            tmp_fit = posterior.posterior_components[0].forward_model() * posterior.plasma.plasma_state['a_cal'][0]
+        tmp_fit = posterior.posterior_components[0].forward_model() * posterior.plasma.plasma_state['cal0']
 
         ax_fit.plot(waves, tmp_fit, 'pink', alpha=alpha)
 

@@ -3,7 +3,6 @@ import numpy as np
 import os, sys, io
 import copy
 
-from baysar.lineshapes import Gaussian, Eich
 from baysar.linemodels import build_tec406
 
 from baysar.spectrometers import within

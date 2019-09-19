@@ -30,7 +30,7 @@ from tulasa.data_processing import wave_cal, add_noise, time_posterior, \
 from tulasa import general # , fitting
 # from tulasa.plotting_functions import plot_fit
 
-from baysar.lineshapes import GaussianNorm, Eich
+from baysar.lineshapes import GaussianNorm
 from baysar.input_functions import make_input_dict
 from baysar.posterior import BaysarPosterior, BaysarPosteriorFilterWrapper
 
@@ -268,63 +268,76 @@ if __name__=='__main__':
     posterior = BaysarPosterior(input_dict=indict, check_bounds=True,
                                 curvature=1e4, print_errors=False)
 
-    # posterior.plasma.theta_bounds[posterior.plasma.slices['cal0']] = [10, 13]
-    posterior.plasma.theta_bounds[posterior.plasma.slices['background0']] = [10, 13]
-    posterior.plasma.theta_bounds[posterior.plasma.slices['electron_temperature']] = [-1, 1]
+    posterior.plasma.theta_bounds[posterior.plasma.slices['cal0']] = [-1, 1]
+    posterior.plasma.theta_bounds[posterior.plasma.slices['background0']] = [11.7, 12.5]
+    posterior.plasma.theta_bounds[posterior.plasma.slices['electron_temperature']] = [-1, 3]
     posterior.plasma.theta_bounds[posterior.plasma.slices['N_1_dens']] = [13, 14]
     posterior.plasma.theta_bounds[posterior.plasma.slices['N_1_tau']] = [-1, 2]
 
     start = posterior.random_start()
     print(posterior(start)) # evaluation of the posterior (fit probability)
 
-    sys.path.append(os.path.expanduser('~/inference-tools'))
-    from inference.mcmc import GibbsChain, PcaChain, ParallelTempering
+    # make and plot a starting sample
+    plot_start_samaple = False
+    if plot_start_samaple:
+        from tulasa.general import plot
+        from tulasa.plotting_functions import plot_fit
 
-    chain = PcaChain.load('tmp_chain.npz')
-    chain.posterior = posterior
+        sample_num = 20
+        sample = posterior.stormbreaker_start(sample_num, min_logp=-1000)
 
-    print(posterior(chain.mode()))
+        plot([posterior(s) for s in sample])
+        plot_fit(posterior, sample, size=int(sample_num / 2), alpha=0.2, ylim=(1e10, 1e16),
+                 error_norm=True, plasma_ref=None)
 
-    # pf.plot_fm(posterior, chain.mode()) # plots fit and plasma profiles from a given sample
+    # Sampling using ParallelTempering (from inference.mcmc)
+    sample_posterior = False
+    if sample_posterior:
+        sys.path.append(os.path.expanduser('~/inference-tools'))
+        from inference.mcmc import GibbsChain, PcaChain, ParallelTempering
 
-    # temps = np.logspace(0, 3, 7)[:-1]
-    # chains = [GibbsChain(posterior=posterior, start=start, temperature=T) for T in temps]
-    #
-    # # When an instance of ParallelTempering is created, a dedicated process for each chain is spawned.
-    # # These separate processes will automatically make use of the available cpu cores, such that the
-    # # computations to advance the separate chains are performed in parallel.
-    # PT = ParallelTempering(chains=chains)
-    #
-    # # These processes wait for instructions which can be sent using the methods of the
-    # # ParallelTempering object:
-    # for i in range(1):
-    #     for j in range(10): # min per iteration
-    #         print(i, j)
-    #         PT.advance(5) # advance each chain by 10 steps
-    #         PT.swap() # attempt a swap for all chains
-    #
-    #     # To recover a copy of the chains held by the processes
-    #     # we can use the return_chains method:
-    #     chains = PT.return_chains()
-    #
-    #     # try:
-    #     #     chains[0].plot_diagnostics(show=False, filename='./tmp_plot_diagnostics')
-    #     # except:
-    #     #     pass
-    #     #
-    #     # # by looking at the trace plot for the T = 1 chain, we see that it makes
-    #     # # large jumps across the parameter space due to the swaps.
-    #     # chains[0].trace_plot(show=False, filename='./tmp_trace_plot')
-    #     #
-    #     # # Even though the posterior has strongly separated peaks, the T = 1 chain
-    #     # # was able to explore all of them due to the swaps.
-    #     # chains[0].matrix_plot(show=False, filename='./tmp_matrix_plot')
-    #     #
-    #     # chains[0].save('./tmp_chain')
-    #     #
-    #     # pf.plot_fit(posterior, chains[0].get_sample()[-250:], alpha=0.05, size=100, plasma_ref=plasma_ref, filename='tmp_plot_fit')
-    #
-    # # Because each process waits for instructions from the ParallelTempering object,
-    # # they will not self-terminate. To terminate all the processes we have to trigger
-    # # a shutdown even using the shutdown method:
-    # PT.shutdown()
+        start = posterior.stormbreaker_start(1, min_logp=-1000).flatten()
+
+        temps = np.logspace(0, 3, 8)[:-1]
+        chains = [GibbsChain(posterior=posterior, start=start, temperature=T) for T in temps]
+
+        # When an instance of ParallelTempering is created, a dedicated process for each chain is spawned.
+        # These separate processes will automatically make use of the available cpu cores, such that the
+        # computations to advance the separate chains are performed in parallel.
+        PT = ParallelTempering(chains=chains)
+
+        # These processes wait for instructions which can be sent using the methods of the
+        # ParallelTempering object:
+        save_folder = os.path.expanduser('~/baysar_demo_out/')
+        for i in range(1):
+            for j in range(10): # min per iteration
+                print(i, j)
+                PT.advance(5) # advance each chain by 10 steps
+                PT.swap() # attempt a swap for all chains
+
+            # To recover a copy of the chains held by the processes
+            # we can use the return_chains method:
+            chains = PT.return_chains()
+
+            try:
+                chains[0].plot_diagnostics(show=False, filename=save_folder+'tmp_plot_diagnostics')
+            except:
+                pass
+
+            # by looking at the trace plot for the T = 1 chain, we see that it makes
+            # large jumps across the parameter space due to the swaps.
+            chains[0].trace_plot(show=False, filename=save_folder+'tmp_trace_plot')
+
+            # Even though the posterior has strongly separated peaks, the T = 1 chain
+            # was able to explore all of them due to the swaps.
+            chains[0].matrix_plot(show=False, filename=save_folder+'tmp_matrix_plot')
+
+            chains[0].save('./tmp_chain')
+
+            pf.plot_fit(posterior, chains[0].get_sample()[-250:], alpha=0.05,
+                        size=100, plasma_ref=plasma_ref, filename=save_folder+'tmp_plot_fit')
+
+        # Because each process waits for instructions from the ParallelTempering object,
+        # they will not self-terminate. To terminate all the processes we have to trigger
+        # a shutdown even using the shutdown method:
+        PT.shutdown()

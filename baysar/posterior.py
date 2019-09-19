@@ -124,36 +124,25 @@ class BaysarPosterior(object):
             self.posterior_components.append(chord)
 
     def stormbreaker_start(self, num, min_logp=-1e10, high_prob=False, normal=False):
+        if high_prob:
+            old_num = num
+            num = int(num * 10)
 
         sb_start = []
-
-        if high_prob:
-            tmp_num = int(num * 10)
-        else:
-            tmp_num = num
-
-        for tmp in np.arange(tmp_num):
-
+        for tmp in np.arange(num):
             tmp_logp = -1e50
-
             while tmp_logp < min_logp:
-
                 tmp_start = self.random_start(normal=normal)
-
                 tmp_logp = self(tmp_start)
-
             sb_start.append(tmp_start)
 
         sb_start = sorted(sb_start, key=self)
-
-        # sb_start = np.array(sb_start).T
-
         if high_prob:
-            sb_start = sb_start[-num:]
+            sb_start = sb_start[-old_num:]
 
-        self.sb_start = np.array(sb_start)
+        return np.array(sb_start[::-1])
 
-        return self.sb_start
+
 
     def random_start(self, normal=False):
 
@@ -365,4 +354,13 @@ if __name__=='__main__':
     rand_theta = posterior.random_start()
     print(posterior(rand_theta))
 
+    from tulasa.general import plot
+    from tulasa.plotting_functions import plot_fit
+
+    sample_num = 20
+    sample = posterior.stormbreaker_start(sample_num, min_logp=-700)
+
+    plot([posterior(s) for s in sample])
+    plot_fit(posterior, sample, size=int(sample_num/2), alpha=0.1, ylim=(1e10, 1e16),
+             error_norm=True, plasma_ref=None)
     pass
