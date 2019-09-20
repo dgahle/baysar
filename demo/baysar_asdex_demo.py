@@ -303,18 +303,19 @@ if __name__=='__main__':
     sample_posterior = True
     if sample_posterior:
         from inference.mcmc import GibbsChain, PcaChain, ParallelTempering
+        from scipy.optimize import fmin_l_bfgs_b
 
         start = posterior.stormbreaker_start(1, min_logp=-1000).flatten()
+        opt = fmin_l_bfgs_b(posterior.cost, start, approx_grad=True,
+                            bounds=posterior.plasma.theta_bounds.tolist())
 
-        chain = PcaChain(posterior=posterior, start=start)
-
+        chain = PcaChain(posterior=posterior, start=opt.x)
         chain.advance(100)
 
         try:
             chain.plot_diagnostics()
         except:
             pass
-
         chain.trace_plot()
         chain.matrix_plot()
 

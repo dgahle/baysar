@@ -91,7 +91,6 @@ class BaysarPosterior(object):
             if self.print_errors:
                 print('contains antiprotons')
             prob += sum(np.log10( abs(self.plasma.plasma_state['main_ion_density'].clip(max=-1e-20)) ))
-            # return -1e50
 
         if self.curvature is not None:
             te_cost = self.curvature_cost(self.plasma.plasma_state['electron_temperature'])
@@ -99,13 +98,12 @@ class BaysarPosterior(object):
 
             prob -= self.curvature * (te_cost + ne_cost)
 
-
         if np.isnan(prob):
             self.nan_thetas.append(theta)
             if self.print_errors:
                 print('logP = NaNs')
             return -1e50
-        elif type(prob) == np.float64:
+        elif type(prob) in (np.float64, np.int64):
             return prob / self.temper
         else:
             return -1e50
@@ -147,8 +145,6 @@ class BaysarPosterior(object):
             sb_start = sb_start[-old_num:]
 
         return np.array(sb_start[::-1])
-
-
 
     def random_start(self, normal=False):
 
