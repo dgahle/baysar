@@ -265,23 +265,36 @@ if __name__=='__main__':
                             mystery_lines=mystery_lines, refine=[0.05],
                             ion_resolved_temperatures=False, ion_resolved_tau=True)
 
+    from baysar.plasmas import MeshLine, arb_obj
+
+    num_points = 9
+    x = np.linspace(1, 9, num_points)
+    profile_function = MeshLine(x=x, zero_bounds=-2, bounds=[0, 10], log=True)
+    profile_function = arb_obj(electron_density=profile_function,
+                               electron_temperature=profile_function,
+                               number_of_variables_ne=len(x),
+                               number_of_variables_te=len(x),
+                               bounds_ne=[11, 16], bounds_te=[-1, 2])
+
     posterior = BaysarPosterior(input_dict=indict, check_bounds=True,
-                                curvature=1e4, print_errors=False)
+                                curvature=1e4, print_errors=False,
+                                profile_function=profile_function)
 
     posterior.plasma.theta_bounds[posterior.plasma.slices['cal0']] = [-1, 1]
     posterior.plasma.theta_bounds[posterior.plasma.slices['background0']] = [11.7, 12.5]
-    posterior.plasma.theta_bounds[posterior.plasma.slices['electron_temperature']] = [-1, 3]
+    posterior.plasma.theta_bounds[posterior.plasma.slices['electron_temperature']] = [-1, 1.5]
     posterior.plasma.theta_bounds[posterior.plasma.slices['N_1_dens']] = [13, 14]
     posterior.plasma.theta_bounds[posterior.plasma.slices['N_1_tau']] = [-1, 2]
 
     start = posterior.random_start()
     print(posterior(start)) # evaluation of the posterior (fit probability)
 
+    from tulasa.plotting_functions import plot_fit
+
     # make and plot a starting sample
     plot_start_samaple = False
     if plot_start_samaple:
         from tulasa.general import plot
-        from tulasa.plotting_functions import plot_fit
 
         sample_num = 20
         sample = posterior.stormbreaker_start(sample_num, min_logp=-1000)
@@ -309,10 +322,10 @@ if __name__=='__main__':
         # These processes wait for instructions which can be sent using the methods of the
         # ParallelTempering object:
         save_folder = os.path.expanduser('~/baysar_demo_out/')
-        for i in range(1):
-            for j in range(10): # min per iteration
+        for i in range(100):
+            for j in range(50): # min per iteration
                 print(i, j)
-                PT.advance(5) # advance each chain by 10 steps
+                PT.advance(10) # advance each chain by 10 steps
                 PT.swap() # attempt a swap for all chains
 
             # To recover a copy of the chains held by the processes
@@ -332,10 +345,13 @@ if __name__=='__main__':
             # was able to explore all of them due to the swaps.
             chains[0].matrix_plot(show=False, filename=save_folder+'tmp_matrix_plot')
 
-            chains[0].save('./tmp_chain')
+            chains[0].save(save_folder+'tmp_chain')
 
-            pf.plot_fit(posterior, chains[0].get_sample()[-250:], alpha=0.05,
-                        size=100, plasma_ref=plasma_ref, filename=save_folder+'tmp_plot_fit')
+            # pf.plot_fit(posterior, chains[0].get_sample()[-250:], alpha=0.05,
+            #             size=100, filename=save_folder+'tmp_plot_fit')
+            plot_fit(posterior, sample=chains[0].get_sample()[-250:], size=100, alpha=0.1,
+                     ylim=(1e11, 1e16), error_norm=True, plasma_ref=None,
+                     filename=save_folder+'tmp_plot_fit')
 
         # Because each process waits for instructions from the ParallelTempering object,
         # they will not self-terminate. To terminate all the processes we have to trigger

@@ -107,12 +107,14 @@ class BaysarPosterior(object):
             return -1e50
 
     def curvature_cost(self, profile):
-    # def curvature(profile):
-
         grad1 = np.gradient(profile / max(profile))
         grad2 = np.gradient(grad1)
+        curvature = sum(np.square(grad2) / np.power((1 + np.square(grad1)), 3))
 
-        return sum(np.square(grad2) / np.power((1 + np.square(grad1)), 3))
+        if curvature < 0:
+            return 0
+        else:
+            return curvature
 
     def cost(self, theta):
         return - self.__call__(theta)

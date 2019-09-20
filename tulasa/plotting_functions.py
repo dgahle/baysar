@@ -1203,7 +1203,7 @@ def plot_p0_probs(posterior, p0):
 
 
 def plot_fit(posterior, sample, size=100, alpha=0.1, ylim=(1e10, 1e16),
-             error_norm=True, plasma_ref=None):
+             error_norm=True, plasma_ref=None, filename=None):
 
     # fig, ax = plt.subplots(2, 1, sharex=True)
     fig = plt.figure()
@@ -1314,4 +1314,9 @@ def plot_fit(posterior, sample, size=100, alpha=0.1, ylim=(1e10, 1e16),
     leg = ax_fit.legend()
     leg.draggable()
 
-    fig.show()
+    if filename is None:
+        fig.show()
+    else:
+        # plt.tight_layout() # breaks the code
+        plt.savefig(filename)
+        plt.close()
