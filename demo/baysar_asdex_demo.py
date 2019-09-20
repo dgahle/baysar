@@ -34,7 +34,7 @@ from baysar.lineshapes import GaussianNorm
 from baysar.input_functions import make_input_dict
 from baysar.posterior import BaysarPosterior, BaysarPosteriorFilterWrapper
 
-import emcee as thor
+# import emcee as thor
 
 
 def blackouts(data, regions, level):
@@ -218,8 +218,7 @@ def new_bounds(sample):
 if __name__=='__main__':
 
     # Load ASDEX data
-    # file = os.path.expanduser('~/BaySAR/data/asdex_shots/AUG_ROV012_32244.txt')
-    file = os.path.expanduser('~/baysar/demo/AUG_ROV012_32244.txt')
+    file = './AUG_ROV012_32244.txt'
 
     with open (file, "r") as myfile:
         tmp_data = myfile.read().replace('\n', '') # readlines()
@@ -277,7 +276,7 @@ if __name__=='__main__':
                                bounds_ne=[11, 16], bounds_te=[-1, 2])
 
     posterior = BaysarPosterior(input_dict=indict, check_bounds=True,
-                                curvature=1e4, print_errors=False,
+                                curvature=1e3, print_errors=False,
                                 profile_function=profile_function)
 
     posterior.plasma.theta_bounds[posterior.plasma.slices['cal0']] = [-1, 1]
@@ -285,9 +284,6 @@ if __name__=='__main__':
     posterior.plasma.theta_bounds[posterior.plasma.slices['electron_temperature']] = [-1, 1.5]
     posterior.plasma.theta_bounds[posterior.plasma.slices['N_1_dens']] = [13, 14]
     posterior.plasma.theta_bounds[posterior.plasma.slices['N_1_tau']] = [-1, 2]
-
-    start = posterior.random_start()
-    print(posterior(start)) # evaluation of the posterior (fit probability)
 
     from tulasa.plotting_functions import plot_fit
 
@@ -304,56 +300,23 @@ if __name__=='__main__':
                  error_norm=True, plasma_ref=None)
 
     # Sampling using ParallelTempering (from inference.mcmc)
-    sample_posterior = False
+    sample_posterior = True
     if sample_posterior:
-        sys.path.append(os.path.expanduser('~/inference-tools'))
         from inference.mcmc import GibbsChain, PcaChain, ParallelTempering
 
         start = posterior.stormbreaker_start(1, min_logp=-1000).flatten()
 
-        temps = np.logspace(0, 3, 8)[:-1]
-        chains = [GibbsChain(posterior=posterior, start=start, temperature=T) for T in temps]
+        chain = PcaChain(posterior=posterior, start=start)
 
-        # When an instance of ParallelTempering is created, a dedicated process for each chain is spawned.
-        # These separate processes will automatically make use of the available cpu cores, such that the
-        # computations to advance the separate chains are performed in parallel.
-        PT = ParallelTempering(chains=chains)
+        chain.advance(100)
 
-        # These processes wait for instructions which can be sent using the methods of the
-        # ParallelTempering object:
-        save_folder = os.path.expanduser('~/baysar_demo_out/')
-        for i in range(100):
-            for j in range(50): # min per iteration
-                print(i, j)
-                PT.advance(10) # advance each chain by 10 steps
-                PT.swap() # attempt a swap for all chains
+        try:
+            chain.plot_diagnostics()
+        except:
+            pass
 
-            # To recover a copy of the chains held by the processes
-            # we can use the return_chains method:
-            chains = PT.return_chains()
+        chain.trace_plot()
+        chain.matrix_plot()
 
-            try:
-                chains[0].plot_diagnostics(show=False, filename=save_folder+'tmp_plot_diagnostics')
-            except:
-                pass
-
-            # by looking at the trace plot for the T = 1 chain, we see that it makes
-            # large jumps across the parameter space due to the swaps.
-            chains[0].trace_plot(show=False, filename=save_folder+'tmp_trace_plot')
-
-            # Even though the posterior has strongly separated peaks, the T = 1 chain
-            # was able to explore all of them due to the swaps.
-            chains[0].matrix_plot(show=False, filename=save_folder+'tmp_matrix_plot')
-
-            chains[0].save(save_folder+'tmp_chain')
-
-            # pf.plot_fit(posterior, chains[0].get_sample()[-250:], alpha=0.05,
-            #             size=100, filename=save_folder+'tmp_plot_fit')
-            plot_fit(posterior, sample=chains[0].get_sample()[-250:], size=100, alpha=0.1,
-                     ylim=(1e11, 1e16), error_norm=True, plasma_ref=None,
-                     filename=save_folder+'tmp_plot_fit')
-
-        # Because each process waits for instructions from the ParallelTempering object,
-        # they will not self-terminate. To terminate all the processes we have to trigger
-        # a shutdown even using the shutdown method:
-        PT.shutdown()
+        plot_fit(posterior, sample=chain.get_sample()[-50:], size=20, alpha=0.1,
+                 ylim=(1e11, 1e16), error_norm=True)

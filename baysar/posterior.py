@@ -42,6 +42,10 @@ class BaysarPosterior(object):
         self.nan_thetas = []
         self.runtimes = []
 
+        run_check = self(self.random_start())
+        if not (-1e50 < run_check and run_check < 0):
+            raise ValueError("Posterior is not evalauating correctly")
+
     def check_inputs(self, priors, check_bounds, temper, curvature, print_errors):
 
         if priors is not None:
