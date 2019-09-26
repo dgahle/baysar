@@ -11,243 +11,120 @@ from scipy import interpolate
 from scipy.interpolate import UnivariateSpline # , BSpline
 
 
+def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
+
+    """
+    This function returns an array which contains a subsection of input array ('wavelengths') which is
+    between and inclucing the points 'cwl' +- 'half_range'. If the end of this range is outside of the
+    'wavelength' array then the end of the reduced array is the end of the 'wavelength'.
+
+    :param wavelengths: Input array to be reduced
+    :param cwl: Point in the array which will be the centre of the new reduced array
+    :param half_range: Half the range of the new array.
+    :param return_indicies: Boulean (False by default) which when True the function returns the indicies
+                            of 'wavelengths' that match the beginning and end of the reduced array
+    :return: Returns an subset of 'wavelengths' which is centred around 'cwl' with a range of 'cwl' +-
+             'half_range'
+    """
+
+    if type(cwl)==list:
+        cwl=cwl[0]
+
+    upper_cwl = cwl + half_range
+    lower_cwl = cwl - half_range
+
+    if upper_cwl > max(wavelengths):
+        upper_index = len(wavelengths) - 1
+    else:
+        tmp_wave = abs(wavelengths - upper_cwl)
+        upper_index = np.where(tmp_wave == min(tmp_wave))[0][0]
+
+    if lower_cwl < max(wavelengths):
+        lower_index = 0
+    else:
+        tmp_wave = abs(wavelengths - lower_cwl)
+        lower_index = np.where(tmp_wave == min(tmp_wave))[0][0]
+
+    # print(lower_index, upper_index)
+
+    if return_indicies:
+        return wavelengths[lower_index:upper_index+1], [lower_index, upper_index]
+    else:
+        return wavelengths[lower_index:upper_index + 1]
+
+def gaussian(x, cwl, fwhm, intensity):
+    sigma = fwhm/np.sqrt(8*np.log(2))
+    return intensity*np.exp(-0.5*((x-cwl)/sigma)**2)
+
+def gaussian_norm(x, cwl, fwhm, intensity):
+    k = np.sqrt(2*np.pi*np.square(fwhm/np.sqrt(8*np.log(2))))
+    return gaussian(x, cwl, fwhm, intensity)/k
+
+def put_in_iterable(input):
+    if type(input) not in (tuple, list, np.ndarray):
+        return [input]
+    else:
+        return input
+
 class Gaussian(object):
+    def __init__(self, x=None, cwl=None, fwhm=None, fractions=None, normalise=False, reduced_range=None):
+        self.x=x
+        self.cwl=put_in_iterable(cwl)
+        self.fwhm=fwhm
 
-    def __init__(self, x=None, cwl=None, vectorise=1):
-
-        self.check_input(x, cwl, vectorise)
-
-        # Useful constants
-        self.fwhm_to_sigma = 1 / np.sqrt(8 * np.log(2))
-
-        self.vectorise = vectorise
-
-        if self.vectorise > 1:
-            self.x = np.tile(x, (vectorise, 1))
+        if reduced_range is None:
+            self.reducedx = [x for c in self.cwl]
+            self.reducedx_indicies = [[0, len(x)-1] for c in self.cwl]
         else:
-            self.x = x
+            self.reducedx = []
+            self.reducedx_indicies = []
+            for c in cwl:
+                rx, rxi = reduce_wavelength(x, self.cwl, reduced_range/2, return_indicies=True)
+                self.reducedx.append(rx)
+                self.reducedx_indicies.append(rxi)
 
-        self.cwl = cwl
+        if fractions is None:
+            self.fractions = [1/len(self.cwl) for c in self.cwl]
+        else:
+            self.fractions = fractions
 
-    def check_input(self, x, cwl, vectorise):
-        if type(x)!=np.ndarray:
-            raise TypeError("x must be an numpy array")
-        if type(cwl) not in (int, float, np.int64, np.float64):
-            raise TypeError("cwl must be an int or float")
-        if type(vectorise) not in (int, np.int64):
-            raise TypeError("vectorise must be an int")
+        if normalise:
+            self.func = gaussian
+        else:
+            self.func = gaussian_norm
 
-    def __call__(self, theta, *args, **kwargs):
-
-        if self.cwl is not None:
+    def __call__(self, theta):
+        if self.cwl is not None and self.fwhm is not None:
+            intensity = theta
+            fwhm = self.fwhm
+            cwl = self.cwl
+        elif self.cwl is not None:
             fwhm, intensity = theta
             cwl = self.cwl
         else:
             cwl, fwhm, intensity = theta
+            cwl = list(cwl)
 
-        if self.vectorise > 1:
-            if any([tmp_fwhm != np.mean(fwhm) for tmp_fwhm in fwhm]):
-                # tiling
-                fwhm = np.array([np.zeros(len(self.x[0])) + t for t in fwhm])
-                intensity = np.array([np.zeros(len(self.x[0])) + t for t in intensity.flatten()])
-                # intensity = np.array([np.zeros(len(self.x[0])) + t for t in intensity[0]])
-            else:
-                intensity = sum(intensity)
-                sigma = np.mean(fwhm) * self.fwhm_to_sigma
-                peak = np.exp(-0.5 * ( (self.x[0] - cwl) / sigma) ** 2)
+        fwhm = put_in_iterable(fwhm)
+        if len(fwhm)<len(cwl) and len(fwhm)==1:
+            fwhm = [fwhm[0] for c in cwl]
 
-                return sum( np.array(intensity).flatten() )  * peak.flatten()
+        peak = np.zeros(len(self.x))
+        for f, c, fw, rx, rxi in zip(self.fractions, cwl, fwhm, self.reducedx, self.reducedx_indicies):
+            peak[min(rxi):max(rxi)+1] += f*self.func(rx, c, fw, 1)
 
-        # guassian function
-        if type(fwhm)==list:
-            fwhm = np.array(fwhm)
-        sigma = fwhm * self.fwhm_to_sigma
-
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            peak = np.exp(-0.5 * ( (self.x - cwl) / sigma) ** 2)
-
-        return intensity * peak
-
-
-class Gaussians(object):
-
-    def __init__(self, x=None, cwl=None, vectorise=1):
-
-        'type checking done by Gaussian object'
-
-        self.cwl = cwl
-
-        self.peaks = []
-
-        try:
-            self.many = True
-            for centre in cwl:
-                self.peaks.append(Gaussian(x, centre, vectorise=vectorise))
-        except TypeError:
-            self.peaks.append(Gaussian(x, cwl, vectorise=vectorise))
-        except:
-            raise
-
-    def __call__(self, theta, give_list=False, *args, **kwargs):
-
-        try:
-            if self.many:
-                # if not give_list:
-                #     return [t(theta) for t in self.peaks]
-                # else:
-                #     return sum([t(theta) for t in self.peaks])
-                return sum([t(theta) for t in self.peaks])
-        except NameError:
-            return self.peaks[0](theta)
-        except:
-            raise
-
-
-class GaussianNorm(Gaussian): # TODO: Needs fixing/making ?
-
-    def __init__(self, x=None, cwl=None, vectorise=1, scaler=1):
-
-        'type checking done by Gaussian object apart from scaler'
-
-        if any([scaler < 0, scaler > 1, type(scaler) not in (int, float, np.int64, np.float64)]):
-            raise AssertionError("scaler must be an int or a float greater than 0 and no greater than 1")
-
-        self.x = x
-        self.cwl = cwl
-
-        self.scaler = scaler
-        self.vectorise = vectorise
-
-        if self.vectorise > 1:
-            self.x = np.tile(x, (vectorise, 1))
-        else:
-            self.x = x
-
-        super(GaussianNorm, self).__init__(x, cwl, vectorise=self.vectorise)
-
-        self.fwhm_to_sigma = 1 / (2 * np.sqrt(2 * np.log(2)))
-
-        self.sigma_to_norm_k = np.sqrt(2 * np.pi)
-
-    def __call__(self, theta, *args, **kwargs):
-
-        peak = super(GaussianNorm, self).__call__(theta) * self.scaler #, give_list=True)
-
-        if self.cwl is not None:
-            fwhm = theta[0]
-        else:
-            fwhm = theta[1]
-
-        # tiling
-        if self.vectorise > 1:
-            fwhm = np.array([np.zeros(len(self.x[0])) + t for t in fwhm])
-
-        try:
-            const = np.sqrt(2 * np.pi * np.square(fwhm * self.fwhm_to_sigma) )
-        except TypeError:
-            fwhm = fwhm[0]
-            const = np.sqrt(2 * np.pi * np.square(fwhm * self.fwhm_to_sigma) )
-            # print( *fwhm, self.fwhm_to_sigma )
-            # raise
-        except:
-            raise
-
-        try:
-            return peak / const
-        except ValueError:
-            print(self.x.shape)
-            print(peak.shape)
-            print(fwhm.shape)
-            raise
-        except:
-            raise
-
-
-class GaussiansNorm(object): # TODO: Needs fixing/making
-
-    def __init__(self, x=None, cwl=None, fwhm=None, fractions=[], vectorise=1):
-
-        if type(cwl) == list:
-            self.cwl = cwl
-        else:
-            self.cwl = [cwl]
-
-        self.fwhm = fwhm
-
-        self.fractions = fractions
-
-        self.peaks = []
-
-        self.vectorise = vectorise
-
-        try:
-            self.many = True
-            for counter, centre in enumerate(self.cwl):
-                self.peaks.append( GaussianNorm( x, centre, vectorise=self.vectorise,
-                                                 scaler=self.fractions[counter] ) )
-        except IndexError:
-            org_sum_fractions = sum(self.fractions)
-            if all([ (len(self.fractions) == 0) and (len(self.cwl) > 1) ]):
-                for tmp in self.cwl:
-                    self.fractions.append( 1 / len(self.cwl) )
-            elif all([ (len(self.fractions) < len(self.cwl)) and (org_sum_fractions < 1) ]):
-                len_extra_fractions = len(self.cwl) - len(self.fractions)
-                while len(self.fractions) < len(self.cwl):
-                    self.fractions.append( ( 1 - org_sum_fractions ) / len_extra_fractions )
-            else:
-                self.fractions = np.zeros( len(self.cwl) ) + ( 1 / len(self.cwl) )
-
-            try:
-                self.many = True
-
-                self.peaks = []
-                for counter, centre in enumerate(self.cwl):
-                    self.peaks.append(GaussianNorm(x, centre, vectorise=vectorise,
-                                                   scaler=self.fractions[counter]))
-            except:
-                raise
-        except TypeError:
-            self.many = False
-            self.peaks = []
-            self.peaks.append(GaussianNorm(x, self.cwl, vectorise=vectorise))
-        except:
-            raise
-
-        if all([type(self.cwl) != t for t in (int, float)]):
-            assert len(self.cwl) == len(self.peaks), str(len(self.cwl)) + ' ' + str(len(self.peaks))
-
-    def __call__(self, theta, give_list=False, *args, **kwargs):
-
-        try:
-            if self.many:
-                if give_list:
-                    return [t(theta) for t in self.peaks]
-                else:
-                    return sum([t(theta) for t in self.peaks])
-            else: pass
-        except NameError:
-            return self.peaks[0](theta)
-        except:
-            raise
+        return intensity*peak
 
 
 class SuperGaussian(object):
-
     def __init__(self, mean, sigma, half_power):
-
         self.mean = mean
         self.sigma = sigma
-
         self.half_power = half_power
 
     def __call__(self, theta, log=True):
-
         inside = (theta - self.mean) / self.sigma
-
         log_peak = -0.5 * np.power(inside, 2*self.half_power)
-
         if log:
             return log_peak
         else:
@@ -290,7 +167,7 @@ class MeshLine(object):
 
         # get_new_profile = InterpolatedUnivariateSpline(self.x, theta)
         # get_new_profile = interp1d(self.x_points, theta, self.kind)
-        get_new_profile = UnivariateSpline (self.x_points, theta)
+        get_new_profile = UnivariateSpline(self.x_points, theta)
 
         if self.log:
             return np.power(10, get_new_profile(self.x))
@@ -326,34 +203,15 @@ class PlasmaMeshLine(object):
 
 if __name__=='__main__':
 
-    from tulasa import general
-
+    from tulasa.general import plot
     import time as clock
 
-    x = [-5, -2, -1, -0.6, 0, 1, 3]
+    # gaussian check
+    x = np.linspace(400, 402, 500)
+    cwl = [401, 401.5]
+    fwhm = 0.2
+    intensity = 1
 
-    linear = MeshLine(x, zero_bounds=True, kind='linear')
-    quad = MeshLine(x, zero_bounds=True, kind='quadratic')
+    peak = Gaussian(x=x, cwl=cwl, fwhm=fwhm, fractions=None, normalise=True)
 
-    theta = np.ones(len(x))
-
-    start_time = clock.time()
-
-    i = 0
-    while i < 100:
-        linear(theta)
-        i+=1
-
-    second_time = clock.time()
-
-    i = 0
-    while i < 100:
-        quad(theta)
-        i += 1
-
-    third_time = clock.time()
-
-    lin_time = second_time - start_time
-    quad_time = third_time - second_time
-
-    print(lin_time, quad_time)
+    plot(peak(1), x=x)

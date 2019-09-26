@@ -3,17 +3,13 @@ import numpy as np
 import os, sys, io
 import copy
 
-from baysar.linemodels import build_tec406
-
-from baysar.spectrometers import within
-
 import collections
 from baysar.lineshapes import MeshLine
+from baysar.spectrometers import within
 
 from scipy.interpolate import RegularGridInterpolator, RectBivariateSpline
 
 def power10(var):
-
     return np.power(10, var)
 
 

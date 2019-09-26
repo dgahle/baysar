@@ -46,7 +46,7 @@ class BaysarPosterior(object):
         if not (-1e50 < run_check and run_check < 0):
             raise ValueError("Posterior is not evalauating correctly")
 
-        print("Posterior successfully instantiated!")
+        print("Posterior successfully created!") #instantiated
 
     def check_inputs(self, priors, check_bounds, temper, curvature, print_errors):
 
@@ -129,7 +129,7 @@ class BaysarPosterior(object):
             chord = SpectrometerChord(plasma=self.plasma, refine=refine, chord_number=chord_num)
             self.posterior_components.append(chord)
 
-    def stormbreaker_start(self, num, min_logp=-1e10, high_prob=False, normal=False):
+    def start_sample(self, num, min_logp=-1e10, high_prob=False, normal=False):
         if high_prob:
             old_num = num
             num = int(num * 10)

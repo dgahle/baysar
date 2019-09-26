@@ -9,8 +9,8 @@ import time as clock
 import os, sys, io, warnings
 
 
-from baysar.linemodels import XLine, NoADASLines, ADAS406Lines, BalmerHydrogenLine
-from baysar.lineshapes import GaussiansNorm
+from baysar.linemodels import XLine, ADAS406Lines, BalmerHydrogenLine
+from baysar.lineshapes import Gaussian
 
 def clip_data(x_data, y_data, x_range):
 
@@ -267,11 +267,9 @@ class SpectrometerChordOld(object):
                             raise
 
                         tmp_wavelengths = self.x_data
-                        tmp_lineshape = GaussiansNorm
-
                         tmp_line = XLine(cwl=tmp_cwl, fwhm=diff(tmp_wavelengths)[0],
                                          plasma=self.plasma, wavelengths=tmp_wavelengths,
-                                         lineshape=tmp_lineshape, species=isotope, fractions=tmp_fractions)
+                                         species=isotope, fractions=tmp_fractions)
 
                         self.lines.append(tmp_line)
 
@@ -322,7 +320,6 @@ class SpectrometerChordOld(object):
                             tmp_cwl = self.plasma.input_dict['physics'][isotope][ion][line]['wavelength']
 
                             tmp_wavelengths = self.x_data
-                            tmp_lineshape = GaussiansNorm
 
 
                             tmp_ma = self.plasma.input_dict['physics'][isotope]['atomic_mass']
@@ -331,12 +328,12 @@ class SpectrometerChordOld(object):
                             if 'tec' in self.plasma.input_dict['physics'][isotope][ion][line]:
                                 tmp_tec = self.plasma.input_dict['physics'][isotope][ion][line]['tec']
 
-                                tmp_line = ADAS406Lines(cwls=tmp_cwl, wavelengths=tmp_wavelengths, lineshape=tmp_lineshape,
+                                tmp_line = ADAS406Lines(cwls=tmp_cwl, wavelengths=tmp_wavelengths,
                                                         atomic_mass=tmp_ma, tec406=tmp_tec, species=isotope,
                                                         ion=ion, plasma=self.plasma, jj_frac=tmp_jj_frac)
 
                             else:
-                                tmp_line = NoADASLines(cwl=tmp_cwl, wavelengths=tmp_wavelengths, lineshape=tmp_lineshape,
+                                tmp_line = NoADASLines(cwl=tmp_cwl, wavelengths=tmp_wavelengths,
                                                        atomic_mass=tmp_ma, species=isotope, ion=ion,
                                                        plasma=self.plasma.plasma_state, jj_frac=tmp_jj_frac)
 
