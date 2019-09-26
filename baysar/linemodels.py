@@ -109,7 +109,7 @@ class ADAS406Lines(object):
         self.atomic_mass = get_atomic_mass(species)
         self.cwls = put_in_iterable(cwls)
         self.line = self.species+'_'+str(self.cwls)[1:-1].replace(', ', '_')
-        self.jj_frac_full = plasma.input_dict[self.species][self.cwls]['jj_frac']
+        self.jj_frac_full = plasma.input_dict[self.species][cwls]['jj_frac']
         self.wavelengths = wavelengths
         self.los = self.plasma.profile_function.electron_density.x
 

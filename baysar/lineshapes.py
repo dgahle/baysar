@@ -52,7 +52,32 @@ def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
     else:
         return wavelengths[lower_index:upper_index + 1]
 
+def gaussian_check_input(x, cwl, fwhm, intensity):
+    # :param 1D np.ndarray x: Axis to evaluate gaussian
+    if type(x) is not np.ndarray:
+        raise TypeError("type(x) is not np.ndarray")
+    if not any(np.isreal(x)):
+        raise TypeError("x must only contain real scalars") # this also checks that the array is 1D
+    # :param scalar cwl: Mean of the gaussian
+    if not np.isreal(cwl):
+        raise TypeError("cwl must be a real scalar")
+    # :param non-negative scalar fwhm: FWHM of the gaussian
+    if not np.isreal(fwhm):
+        raise TypeError("fwhm must be a real scalar")
+    if fwhm<=0:
+        raise ValueError("fwhm must be a positive scalar")
+
+
 def gaussian(x, cwl, fwhm, intensity):
+    '''
+    Function for calculating a height normalised gaussian
+    :param 1D np.ndarray x: Axis to evaluate gaussian
+    :param scalar cwl: Mean of the gaussian
+    :param positive scalar fwhm: FWHM of the gaussian
+    :param scalar intensity: Height of the gaussian
+    :return: 1D np.ndarray containing the gaussian
+    '''
+    gaussian_check_input(x, cwl, fwhm, intensity)
     sigma = fwhm/np.sqrt(8*np.log(2))
     return intensity*np.exp(-0.5*((x-cwl)/sigma)**2)
 

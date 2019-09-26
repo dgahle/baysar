@@ -362,7 +362,7 @@ if __name__=='__main__':
     from tulasa.plotting_functions import plot_fit
 
     sample_num = 20
-    sample = posterior.stormbreaker_start(sample_num, min_logp=-700)
+    sample = posterior.start_sample(sample_num, min_logp=-500)
 
     plot([posterior(s) for s in sample])
     plot_fit(posterior, sample, size=int(sample_num/2), alpha=0.1, ylim=(1e10, 1e16),

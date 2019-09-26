@@ -375,7 +375,10 @@ class PlasmaLine():
         tecs = []
         for species in self.impurity_species:
             for line in self.input_dict[species].keys():
-                line_tag = species+'_'+str(line)[1:-1].replace(', ', '_')
+                line_str = str(line).replace(', ', '_')
+                for bad_character in ['[', ']', '(', ')']:
+                    line_str=line_str.replace(bad_character, '')
+                line_tag = species + '_' + line_str
                 file = self.input_dict[species][line]['pec']
                 exc = self.input_dict[species][line]['exc_block']
                 rec = self.input_dict[species][line]['rec_block']
