@@ -120,6 +120,7 @@ class Gaussian(object):
         self.x=x
         self.cwl=put_in_iterable(cwl)
         self.fwhm=fwhm
+        self.normalise=normalise
 
         if reduced_range is None:
             self.reducedx = [x for c in self.cwl]
@@ -137,7 +138,7 @@ class Gaussian(object):
         else:
             self.fractions = fractions
 
-        if normalise:
+        if self.normalise:
             self.func = gaussian
         else:
             self.func = gaussian_norm

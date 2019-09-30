@@ -74,10 +74,10 @@ def check_input_dict_input(wavelength_axis, experimental_emission, instrument_fu
     if not all(exp_type_check1):
         raise TypeError("Contents of [wavelength_axis, experimental_emission, instrument_function, "
                         "noise_region] are not all lists or arrays")
-    exp_type_check2 = [type(e0) in (int, float, np.float64, np.int64) for exp in exp_stuff[:-1] for e in exp for e0 in e]
-    if not all(exp_type_check2):
+    exp_type_check2 = all([np.isreal(exp).all() for exp in exp_stuff[:-1]])
+    if not exp_type_check2:
         raise TypeError("Data given in [wavelength_axis, experimental_emission, instrument_function, noise_region] are not all ints or floats")
-    if not all([type(e) in (int, float, np.float64, np.int64) for e in emission_constant]):
+    if not all([np.isreal(e) for e in emission_constant]):
         raise TypeError("Emission constants type must be in (int, float, np.float64, np.int64)")
 
     # species and ions must be the same lengths and only conatain strings

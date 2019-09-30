@@ -148,20 +148,18 @@ class BaysarPosterior(object):
 
         return np.array(sb_start[::-1])
 
-    def random_start(self, normal=False):
-
+    def random_start(self, flat=False, normal=False):
         start = []
-
         for bounds in self.plasma.theta_bounds:
-
             if not normal:
                 start.append( np.random.uniform(min(bounds), max(bounds)) )
             else:
                 sigma = abs(min(bounds) - max(bounds)) / 2
                 nu = min(bounds) + sigma
-
                 start.append(np.random.normal(nu, sigma/3))
-
+        if flat:
+            start[self.plasma.slices['electron_temperature']] = start[self.plasma.slices['electron_temperature']][0]
+            start[self.plasma.slices['electron_density']] = start[self.plasma.slices['electron_density']][0]
         return np.array(start)
 
     # # TODO: This needs to be generalised and have flags so is optional

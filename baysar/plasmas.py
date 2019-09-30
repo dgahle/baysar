@@ -198,26 +198,19 @@ class PlasmaLine():
         self.bounds = bounds
 
         assert self.n_params==len(self.theta_bounds), 'self,n_params!=len(self.theta_bounds)'
-
         self.assign_theta_functions()
 
     def update_plasma_theta(self, theta):
-
         plasma_theta = []
-
         for p in self.slices.keys():
             plasma_theta.append((p, theta[self.slices[p]]))
-
         self.plasma_theta = collections.OrderedDict(plasma_theta)
 
     def update_plasma_state(self, theta):
-
         assert len(theta)==self.n_params, 'len(theta)!=self.n_params'
-
         self.update_plasma_theta(theta)
 
         plasma_state = []
-
         for p, f_check in zip(self.slices.keys(), self.function_check):
             values = np.array(theta[self.slices[p]]).flatten()
             if f_check:
@@ -252,21 +245,24 @@ class PlasmaLine():
             self.background_functions = background_functions
 
     def assign_theta_functions(self):
-
         theta_functions = [self.cal_functions, self.background_functions,
-                           self.profile_function.electron_density,
-                           self.profile_function.electron_temperature,
-                           [power10 for tag in self.tags if any([tag.startswith(s+'_') for s in self.species])]]
-        theta_functions = [[f] if type(f)!=list else f for f in theta_functions]
-        theta_functions = [f1 for f0 in theta_functions for f1 in f0]
+                           [self.profile_function.electron_density, self.profile_function.electron_temperature],
+                           [power10 for tag in self.tags if any([tag.startswith(s+'_') for s in self.species]) or 'X_' in tag]]
+        theta_functions = np.concatenate(theta_functions).tolist()
+        # theta_functions = np.concatenate( [f if type(f)!=list else f for f in theta_functions] ).tolist()
 
         theta_functions_tuples = []
-
         function_tags = ['cal', 'back', 'electron_density', 'electron_temperature']
-        function_tags_full = [tag for tag in self.tags if any([check in tag for check in function_tags]) or any([tag.startswith(s+'_') for s in self.species])]
+        function_tags_full = [tag for tag in self.tags if any([check in tag for check in function_tags]) or \
+                                                          any([tag.startswith(s+'_') for s in self.species]) or \
+                                                          'X_' in tag]
 
-        self.function_check = [any([check in tag for check in function_tags]) or any([tag.startswith(s+'_') for s in self.species]) for tag in self.tags]
+        self.function_check = [any([check in tag for check in function_tags]) or
+                               any([tag.startswith(s+'_') for s in self.species]) or
+                               ('X_' in tag) for tag in self.tags]
         # self.function_check = [any([check in tag for check in function_tags]) for tag in plasma.tags]
+
+        assert len(function_tags_full)==len(theta_functions), 'len(function_tags_full)!=len(theta_functions)'
 
         for tag, func in zip(function_tags_full, theta_functions):
             theta_functions_tuples.append((tag, func))
