@@ -194,7 +194,7 @@ class PlasmaLine():
 
         self.n_params = slices[-1][1].stop
         self.slices = collections.OrderedDict(slices)
-        self.theta_bounds = np.array([np.array(b) for n, b in enumerate(bounds) if keep_theta_bound[n]])
+        self.theta_bounds = np.array([np.array(b) for n, b in enumerate(bounds) if keep_theta_bound[n]], dtype=float)
         self.bounds = bounds
 
         assert self.n_params==len(self.theta_bounds), 'self,n_params!=len(self.theta_bounds)'

@@ -43,8 +43,8 @@ class BaysarPosterior(object):
         self.runtimes = []
 
         run_check = self(self.random_start())
-        if not (-1e50 < run_check and run_check < 0):
-            raise ValueError("Posterior is not evalauating correctly")
+        if not (np.isreal(run_check) and -1e50 < run_check and run_check < 0):
+            raise ValueError("Posterior is not evalauating correctly. L =", run_check)
 
         print("Posterior successfully created!") #instantiated
 

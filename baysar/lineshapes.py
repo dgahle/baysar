@@ -10,24 +10,44 @@ from scipy.interpolate import interp1d
 from scipy import interpolate
 from scipy.interpolate import UnivariateSpline # , BSpline
 
+def reduce_wavelength_check_input(wavelengths, cwl, half_range, return_indicies):
+    # :param 1D ndarray wavelengths: Input array to be reduced
+    if type(wavelengths) is not np.ndarray:
+        raise TypeError("type(wavelengths) is not np.ndarray")
+    if not any(np.isreal(wavelengths)):
+        raise TypeError("wavelengths must only contain real scalars") # this also checks that the array is 1D
+    # :param list or real scalar cwl: Point in the array which will be the centre of the new reduced array
+    if not any([np.isreal(cwl), type(cwl) is not list]):
+        raise TypeError("cwl must be a list or a real scalar")
+    # :param real scalar half_range: Half the range of the new array.
+    if not np.isreal(half_range):
+        raise TypeError("half_range must be a real scalar")
+    # :param boul return_indicies: Boulean (False by default) which when True the function returns the indicies
+    #                              of 'wavelengths' that match the beginning and end of the reduced array
+    if type(return_indicies) is not bool:
+        raise TypeError("return_indicies must be a Boolean")
+
 
 def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
+
 
     """
     This function returns an array which contains a subsection of input array ('wavelengths') which is
     between and inclucing the points 'cwl' +- 'half_range'. If the end of this range is outside of the
     'wavelength' array then the end of the reduced array is the end of the 'wavelength'.
 
-    :param wavelengths: Input array to be reduced
-    :param cwl: Point in the array which will be the centre of the new reduced array
-    :param half_range: Half the range of the new array.
-    :param return_indicies: Boulean (False by default) which when True the function returns the indicies
+    :param 1D ndarray wavelengths: Input array to be reduced
+    :param list or real scalar cwl: Point in the array which will be the centre of the new reduced array
+    :param real scalar half_range: Half the range of the new array.
+    :param boul return_indicies: Boulean (False by default) which when True the function returns the indicies
                             of 'wavelengths' that match the beginning and end of the reduced array
     :return: Returns an subset of 'wavelengths' which is centred around 'cwl' with a range of 'cwl' +-
              'half_range'
     """
 
-    if type(cwl)==list:
+    reduce_wavelength_check_input(wavelengths, cwl, half_range, return_indicies)
+
+    if type(cwl) is list:
         cwl=cwl[0]
 
     upper_cwl = cwl + half_range
@@ -66,7 +86,11 @@ def gaussian_check_input(x, cwl, fwhm, intensity):
         raise TypeError("fwhm must be a real scalar")
     if fwhm<=0:
         raise ValueError("fwhm must be a positive scalar")
-
+    # :param scalar intensity: Height of the gaussian
+    if not np.isreal(intensity):
+        raise TypeError("fwhm must be a real scalar")
+    if intensity<=0:
+        raise ValueError("fwhm must be a positive scalar")
 
 def gaussian(x, cwl, fwhm, intensity):
     '''
@@ -158,7 +182,7 @@ class SuperGaussian(object):
 
 class MeshLine(object):
 
-    def __init__(self, x, bounds=[-10, 10], zero_bounds=None, resolution=0.1, log=False, kind='quadratic'):
+    def __init__(self, x, bounds=[-10, 10], zero_bounds=None, resolution=0.1, log=False, kind='linear'):
 
         self.x_points = x
         self.x = np.arange(min(bounds), max(bounds), resolution)
@@ -191,8 +215,8 @@ class MeshLine(object):
                                              str(len(theta)) + ' ' + str(len(self.x_points))
 
         # get_new_profile = InterpolatedUnivariateSpline(self.x, theta)
-        # get_new_profile = interp1d(self.x_points, theta, self.kind)
-        get_new_profile = UnivariateSpline(self.x_points, theta)
+        get_new_profile = interp1d(self.x_points, theta, self.kind)
+        # get_new_profile = UnivariateSpline(self.x_points, theta)
 
         if self.log:
             return np.power(10, get_new_profile(self.x))

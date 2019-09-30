@@ -1,17 +1,28 @@
 import unittest
 import numpy as np
-from baysar.lineshapes import gaussian
+from baysar.lineshapes import reduce_wavelength, gaussian, gaussian_norm
 
+# class TestReduceWavelength(unittest.TestCase):
+#     # output tests
+#     # input tests
+#     def test_types(self):
+#         # Make sure type errors are raised when necessary
+#         self.assertRaises(TypeError, reduce_wavelength, wavelengths, cwl, half_range, return_indicies)
+
+
+
+tmpout = gaussian(x=np.array([0]), cwl=1, fwhm=1, intensity=1)
 class TestGaussian(unittest.TestCase):
-    # def test_area(self):
-    #     # Test areas when radius > 0
-    #     self.assertAlmostEqual(circle_area(1), pi)
-    #     self.assertAlmostEqual(circle_area(0), 0)
-    #     self.assertAlmostEqual(circle_area(2.1), pi*(2.1**2))
+    def test_output(self):
+        # check that the output is proper
+        self.assertEqual(all(np.isreal(tmpout)), True, 'gaussian output contains non real values')
+        self.assertEqual(len(tmpout.shape), 1, 'gaussian output is not a 1D')
+        self.assertEqual(type(tmpout), np.ndarray, TypeError('gaussian output is not a ndarray'))
 
     def test_values(self):
         # Make sure value errors are raised when necessary
         self.assertRaises(ValueError, gaussian, x=np.array([0]), cwl=1, fwhm=-1, intensity=1)
+        self.assertRaises(ValueError, gaussian, x=np.array([0]), cwl=1, fwhm=1, intensity=-1)
 
     def test_types(self):
         # Make sure type errors are raised when necessary
@@ -19,3 +30,12 @@ class TestGaussian(unittest.TestCase):
         self.assertRaises(TypeError, gaussian, x=np.array(['a']), cwl=1, fwhm=1, intensity=1)
         self.assertRaises(TypeError, gaussian, x=np.array([0]), cwl='a', fwhm=1, intensity=1)
         self.assertRaises(TypeError, gaussian, x=np.array([0]), cwl=1, fwhm='a', intensity=1)
+        self.assertRaises(TypeError, gaussian, x=np.array([0]), cwl=1, fwhm=1, intensity='a')
+
+tmpout = gaussian_norm(x=np.array([0]), cwl=1, fwhm=1, intensity=1)
+class TestGaussianNorm(unittest.TestCase):
+    def test_output(self):
+        # check that the output is proper
+        self.assertEqual(all(np.isreal(tmpout)), True, 'gaussian_norm output contains non real values')
+        self.assertEqual(len(tmpout.shape), 1, 'gaussian_norm output is not a 1D')
+        self.assertEqual(type(tmpout), np.ndarray, TypeError('gaussian_norm output is not a ndarray'))
