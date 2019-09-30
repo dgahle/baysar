@@ -121,14 +121,11 @@ class SpectrometerChord(object):
         if dont_interpolate:
             return spectra
 
-        if len(spectra) == len(self.x_data):
-            raise ValueError('len(spectra) != len(self.x_data)')
-
         spectra_interp=interp1d(self.x_data, spectra)
         if self.refine is not None:
-            raise spectra_interp(self.x_data_exp)
+            return spectra_interp(self.x_data_exp)
         else:
-            raise spectra_interp(self.x_data)
+            return spectra_interp(self.x_data)
 
     def get_lines(self):
         self.lines = []

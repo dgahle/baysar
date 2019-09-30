@@ -1,7 +1,7 @@
 import numpy as np
 
 import os, sys, io
-import copy
+import copy, warnings
 
 import collections
 from baysar.lineshapes import MeshLine
@@ -16,15 +16,18 @@ def power10(var):
 class HiddenPrints:
     def __enter__(self):
         self._original_stdout = sys.stdout
+        self._original_stderr = sys.stderr
         sys.stdout = open(os.devnull, 'w')
+        sys.stderr = open(os.devnull, 'w')
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         sys.stdout.close()
+        sys.stderr.close()
         sys.stdout = self._original_stdout
+        sys.stderr = self._original_stderr
 
 
 class arb_obj(object):
-
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
@@ -33,15 +36,12 @@ class arb_obj(object):
 
 
 class arb_obj_single_input(object):
-
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
     def __call__(self, theta):
-
         if type(theta) not in (float, int):
             theta = theta[0]
-
         return np.power(10, theta)
 
 
@@ -331,6 +331,8 @@ class PlasmaLine():
             bal = np.zeros((len(tau), len(ne), len(te), len(meta)))
 
             for t_counter, t in enumerate(tau):
+                # with warnings.catch_warnings():
+                #     warnings.simplefilter("ignore")
                 with HiddenPrints():
                     out, _ = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
                 bal[t_counter, :, :, :] = out['ion'].clip(1e-50)
@@ -430,7 +432,8 @@ if __name__ == '__main__':
     species = ['D', 'N']
     ions = [ ['0'], ['1', '2', '3'] ]
     noise_region = [[4040, 4050]]
-    mystery_lines = [[[4070], [4001, 4002]], [1, [0.4, 0.6]]]
+    mystery_lines = [ [[4070], [4001, 4002]],
+                       [[1], [0.4, 0.6]]]
 
     input_dict = make_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
                                 instrument_function=instrument_function, emission_constant=emission_constant,
