@@ -158,8 +158,9 @@ class BaysarPosterior(object):
                 nu = min(bounds) + sigma
                 start.append(np.random.normal(nu, sigma/3))
         if flat:
-            start[self.plasma.slices['electron_temperature']] = start[self.plasma.slices['electron_temperature']][0]
-            start[self.plasma.slices['electron_density']] = start[self.plasma.slices['electron_density']][0]
+            for param in ['electron_density', 'electron_temperature']:
+                for index in np.arange(self.plasma.slices[param].start, self.plasma.slices[param].stop):
+                    start[index] = start[self.plasma.slices[param]][0]
         return np.array(start)
 
     # # TODO: This needs to be generalised and have flags so is optional

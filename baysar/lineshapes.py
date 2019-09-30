@@ -139,9 +139,9 @@ class Gaussian(object):
             self.fractions = fractions
 
         if self.normalise:
-            self.func = gaussian
-        else:
             self.func = gaussian_norm
+        else:
+            self.func = gaussian
 
     def __call__(self, theta):
         if self.cwl is not None and self.fwhm is not None:
