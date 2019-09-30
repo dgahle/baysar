@@ -22,7 +22,6 @@ from baysar.lineshapes import Gaussian, reduce_wavelength
 
 
 class XLine(object):
-
     def __init__(self, cwl, wavelengths, plasma, fractions, fwhm=0.3, species='X', half_range=5):
         self.plasma = plasma
         self.species = species
@@ -153,161 +152,116 @@ class ADAS406Lines(object):
         return self.linefunction(ti, sum(ems))
 
 
+# def comparison(self, theta, line_model='stehle_param'):
+#
+#     from pystark import BalmerLineshape, ls_norm
+#
+#     electron_density, ion_temperature, b_field, viewangle = theta
+#
+#     line = BalmerLineshape(self.n_upper, electron_density, ion_temperature, bfield=b_field,
+#                            viewangle=viewangle, line_model=line_model,
+#                            wl_axis=self.wavelengths / 1e10, wl_centre=self.cwl / 1e10,
+#                            override_input_check=True)
+#
+#      return line.ls_szd / trapz(line.ls_szd, self.wavelengths)
+
+loman_coeff={'32': [0.7665, 0.064, 3.710e-18],  # Balmer Series
+             '42': [0.7803, 0.050, 8.425e-18],
+             '52': [0.6796, 0.030, 1.310e-15],
+             '62': [0.7149, 0.028, 3.954e-16],
+             '72': [0.7120, 0.029, 6.258e-16],
+             '82': [0.7159, 0.032, 7.378e-16],
+             '92': [0.7177, 0.033, 8.947e-16],
+             '102': [0.7158, 0.032, 1.239e-15],
+             '112': [0.7146, 0.028, 1.632e-15],
+             '122': [0.7388, 0.026, 6.459e-16],
+             '132': [0.7356, 0.020, 9.012e-16],
+
+             '43': [0.7449, 0.045, 1.330e-16],  # Paschen Series
+             '53': [0.7356, 0.044, 6.640e-16],
+             '63': [0.7118, 0.016, 2.481e-15],
+             '73': [0.7137, 0.029, 3.270e-15],
+             '83': [0.7133, 0.032, 4.343e-15],
+             '93': [0.7165, 0.033, 5.588e-15], }
+
+def stehle_param(n_upper, n_lower, cwl, wavelengths, electron_density, electron_temperature):
+    # Paramaterised MMM Stark profile coefficients from Bart's paper
+    a_ij, b_ij, c_ij = loman_coeff[str(n_upper) + str(n_lower)]
+    delta_lambda_12ij = c_ij * ((1e6 * electron_density) ** a_ij) / (electron_temperature ** b_ij)  # nm
+    ls_s = 1 / (abs((wavelengths - cwl)) ** (5. / 2.) +
+                (10 * delta_lambda_12ij / 2) ** (5. / 2.))
+    return ls_s / trapz(ls_s, wavelengths)
+
+def zeeman_split(cwl, peak, wavelengths, b_field, viewangle):
+
+    """
+     returns input lineshape, with Zeeman splitting accounted for by a simple model
+
+    :param x:
+    :param x_centre:
+    :param ls:
+    :param x_units:
+    :return:
+
+    """
+
+    viewangle *= pi
+    electron_charge = scipy.constants.e
+    electron_mass = scipy.constants.m_e
+    speed_of_light = scipy.constants.c
+
+    rel_intensity_pi = 0.5 * sin(viewangle) ** 2
+    rel_intensity_sigma = 0.25 * (1 + cos(viewangle) ** 2)
+    freq_shift_sigma = electron_charge / (4 * pi *electron_mass) * b_field
+    wave_shift_sigma = abs(cwl - 1 / (1/(cwl) - freq_shift_sigma / speed_of_light*1e10))
+
+    # relative intensities normalised to sum to one
+    ls_sigma_minus = rel_intensity_sigma * interp(wavelengths + wave_shift_sigma, wavelengths, peak)
+    ls_sigma_plus = rel_intensity_sigma * interp(wavelengths - wave_shift_sigma, wavelengths, peak)
+    ls_pi = rel_intensity_pi * peak
+    return ls_sigma_minus + ls_pi + ls_sigma_plus
+
 class HydrogenLineShape(object):
-
     def __init__(self, cwl, wavelengths, n_upper, n_lower, atomic_mass, zeeman=True):
-
         self.cwl = cwl
         self.wavelengths = wavelengths
-
         self.zeeman = zeeman
-
+        self.n_upper=n_upper
+        self.n_lower=n_lower
         wavelengths_doppler_num = len(self.wavelengths)
-
         if type(wavelengths_doppler_num/2) != int:
             wavelengths_doppler_num += 1
 
         self.wavelengths_doppler = linspace(self.cwl-10, self.cwl+10, wavelengths_doppler_num)
-
         self.doppler_function = DopplerLine(cwl=self.cwl, wavelengths=self.wavelengths_doppler, atomic_mass=atomic_mass, half_range=50)
 
-        self.loman_dict  =  {'32': [0.7665, 0.064, 3.710e-18],  # Balmer Series
-                             '42': [0.7803, 0.050, 8.425e-18],
-                             '52': [0.6796, 0.030, 1.310e-15],
-                             '62': [0.7149, 0.028, 3.954e-16],
-                             '72': [0.7120, 0.029, 6.258e-16],
-                             '82': [0.7159, 0.032, 7.378e-16],
-                             '92': [0.7177, 0.033, 8.947e-16],
-                             '102': [0.7158, 0.032, 1.239e-15],
-                             '112': [0.7146, 0.028, 1.632e-15],
-                             '122': [0.7388, 0.026, 6.459e-16],
-                             '132': [0.7356, 0.020, 9.012e-16],
-
-                             '43': [0.7449, 0.045, 1.330e-16],  # Paschen Series
-                             '53': [0.7356, 0.044, 6.640e-16],
-                             '63': [0.7118, 0.016, 2.481e-15],
-                             '73': [0.7137, 0.029, 3.270e-15],
-                             '83': [0.7133, 0.032, 4.343e-15],
-                             '93': [0.7165, 0.033, 5.588e-15], }
-
-        self.n_upper = n_upper
-        self.n_lower = n_lower
-
-        self.loman_ij_abc = self.loman_dict[str(self.n_upper) + str(self.n_lower)]
-
-        self.get_delta_magnetic_quantum_number()
-        self.bohr_magnaton = scipy.constants.physical_constants['Bohr magneton in K/T'][0]
-
-        self.electron_charge = scipy.constants.e
-        self.electron_mass = scipy.constants.m_e
-        self.speed_of_light = scipy.constants.c
-
-        pass
-
     def __call__(self, theta):
-
         if self.zeeman:
             electron_density, electron_temperature, ion_temperature, b_field, viewangle = theta
         else:
             electron_density, electron_temperature, ion_temperature = theta
 
-        stark_component = self.stehle_param(electron_density, electron_temperature)
-
+        stark_component = stehle_param(self.n_upper, self.n_lower, self.cwl, self.wavelengths, electron_density, electron_temperature)
         doppler_component = self.doppler_function(ion_temperature, 1)
-
         peak = fftconvolve(stark_component, doppler_component, 'same')
         peak /= trapz(peak, self.wavelengths)
 
         if self.zeeman:
-            return self.zeeman_split(peak, b_field, viewangle)
-
+            return zeeman_split(self.cwl, peak, self.wavelengths, b_field, viewangle)
         else:
             return peak
 
-    def stehle_param(self, electron_density, electron_temperature):
-
-
-        # Paramaterised MMM Stark profile coefficients from Bart's paper
-
-        # loman_abc = self.loman_ij_abc[str(self.n_upper) + str(self.n_lower)]
-        a_ij, b_ij, c_ij = self.loman_ij_abc
-
-        delta_lambda_12ij = c_ij * ((1e6 * electron_density) ** a_ij) / (electron_temperature ** b_ij)  # nm
-
-        ls_s = 1 / (abs((self.wavelengths - self.cwl)) ** (5. / 2.) +
-                    (10 * delta_lambda_12ij / 2) ** (5. / 2.))
-
-        ls_s /= trapz(ls_s, self.wavelengths)
-
-        return ls_s
-
-    def zeeman_split(self, peak, b_field, viewangle):
-
-        """
-         returns input lineshape, with Zeeman splitting accounted for by a simple model
-
-        :param x:
-        :param x_centre:
-        :param ls:
-        :param x_units:
-        :return:
-
-        """
-
-        viewangle *= pi
-
-        rel_intensity_pi = 0.5 * sin(viewangle) ** 2
-        rel_intensity_sigma = 0.25 * (1 + cos(viewangle) ** 2)
-
-        freq_shift_sigma = self.electron_charge / (4 * pi * self.electron_mass) * b_field
-
-        # wave_shift_sigma = self.delta_magnetic_quantum_number * self.bohr_magnaton * b_field
-        # wave_shift_sigma = self.delta_magnetic_quantum_number * 0.5 * b_field
-        wave_shift_sigma = abs(self.cwl - 1 / (1/(self.cwl) - freq_shift_sigma / 299792458.0e10))
-
-
-        # print(freq_shift_sigma, wave_shift_sigma)
-
-        # relative intensities normalised to sum to one
-
-        ls_sigma_minus = rel_intensity_sigma * interp(self.wavelengths + wave_shift_sigma, self.wavelengths, peak)
-        ls_sigma_plus = rel_intensity_sigma * interp(self.wavelengths - wave_shift_sigma, self.wavelengths, peak)
-        ls_pi = rel_intensity_pi * peak
-
-        return ls_sigma_minus + ls_pi + ls_sigma_plus
-
-    def get_delta_magnetic_quantum_number(self):
-
-        upper_m = 1
-        lower_m = 0
-
-        self.delta_magnetic_quantum_number = upper_m - lower_m
-
-    def comparison(self, theta, line_model='stehle_param'):
-
-        from pystark import BalmerLineshape, ls_norm
-
-        electron_density, ion_temperature, b_field, viewangle = theta
-
-        line = BalmerLineshape(self.n_upper, electron_density, ion_temperature, bfield=b_field,
-                               viewangle=viewangle, line_model=line_model,
-                               wl_axis=self.wavelengths / 1e10, wl_centre=self.cwl / 1e10,
-                               override_input_check=True)
-
-        return line.ls_szd / trapz(line.ls_szd, self.wavelengths)
 
 
 class BalmerHydrogenLine(object):
-
     def __init__(self, plasma, species, cwl, wavelengths, half_range=40, zeeman=True):
-
         self.plasma = plasma
         self.species = species
         self.cwl = cwl
         self.line = self.species+'_'+str(self.cwl)
         self.wavelengths = wavelengths
         self.n_upper = self.plasma.input_dict['D_0'][self.cwl]['n_upper']
-        self.get_atomic_mass()
+        self.atomic_mass = get_atomic_mass(self.species)
         self.los = self.plasma.profile_function.electron_density.x
 
         self.reduced_wavelength, self.reduced_wavelength_indicies = \
@@ -322,86 +276,46 @@ class BalmerHydrogenLine(object):
                                            atomic_mass=self.atomic_mass, zeeman=zeeman)
 
     def __call__(self):
-
         n0 = self.plasma.plasma_state[self.species+'_dens']
         n1 = self.plasma.plasma_state['main_ion_density']
         ti = self.plasma.plasma_state[self.species+'_Ti']
-
-        bfield = self.plasma.plasma_state['b-field']
-        viewangle = self.plasma.plasma_state['viewangle']
-
         ne = self.plasma.plasma_state['electron_density']
         te = self.plasma.plasma_state['electron_temperature']
-
+        bfield = self.plasma.plasma_state['b-field']
+        viewangle = self.plasma.plasma_state['viewangle']
         length = diff(self.los)[0]
         length_per_sr = length / (4 * pi)
 
         rec_pec = np.power(10, self.rec_pec(ne, te))
-        rec_profile = n1 * ne * length_per_sr * rec_pec
-
         exc_pec = np.power(10, self.exc_pec(ne, te))
+        rec_profile = n1 * ne * length_per_sr * rec_pec
         exc_profile = n0 * ne * length_per_sr * nan_to_num( exc_pec )
-        # exc_profile = n0 * length_per_sr * nan_to_num( self.exc_tec(tec_in) )
 
         low_te = 0.2
         low_ne = 1e11
-
         low_te_indicies = where(te < low_te)
         low_ne_indicies = where(ne < low_ne)
-
         for indicies in [low_te_indicies, low_ne_indicies]:
             rec_profile[indicies] = 0.0
             exc_profile[indicies] = 0.0
 
         self.f_rec = sum(rec_profile) / sum(rec_profile + exc_profile)
-
         self.exc_profile = exc_profile
         self.rec_profile = rec_profile
         self.ems_profile = rec_profile + exc_profile
+        self.exc_ne = sum(exc_profile*ne)/sum(exc_profile)
+        self.rec_ne = sum(rec_profile*ne)/sum(rec_profile)
+        self.ems_ne = sum(self.ems_profile*ne)/sum(self.ems_profile)
+        self.exc_te = sum(exc_profile*te)/sum(exc_profile)
+        self.rec_te = sum(rec_profile*te)/sum(rec_profile)
+        self.ems_te = sum(self.ems_profile*te)/sum(self.ems_profile)
 
-        rec_weighted_electron_density = sum( rec_profile * ne ) / sum( rec_profile )
-        exc_weighted_electron_density = sum( exc_profile * ne ) / sum( exc_profile )
-
-        rec_weighted_electron_temperature = sum( rec_profile * te ) / sum( rec_profile )
-        exc_weighted_electron_temperature = sum( exc_profile * te ) / sum( exc_profile )
-
-        ems_weighted_electron_density = sum( self.ems_profile * ne ) / sum( self.ems_profile )
-        ems_weighted_electron_temperature = sum( self.ems_profile * te ) / sum( self.ems_profile )
-
-        self.exc_ne = exc_weighted_electron_density
-        self.rec_ne = rec_weighted_electron_density
-
-        self.exc_te = exc_weighted_electron_temperature
-        self.rec_te = rec_weighted_electron_temperature
-
-        self.ems_ne = ems_weighted_electron_density
-        self.ems_te = ems_weighted_electron_temperature
-
-        line_models = ['rosato', 'stehle', 'stehle_param', 'voigt']
-        line_model_key = 2
-
-        # tmp_wavelengths = self.wavelengths
         tmp_wavelengths = self.reduced_wavelength
-
-        '''
-        if self.zeeman:
-            electron_density, electron_temperature, ion_temperature, b_field, viewangle = theta
-        else:
-            electron_density, electron_temperature, ion_temperature = theta
-            '''
-
-        self.exc_lineshape_input = [exc_weighted_electron_density, self.exc_te, ti, bfield, viewangle]
-        self.rec_lineshape_input = [rec_weighted_electron_density, self.rec_te, ti, bfield, viewangle]
-
-        exc_peak = nan_to_num( self.lineshape(self.exc_lineshape_input) )
-        rec_peak = nan_to_num( self.lineshape(self.rec_lineshape_input) )
-
-        self.exc_peak = exc_peak
-        self.rec_peak = rec_peak
-
-        tmp_peak = rec_peak * sum(rec_profile) + exc_peak * sum(exc_profile)
-
-        self.tmp_peak = tmp_peak
+        self.exc_lineshape_input = [self.exc_ne, self.exc_te, ti, bfield, viewangle]
+        self.rec_lineshape_input = [self.rec_ne, self.rec_te, ti, bfield, viewangle]
+        self.exc_peak = nan_to_num( self.lineshape(self.exc_lineshape_input) )
+        self.rec_peak = nan_to_num( self.lineshape(self.rec_lineshape_input) )
+        tmp_peak = self.rec_peak*sum(rec_profile) + self.exc_peak*sum(exc_profile)
 
         peak = self.zeros_peak # zeros(len(self.wavelengths))
         peak[min(self.reduced_wavelength_indicies):max(self.reduced_wavelength_indicies)+1] = tmp_peak
@@ -409,12 +323,6 @@ class BalmerHydrogenLine(object):
         assert len(peak) == len(self.wavelengths), 'len(peak) != len(self.wavelengths)'
 
         return peak
-
-    def get_atomic_mass(self):
-
-        mass = {'H': 1, 'D': 2, 'T': 3}
-
-        self.atomic_mass = mass[self.species[0]]
 
 
 if __name__=='__main__':
