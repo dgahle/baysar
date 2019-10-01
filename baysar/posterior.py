@@ -32,7 +32,7 @@ class AntiprotonCost(object):
         self.plasma=plasma
     def __call__(self):
         if any(self.plasma.plasma_state['main_ion_density'] < 0):
-            return np.log10(abs(self.plasma.plasma_state['main_ion_density'].clip(max=-1e-20))).sum()
+            return -np.log10(abs(self.plasma.plasma_state['main_ion_density'].clip(max=-1e-20))).sum()
         else:
             return 0.
 
@@ -119,13 +119,6 @@ class BaysarPosterior(object):
     def __call__(self, theta, skip_error=True):
         theta = list(theta)
         self.last_proposal = theta
-        if self.check_bounds:
-            if not all(self.plasma.is_theta_within_bounds(theta)):
-                prob = -1e50
-                if self.print_errors:
-                    print('Out of Bounds')
-                return prob
-
         # updating plasma state
         self.plasma(theta)
         prob = [p() for p in self.posterior_components]
