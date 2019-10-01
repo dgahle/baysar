@@ -116,7 +116,7 @@ def put_in_iterable(input):
         return input
 
 class Gaussian(object):
-    def __init__(self, x=None, cwl=None, fwhm=None, fractions=None, normalise=False, reduced_range=None):
+    def __init__(self, x=None, cwl=None, fwhm=None, fractions=None, normalise=True, reduced_range=None):
         self.x=x
         self.cwl=put_in_iterable(cwl)
         self.fwhm=fwhm

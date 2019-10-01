@@ -27,6 +27,13 @@ def clip_data(x_data, y_data, x_range):
 
     x_index = where((min(x_range) < x_data) & (x_data < max(x_range)))
 
+    if not np.isreal(x_data[x_index]).all():
+        print('not isreal(x_data[x_index])')
+        print(x_data)
+    if not np.isreal(y_data[x_index]).all():
+        print('not isreal(Y_data[x_index])')
+        print(y_data)
+
     return x_data[x_index], y_data[x_index]
 
 def progressbar(it, prefix="", size=60, file=sys.stdout):
