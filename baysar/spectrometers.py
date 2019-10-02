@@ -50,6 +50,22 @@ def progressbar(it, prefix="", size=60, file=sys.stdout):
     file.flush()
 
 from baysar.input_functions import within
+from scipy.ndimage.measurements import center_of_mass
+
+def centre_peak0(peak, places=7):
+    com=center_of_mass(peak)
+    x=np.arange(len(peak))
+    centre=np.mean(x)
+    shift=com-centre
+    interp=interp1d(x, peak, bounds_error=False, fill_value=0.)
+    return interp(x+shift)
+
+def centre_peak(peak, places=7):
+    x=np.arange(len(peak))
+    centre=np.mean(x)
+    while not np.round(abs(centre-center_of_mass(peak))[0], places)==0:
+        peak=centre_peak0(peak)
+    return peak
 
 class SpectrometerChord(object):
 
@@ -61,7 +77,6 @@ class SpectrometerChord(object):
     """
 
     def __init__(self, plasma, refine=None, chord_number=None):
-
         self.chord_number = chord_number
         self.plasma = plasma
         self.input_dict = self.plasma.input_dict
@@ -76,7 +91,8 @@ class SpectrometerChord(object):
         else:
             self.x_data = self.input_dict['wavelength_axis'][self.chord_number]
 
-        self.instrument_function = self.input_dict['instrument_function'][self.chord_number]
+        self.instrument_function=centre_peak(self.input_dict['instrument_function'][self.chord_number])
+        self.instrument_function/=sum(self.instrument_function)
         self.noise_region = self.input_dict['noise_region'][self.chord_number]
         self.a_cal = self.input_dict['emission_constant'][self.chord_number]
 
@@ -153,6 +169,7 @@ class SpectrometerChord(object):
                 self.lines.append(line)
 
     def int_func_sparce_matrix(self):
+        # self.centre_instrument_function()
         if self.refine is not None:
             self.instrument_function_x = arange( len(self.instrument_function) )
             int_func_interp = interp1d(self.instrument_function_x, self.instrument_function)

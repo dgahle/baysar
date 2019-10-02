@@ -32,10 +32,15 @@ class TestGaussian(unittest.TestCase):
         self.assertRaises(TypeError, gaussian, x=np.array([0]), cwl=1, fwhm='a', intensity=1)
         self.assertRaises(TypeError, gaussian, x=np.array([0]), cwl=1, fwhm=1, intensity='a')
 
-tmpout = gaussian_norm(x=np.array([0]), cwl=1, fwhm=1, intensity=1)
+tmpoutx=np.linspace(0, 2, 50)
+tmpout=gaussian_norm(x=tmpoutx, cwl=1, fwhm=0.2, intensity=1)
 class TestGaussianNorm(unittest.TestCase):
     def test_output(self):
         # check that the output is proper
         self.assertEqual(all(np.isreal(tmpout)), True, 'gaussian_norm output contains non real values')
         self.assertEqual(len(tmpout.shape), 1, 'gaussian_norm output is not a 1D')
         self.assertEqual(type(tmpout), np.ndarray, TypeError('gaussian_norm output is not a ndarray'))
+        self.assertAlmostEqual(np.trapz(tmpout, tmpoutx), 1, ValueError("Normalisation is not properly functioning"))
+
+if __name__ == '__main__':
+    unittest.main()

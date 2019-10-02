@@ -1202,8 +1202,15 @@ def plot_p0_probs(posterior, p0):
 #     fig.show()
 
 
-def plot_fit(posterior, sample, size=100, alpha=0.1, ylim=(1e10, 1e16),
+def plot_fit(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
              error_norm=True, plasma_ref=None, filename=None):
+
+    if size is None:
+        size = len(sample)
+    if alpha is None:
+        alpha=1/size
+    if alpha < 0.02:
+        alpha = 0.02
 
     # fig, ax = plt.subplots(2, 1, sharex=True)
     fig = plt.figure()

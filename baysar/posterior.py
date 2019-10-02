@@ -32,7 +32,8 @@ class AntiprotonCost(object):
         self.plasma=plasma
     def __call__(self):
         if any(self.plasma.plasma_state['main_ion_density'] < 0):
-            return -np.log10(abs(self.plasma.plasma_state['main_ion_density'].clip(max=-1e-20))).sum()
+            anti_profile=self.plasma.plasma_state['main_ion_density'].clip(max=-1)
+            return -np.log10(abs(anti_profile)).sum()
         else:
             return 0.
 
@@ -58,25 +59,18 @@ class BaysarPosterior(object):
         self.input_dict = input_dict
         self.plasma = PlasmaLine(input_dict=input_dict, profile_function=profile_function)
 
-        print(priors)
         self.build_posterior_components()
         self.check_bounds = check_bounds
         self.print_errors = print_errors
         self.temper = temper
 
         self.priors = priors
-        print(self.priors)
         self.curvature = curvature
-        print(self.priors)
         if self.curvature is not None:
-            print(self.priors)
             self.priors.append(CurvatureCost(self.plasma, self.curvature))
-            print(self.priors)
         self.priors.append(AntiprotonCost(self.plasma))
-        print(self.priors)
 
         self.posterior_components.extend(self.priors)
-        print(self.priors)
 
         self.nan_thetas = []
         self.runtimes = []
@@ -122,7 +116,6 @@ class BaysarPosterior(object):
         # updating plasma state
         self.plasma(theta)
         prob = [p() for p in self.posterior_components]
-        print(prob)
         prob = sum(prob)
         self.check_output(prob)
         return prob/self.temper # temper default is 1
