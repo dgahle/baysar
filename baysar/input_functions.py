@@ -94,6 +94,8 @@ def check_input_dict_input(wavelength_axis, experimental_emission, instrument_fu
     if type(line_data)!=dict:
         raise TypeError('type(line_data)!=dict. Input line_data must be a dict')
 
+    instrument_function=[np.array(i, dtype=float) for i in instrument_function]
+
     # All species and ions must be in the line_data dict
     check_emitters_in_line_data = []
     emitter_fails = []

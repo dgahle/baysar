@@ -92,7 +92,7 @@ class SpectrometerChord(object):
             self.x_data = self.input_dict['wavelength_axis'][self.chord_number]
 
         self.instrument_function=centre_peak(self.input_dict['instrument_function'][self.chord_number])
-        self.instrument_function/=sum(self.instrument_function)
+        self.instrument_function=np.true_divide(self.instrument_function, self.instrument_function.sum())
         self.noise_region = self.input_dict['noise_region'][self.chord_number]
         self.a_cal = self.input_dict['emission_constant'][self.chord_number]
 
@@ -129,7 +129,10 @@ class SpectrometerChord(object):
         return likeli
 
     def forward_model(self, dont_interpolate=False):
+        wave_cal = self.plasma.plasma_state['calwave'+str(self.chord_number)]
+        self.wavelength_scaling(wave_cal)
         spectra = sum([ l().flatten() for l in self.lines ]) # TODO: This is what takes all the time
+        self.wavelength_scaling(1/wave_cal)
         continuum = self.plasma.plasma_state['background'+str(self.chord_number)]
         tmp_a_cal = self.plasma.plasma_state['cal'+str(self.chord_number)]
         spectra = (spectra / tmp_a_cal) + continuum
@@ -144,11 +147,21 @@ class SpectrometerChord(object):
         if dont_interpolate:
             return spectra
 
-        spectra_interp=interp1d(self.x_data, spectra)
+        spectra_interp=interp1d(self.x_data, spectra, bounds_error=False, fill_value='extrapolate')
         if self.refine is not None:
             return spectra_interp(self.x_data_exp)
         else:
             return spectra_interp(self.x_data)
+
+    def wavelength_scaling(self, wave_cal):
+        for line in self.lines:
+            if type(line)==XLine:
+                line.line.x*=wave_cal
+            if type(line)==ADAS406Lines:
+                line.linefunction.line.x*=wave_cal
+            if type(line)==BalmerHydrogenLine:
+                line.lineshape.wavelengths*=wave_cal
+                line.lineshape.doppler_function.line.x*=wave_cal
 
     def get_lines(self):
         self.lines = []
@@ -212,7 +225,7 @@ if __name__=='__main__':
     num_chords = 1
     wavelength_axis = [np.linspace(3900, 4200, 512)]
     experimental_emission = [np.array([1e12*np.random.rand() for w in wavelength_axis[0]])]
-    instrument_function = [np.array([0, 1, 0])]
+    instrument_function = [np.array([0., 1., 0.])]
     emission_constant = [1e11]
     species = ['D', 'N']
     ions = [ ['0'], ['1'] ] # , '2', '3'] ]

@@ -44,6 +44,9 @@ class arb_obj_single_input(object):
             theta = theta[0]
         return np.power(10, theta)
 
+atomic_number={'He':2, 'Li':3, 'Be':4, 'B':5, 'C':6, 'N':7, 'O':8, 'F':9, 'Ne':10}
+def get_number_of_ions(element):
+    return atomic_number[element]+1
 
 from adas import run_adas406, read_adf15
 from scipy.interpolate import RegularGridInterpolator
@@ -57,7 +60,7 @@ class PlasmaLine():
     handler which handles the interface between the sampler and the forward model.
     """
 
-    def __init__(self, input_dict, profile_function=None, cal_functions=None, background_functions=None):
+    def __init__(self, input_dict, profile_function=None, cal_functions=None, calwave_functions=None, background_functions=None):
 
         'input_dict input has been checked if created with make_input_dict'
 
@@ -80,7 +83,7 @@ class PlasmaLine():
         if self.contains_hydrogen:
             self.get_hydrogen_pecs()
 
-        self.set_up_theta_functions(profile_function, cal_functions, background_functions)
+        self.get_theta_functions(profile_function, cal_functions, calwave_functions, background_functions)
         self.build_tags_slices_and_bounds()
 
         self.los = self.profile_function.electron_density.x
@@ -105,15 +108,18 @@ class PlasmaLine():
         bounds = []
         slice_lengths = []
 
-        for chord, cal_func, back_func in zip(np.arange(self.num_chords), self.cal_functions, self.background_functions):
+        for chord, cal_func, calwave_func, back_func in zip(np.arange(self.num_chords), self.cal_functions, self.calwave_functions, self.background_functions):
 
             self.tags.append('cal'+str(chord))
+            self.tags.append('calwave'+str(chord))
             self.tags.append('background'+str(chord))
 
             slice_lengths.append(cal_func.number_of_variables)
+            slice_lengths.append(calwave_func.number_of_variables)
             slice_lengths.append(back_func.number_of_variables)
 
             bounds.append(cal_func.bounds)
+            bounds.append(calwave_func.bounds)
             bounds.append(back_func.bounds)
 
         self.tags.append('electron_density')
@@ -220,7 +226,7 @@ class PlasmaLine():
         self.plasma_state = collections.OrderedDict(plasma_state)
         self.plasma_state['main_ion_density'] = self.plasma_state['electron_density'] - self.calc_total_impurity_electrons(False)
 
-    def set_up_theta_functions(self, profile_function=None, cal_functions=None, background_functions=None):
+    def get_theta_functions(self, profile_function=None, cal_functions=None, calwave_functions=None, background_functions=None):
 
         if profile_function is None:
             x = np.linspace(1, 9, 5)
@@ -244,8 +250,16 @@ class PlasmaLine():
         else:
             self.background_functions = background_functions
 
+        tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[-1e-4, 1e-4])
+        if calwave_functions is None:
+            self.calwave_functions = [tmp_func for num in np.arange(self.num_chords)]
+        else:
+            self.calwave_functions = calwave_functions
+
+
+
     def assign_theta_functions(self):
-        theta_functions = [self.cal_functions, self.background_functions,
+        theta_functions = [self.cal_functions, self.calwave_functions, self.background_functions,
                            [self.profile_function.electron_density, self.profile_function.electron_temperature],
                            [power10 for tag in self.tags if any([tag.startswith(s+'_') for s in self.species]) or 'X_' in tag]]
         theta_functions = np.concatenate(theta_functions).tolist()
@@ -323,29 +337,16 @@ class PlasmaLine():
         tau = self.adas_plasma_inputs['tau']
 
         for elem in self.impurities:
-            meta = self.get_meta(elem)
-            bal = np.zeros((len(tau), len(ne), len(te), len(meta)))
-
+            num_ions=get_number_of_ions(elem)
+            bal = np.zeros((len(tau), len(ne), len(te), num_ions))
             for t_counter, t in enumerate(tau):
-                # with warnings.catch_warnings():
-                #     warnings.simplefilter("ignore")
                 with HiddenPrints():
-                    out, _ = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
+                    out, _ = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, all=True)
                 bal[t_counter, :, :, :] = out['ion'].clip(1e-50)
 
             ion_bals.append((elem, bal))
 
         self.impurity_ion_bal = dict(ion_bals)
-
-    @staticmethod
-    def get_meta(element):
-
-        meta_ls = {'B': 5, 'C': 6, 'N': 7, 'O': 8, 'F': 9, 'Ne': 10}
-
-        meta = np.zeros(meta_ls[element]+1)
-        meta[0] = 1
-
-        return meta
 
     def build_impurity_tec(self, file, exc, rec, elem, ion):
 
