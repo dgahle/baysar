@@ -31,10 +31,14 @@ class XLine(object):
             self.line_tag += '_' + str(c)
 
         self.line = Gaussian(x=wavelengths, cwl=cwl, fwhm=fwhm, fractions=fractions, normalise=True)
+        self.estimate_log_ems()
 
     def __call__(self):
         ems = self.plasma.plasma_state[self.line_tag]
         return self.line(ems)
+
+    def estimate_log_ems(self):
+        self.log_ems_estimate=...
 
 def ti_to_fwhm(cwl, atomic_mass, ti):
     tmp = 7.715e-5 * sqrt(ti / atomic_mass)
@@ -187,7 +191,7 @@ loman_coeff={'32': [0.7665, 0.064, 3.710e-18],  # Balmer Series
 def stehle_param(n_upper, n_lower, cwl, wavelengths, electron_density, electron_temperature):
     # Paramaterised MMM Stark profile coefficients from Bart's paper
     a_ij, b_ij, c_ij = loman_coeff[str(n_upper) + str(n_lower)]
-    delta_lambda_12ij = c_ij * ((1e6 * electron_density) ** a_ij) / (electron_temperature ** b_ij)  # nm
+    delta_lambda_12ij = c_ij*np.divide( (1e6*electron_density)**a_ij, electron_temperature**b_ij)  # nm
     ls_s = 1 / (abs((wavelengths - cwl)) ** (5. / 2.) +
                 (10 * delta_lambda_12ij / 2) ** (5. / 2.))
     return ls_s / trapz(ls_s, wavelengths)

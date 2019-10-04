@@ -1,11 +1,11 @@
+import os, sys, io
 import numpy as np
 from numpy import random
 import time as clock
-
-import os, sys, io
+from scipy.optimize import fmin_l_bfgs_b
 
 from baysar.plasmas import PlasmaLine
-from baysar.spectrometers import SpectrometerChord, within
+from baysar.spectrometers import SpectrometerChord, within, progressbar
 
 
 def tmp_func(*args, **kwargs):
@@ -137,7 +137,7 @@ class BaysarPosterior(object):
             chord = SpectrometerChord(plasma=self.plasma, refine=refine, chord_number=chord_num)
             self.posterior_components.append(chord)
 
-    def start_sample(self, num, min_logp=-1e10, high_prob=False, order=1, flat=False):
+    def start_sample_old(self, num, min_logp=-1e10, high_prob=False, order=1, flat=False):
         if high_prob:
             old_num = num
             num = int(num * 10)
@@ -156,81 +156,25 @@ class BaysarPosterior(object):
 
         return np.array(sb_start[::-1])
 
+    def sample_start(self, number, order=1, flat=False):
+        sample=[]
+        for i in progressbar(np.arange(number), 'Building starting sample: ', 30):
+            start, logp, info=fmin_l_bfgs_b(self.cost, self.random_start(order, flat), approx_grad=True, bounds=self.plasma.theta_bounds.tolist())
+            sample.append((start, logp))
+        return [s[0].tolist() for s in sorted(sample, key=lambda x:x[1])]
+
     def random_start(self, order=1, flat=False):
         start = [np.mean(np.random.uniform(bounds[0], bounds[1], size=order)) for bounds in self.plasma.theta_bounds]
         if flat:
             for param in ['electron_density', 'electron_temperature']:
                 for index in np.arange(self.plasma.slices[param].start, self.plasma.slices[param].stop):
                     start[index] = start[self.plasma.slices[param]][0]
-        return np.array(start)
 
-    # # TODO: This needs to be generalised and have flags so is optional
-    # # TODO: Need to add a prior for main ion density
-    # def prior_checks(self, theta):
-    #
-    #     self.plasma.update_plasma(theta)
-    #
-    #     total_impurity = 0
-    #
-    #     for tmp_element in list(self.plasma.input_dict.keys()):
-    #
-    #         if any( [tmp_element==t for t in ('D', 'X')] ):
-    #             pass
-    #         else:
-    #             total_impurity += self.plasma.plasma_state[tmp_element]['conc']
-    #
-    #     if total_impurity > ( 0.5 * max(self.plasma.plasma_state['electron_density']) ):
-    #
-    #         print('total_impurity > ne / 2 ', total_impurity / 1e14, '>',
-    #               0.5 * max(self.plasma.plasma_state['electron_density']))
-    #
-    #         return False
-    #
-    #     else:
-    #
-    #         return True
-    #
-    # # TODO: Needs tidying
-    # def line_ratio(posterior, upper, lower, res=10, magical_tau=1):
-    #
-    #     upper_line = posterior.posterior_components[upper[0]].lines[upper[1]].tec406
-    #     lower_line = posterior.posterior_components[lower[0]].lines[lower[1]].tec406
-    #
-    #     ratios = []
-    #
-    #     tau, ne = np.zeros(res) + magical_tau, np.linspace(1e13, 1e14, res)# np.logspace(12, 14, res)
-    #
-    #     long_te = np.linspace(2, 10, 5)
-    #
-    #     for tmp_te in long_te:
-    #         te = np.zeros(res) + tmp_te
-    #
-    #         tec_in = np.array([tau, ne, te]).T
-    #
-    #         ratios.append( np.nan_to_num(upper_line(tec_in) / lower_line(tec_in)) )
-    #
-    #     fig, ax = plt.subplots(1, 1)
-    #
-    #     for counter, ratio in enumerate(ratios):
-    #
-    #         l = str(long_te[counter]) + r'$\ / \ eV$'
-    #
-    #         ax.plot(ne*1e6, ratio, label=l)
-    #
-    #     ax.set_xlim([1e19, 1e20])
-    #
-    #     ylabel = r'$N \ II: \ 462/399 \ nm \ | \ \tau \ = $' + \
-    #              str(magical_tau*1e3) + r'$\ / \ ms$'
-    #     ax.set_ylabel(ylabel)
-    #     ax.set_xlabel(r'$n_{e} \ / \ m^{-3}$')
-    #
-    #     leg = []
-    #     leg.append(ax.legend())
-    #
-    #     for l in leg:
-    #         l.draggable()
-    #
-    #     fig.show()
+        for chord in [chord for chord in self.posterior_components if type(chord)==SpectrometerChord]:
+            mean=np.mean(chord.y_data_continuum)
+            std=np.std(chord.y_data_continuum)/10
+            start[self.plasma.slices['background'+str(chord.chord_number)]][0]=np.log10(np.random.normal(mean, std))
+        return np.array(start)
 
 
 
@@ -337,7 +281,7 @@ if __name__=='__main__':
     from baysar.input_functions import make_input_dict
 
     wavelength_axis = [np.linspace(3900, 4150, 512)]
-    experimental_emission = [np.array([1e12*np.random.rand() for w in wavelength_axis[0]])]
+    experimental_emission = [np.zeros(len(wavelength_axis[0]))+1e12*np.random.normal(0, 1e10)]
     instrument_function = [np.array([0, 1, 0])]
     emission_constant = [1e11]
     species = ['D', 'N']
@@ -355,16 +299,19 @@ if __name__=='__main__':
 
     posterior = BaysarPosterior(input_dict=input_dict, curvature=1e2)
 
-    rand_theta = posterior.random_start()
+    rand_theta=posterior.random_start()
+    start_sample=posterior.sample_start(number=3, order=1, flat=False)
     print(posterior(rand_theta))
+    for start in start_sample:
+        print(posterior(start), start)
 
-    from tulasa.general import plot
-    from tulasa.plotting_functions import plot_fit
-
-    sample_num = 20
-    sample = posterior.start_sample(sample_num, min_logp=-500)
-
-    plot([posterior(s) for s in sample])
-    plot_fit(posterior, sample, size=int(sample_num/2), alpha=0.1, ylim=(1e10, 1e16),
-             error_norm=True, plasma_ref=None)
+    # from tulasa.general import plot
+    # from tulasa.plotting_functions import plot_fit
+    #
+    # sample_num = 20
+    # sample = posterior.start_sample(sample_num, min_logp=-500)
+    #
+    # plot([posterior(s) for s in sample])
+    # plot_fit(posterior, sample, size=int(sample_num/2), alpha=0.1, ylim=(1e10, 1e16),
+    #          error_norm=True, plasma_ref=None)
     pass
