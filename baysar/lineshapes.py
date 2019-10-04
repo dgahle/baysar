@@ -128,8 +128,8 @@ class Gaussian(object):
         else:
             self.reducedx = []
             self.reducedx_indicies = []
-            for c in cwl:
-                rx, rxi = reduce_wavelength(x, self.cwl, reduced_range/2, return_indicies=True)
+            for c in self.cwl:
+                rx, rxi = reduce_wavelength(x, c, reduced_range/2, return_indicies=True)
                 self.reducedx.append(rx)
                 self.reducedx_indicies.append(rxi)
 

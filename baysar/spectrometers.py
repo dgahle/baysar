@@ -82,14 +82,13 @@ class SpectrometerChord(object):
         self.input_dict = self.plasma.input_dict
         self.refine = refine
         self.y_data = self.input_dict['experimental_emission'][self.chord_number]
-
+        self.x_data = self.input_dict['wavelength_axis'][self.chord_number]
         if self.refine is not None:
             assert type(self.refine) in (int, float), 'self.refine is not a int or float'
-            self.x_data_exp = self.input_dict['wavelength_axis'][self.chord_number]
-            low, up = min(self.x_data_exp), max(self.x_data_exp)
-            self.x_data = linspace(low, up, int( abs(low - up) / self.refine ))
+            low, up = min(self.x_data), max(self.x_data)
+            self.x_data_fm=linspace(low, up, int( abs(low - up) / self.refine ))
         else:
-            self.x_data = self.input_dict['wavelength_axis'][self.chord_number]
+            self.x_data_fm=self.x_data
 
         self.instrument_function=centre_peak(self.input_dict['instrument_function'][self.chord_number])
         self.instrument_function=np.true_divide(self.instrument_function, self.instrument_function.sum())
@@ -104,10 +103,7 @@ class SpectrometerChord(object):
         return self.likelihood()
 
     def get_noise_spectra(self):
-        if self.refine is None:
-            self.x_data_continuum, self.y_data_continuum = clip_data(self.x_data, self.y_data, self.noise_region)
-        else:
-            self.x_data_continuum, self.y_data_continuum = clip_data(self.x_data_exp, self.y_data, self.noise_region)
+        self.x_data_continuum, self.y_data_continuum = clip_data(self.x_data, self.y_data, self.noise_region)
 
     def get_error(self, fake_cal=False):
         self.get_noise_spectra()
@@ -147,11 +143,11 @@ class SpectrometerChord(object):
         if dont_interpolate:
             return spectra
 
-        spectra_interp=interp1d(self.x_data, spectra, bounds_error=False, fill_value='extrapolate')
         if self.refine is not None:
-            return spectra_interp(self.x_data_exp)
-        else:
+            spectra_interp=interp1d(self.x_data_fm, spectra, bounds_error=False, fill_value='extrapolate')
             return spectra_interp(self.x_data)
+        else:
+            return spectra
 
     def wavelength_scaling(self, wave_cal):
         for line in self.lines:
@@ -170,33 +166,29 @@ class SpectrometerChord(object):
             elem = species[:index]
             for l in self.input_dict[species]:
                 if any([elem==h for h in self.plasma.hydrogen_isotopes]):
-                    line = BalmerHydrogenLine(self.plasma, species, l, self.x_data)
+                    line = BalmerHydrogenLine(self.plasma, species, l, self.x_data_fm)
                 else:
-                    line = ADAS406Lines(self.plasma, species, l, self.x_data)
+                    line = ADAS406Lines(self.plasma, species, l, self.x_data_fm)
                 self.lines.append(line)
 
         if 'X_lines' in self.input_dict:
             for l, f in zip(self.input_dict['X_lines'], self.input_dict['X_fractions']):
                 line = XLine(plasma=self.plasma, species='X', cwl=l, fwhm=diff(self.x_data)[0],
-                             wavelengths=self.x_data, fractions=f)
+                             wavelengths=self.x_data_fm, fractions=f)
                 self.lines.append(line)
 
     def int_func_sparce_matrix(self):
         # self.centre_instrument_function()
         if self.refine is not None:
-            self.instrument_function_x = arange( len(self.instrument_function) )
+            self.instrument_function_x=arange(len(self.instrument_function))
             int_func_interp = interp1d(self.instrument_function_x, self.instrument_function)
-
-            k = abs( mean( diff(self.x_data) ) /
-                     mean( diff(self.x_data_exp)) )
             self.instrument_function_inter_x = arange(self.instrument_function_x.min(),
-                                                      self.instrument_function_x.max(), k)
-
+                                                      self.instrument_function_x.max(), len(self.x_data_fm))
             int_func = int_func_interp(self.instrument_function_inter_x)
-            res = len(self.x_data)
         else:
-            int_func, res = (self.instrument_function, len(self.y_data))
+            int_func = self.instrument_function
 
+        res=len(self.x_data_fm)
         shape = (res, res)
         matrix = zeros(shape)
         buffer = zeros(res)

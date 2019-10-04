@@ -31,14 +31,19 @@ class XLine(object):
             self.line_tag += '_' + str(c)
 
         self.line = Gaussian(x=wavelengths, cwl=cwl, fwhm=fwhm, fractions=fractions, normalise=True)
-        self.estimate_log_ems()
 
     def __call__(self):
         ems = self.plasma.plasma_state[self.line_tag]
         return self.line(ems)
 
-    def estimate_log_ems(self):
-        self.log_ems_estimate=...
+    def estimate_log_ems(self, wavelength, spectra):
+        self.log_ems_estimate=0
+        half_width=0.3
+        for cwl in self.line.cwl:
+            condition=((cwl-half_width)<wavelength) and (wavelength<(cwl-half_width))
+            index=np.where(condition)[0]
+            self.log_ems_estimate+=np.log10(sum(spectra[index]))
+
 
 def ti_to_fwhm(cwl, atomic_mass, ti):
     tmp = 7.715e-5 * sqrt(ti / atomic_mass)
