@@ -119,19 +119,18 @@ class SpectrometerChord(object):
             likeli_in = 1 / likeli_in
             likeli = sum( log(likeli_in) )
         else:
-            likeli = - 0.5 * sum( ( (self.y_data - fm) / self.error) ** 2 )
-
+            likeli=-0.5*sum(((self.y_data-fm)/self.error)**2)
         assert likeli != nan, 'likeli == nan'
         return likeli
 
     def forward_model(self, dont_interpolate=False):
         wave_cal = self.plasma.plasma_state['calwave'+str(self.chord_number)]
         self.wavelength_scaling(wave_cal)
-        spectra = sum([ l().flatten() for l in self.lines ]) # TODO: This is what takes all the time
+        spectra = sum([l().flatten() for l in self.lines]) # TODO: This is what takes all the time?
         self.wavelength_scaling(1/wave_cal)
-        continuum = self.plasma.plasma_state['background'+str(self.chord_number)]
-        tmp_a_cal = self.plasma.plasma_state['cal'+str(self.chord_number)]
-        spectra = (spectra / tmp_a_cal) + continuum
+        continuum=self.plasma.plasma_state['background'+str(self.chord_number)]
+        tmp_a_cal=self.plasma.plasma_state['cal'+str(self.chord_number)]
+        spectra=(spectra/tmp_a_cal)+continuum
 
         if self.instrument_function_matrix is not None:
             spectra = self.instrument_function_matrix.dot(spectra)
@@ -145,9 +144,9 @@ class SpectrometerChord(object):
 
         if self.refine is not None:
             spectra_interp=interp1d(self.x_data_fm, spectra, bounds_error=False, fill_value='extrapolate')
-            return spectra_interp(self.x_data)
-        else:
-            return spectra
+            spectra=spectra_interp(self.x_data)
+
+        return spectra
 
     def wavelength_scaling(self, wave_cal):
         for line in self.lines:
@@ -180,10 +179,12 @@ class SpectrometerChord(object):
     def int_func_sparce_matrix(self):
         # self.centre_instrument_function()
         if self.refine is not None:
-            self.instrument_function_x=arange(len(self.instrument_function))
+            len_instrument_function=len(self.instrument_function)
+            self.instrument_function_x=arange(len_instrument_function)
             int_func_interp = interp1d(self.instrument_function_x, self.instrument_function)
-            self.instrument_function_inter_x = arange(self.instrument_function_x.min(),
-                                                      self.instrument_function_x.max(), len(self.x_data_fm))
+            self.instrument_function_inter_x=np.linspace(self.instrument_function_x.min(),
+                                                         self.instrument_function_x.max(),
+                                                         int(len_instrument_function*len(self.x_data_fm)/len(self.x_data)))
             int_func = int_func_interp(self.instrument_function_inter_x)
         else:
             int_func = self.instrument_function
@@ -217,7 +218,14 @@ if __name__=='__main__':
     num_chords = 1
     wavelength_axis = [np.linspace(3900, 4200, 512)]
     experimental_emission = [np.array([1e12*np.random.rand() for w in wavelength_axis[0]])]
-    instrument_function = [np.array([0., 1., 0.])]
+    instrument_function = [np.array([  2.98900783e-37,   1.32796352e-32,   2.82044103e-28,   2.86364837e-24,
+                                       1.38993388e-20,   3.22507917e-17,   3.57732507e-14,   1.89691652e-11,
+                                       4.80850218e-09,   5.82697565e-07,   3.37557977e-05,   9.34814275e-04,
+                                       1.23758228e-02,   7.83239560e-02,   2.36966490e-01,   3.42729148e-01,
+                                       2.36966490e-01,   7.83239560e-02,   1.23758228e-02,   9.34814275e-04,
+                                       3.37557977e-05,   5.82697565e-07,   4.80850218e-09,   1.89691652e-11,
+                                       3.57732507e-14,   3.22507917e-17,   1.38993388e-20,   2.86364837e-24,
+                                       2.82044103e-28,   1.32796352e-32,   2.98900783e-37])]
     emission_constant = [1e11]
     species = ['D', 'N']
     ions = [ ['0'], ['1'] ] # , '2', '3'] ]
@@ -240,15 +248,8 @@ if __name__=='__main__':
     theta[plasma.slices['N_1_tau']] = 1
 
     plasma(theta)
-
-    chord = SpectrometerChord(plasma, refine=0.05, chord_number=0)
-    spectra = (sum([ l().flatten() for l in chord.lines ]) /
-               chord.plasma.plasma_state['cal'+str(chord.chord_number)]) + chord.plasma.plasma_state['background'+str(chord.chord_number)]
-    spectra = chord.instrument_function_matrix.dot(spectra)
-
-    # for l in chord.lines:
-    #     print(l, l.species, type(l()), l().flatten())
-
+    chord=SpectrometerChord(plasma, refine=0.05, chord_number=0)
     print(chord())
 
-    pass
+    print(chord.instrument_function)
+    print(chord.instrument_function_matrix.todense())

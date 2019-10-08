@@ -5,7 +5,8 @@ import time as clock
 from scipy.optimize import fmin_l_bfgs_b
 
 from baysar.plasmas import PlasmaLine
-from baysar.spectrometers import SpectrometerChord, within, progressbar
+from baysar.spectrometers import SpectrometerChord, within, progressbar, clip_data
+from baysar.linemodels import XLine
 
 
 def tmp_func(*args, **kwargs):
@@ -51,10 +52,7 @@ class BaysarPosterior(object):
                        temper=1, curvature=None, print_errors=False, skip_test=False):
 
         'input_dict input has been checked if created with make_input_dict'
-
         self.check_inputs(priors, check_bounds, temper, curvature, print_errors)
-
-
 
         self.input_dict = input_dict
         self.plasma = PlasmaLine(input_dict=input_dict, profile_function=profile_function)
@@ -64,13 +62,11 @@ class BaysarPosterior(object):
         self.print_errors = print_errors
         self.temper = temper
 
-        self.priors = priors
         self.curvature = curvature
         if self.curvature is not None:
-            self.priors.append(CurvatureCost(self.plasma, self.curvature))
-        self.priors.append(AntiprotonCost(self.plasma))
-
-        self.posterior_components.extend(self.priors)
+            self.posterior_components.append(CurvatureCost(self.plasma, self.curvature))
+        self.posterior_components.append(AntiprotonCost(self.plasma))
+        self.posterior_components.extend(priors)
 
         self.nan_thetas = []
         self.runtimes = []
@@ -137,25 +133,6 @@ class BaysarPosterior(object):
             chord = SpectrometerChord(plasma=self.plasma, refine=refine, chord_number=chord_num)
             self.posterior_components.append(chord)
 
-    def start_sample_old(self, num, min_logp=-1e10, high_prob=False, order=1, flat=False):
-        if high_prob:
-            old_num = num
-            num = int(num * 10)
-
-        sb_start = []
-        for tmp in np.arange(num):
-            tmp_logp = -1e50
-            while tmp_logp < min_logp:
-                tmp_start = self.random_start(order=order, flat=flat)
-                tmp_logp = self(tmp_start)
-            sb_start.append(tmp_start)
-
-        sb_start = sorted(sb_start, key=self)
-        if high_prob:
-            sb_start = sb_start[-old_num:]
-
-        return np.array(sb_start[::-1])
-
     def sample_start(self, number, order=1, flat=False):
         sample=[]
         for i in progressbar(np.arange(number), 'Building starting sample: ', 30):
@@ -165,15 +142,27 @@ class BaysarPosterior(object):
 
     def random_start(self, order=1, flat=False):
         start = [np.mean(np.random.uniform(bounds[0], bounds[1], size=order)) for bounds in self.plasma.theta_bounds]
+        # produce flat plasma profiles
         if flat:
             for param in ['electron_density', 'electron_temperature']:
                 for index in np.arange(self.plasma.slices[param].start, self.plasma.slices[param].stop):
-                    start[index] = start[self.plasma.slices[param]][0]
-
-        for chord in [chord for chord in self.posterior_components if type(chord)==SpectrometerChord]:
-            mean=np.mean(chord.y_data_continuum)
-            std=np.std(chord.y_data_continuum)/10
-            start[self.plasma.slices['background'+str(chord.chord_number)]][0]=np.log10(np.random.normal(mean, std))
+                    start[index]=start[self.plasma.slices[param]][0]
+        # improved start for the background
+        chords=[chord for chord in self.posterior_components if type(chord)==SpectrometerChord]
+        half_width_range=0.1
+        half_width_range=np.array([-half_width_range, half_width_range])
+        for chord in chords:
+            mean=np.log10(np.mean(chord.y_data_continuum)) # std=np.std(chord.y_data_continuum)/10
+            start[self.plasma.slices['background'+str(chord.chord_number)].start]=np.random.uniform(*(mean+half_width_range))
+            # improved start for mystery_lines
+            for xline in [line for line in chord.lines if type(line)==XLine]:
+                estemate_ems=0
+                half_width_wave=np.diff(chord.x_data)[0]*2
+                for cwl, fraction in zip(xline.line.cwl, xline.line.fractions):
+                    _, y=clip_data(chord.x_data, chord.y_data, [cwl-half_width_wave, cwl+half_width_wave])
+                    estemate_ems+=sum(y*fraction)
+                start[self.plasma.slices[xline.line_tag].start]=np.random.uniform(*(np.log10(estemate_ems)-1+1e1*half_width_range))
+                # np.log10(estemate_ems)-1+np.random.normal(0, 0.1)
         return np.array(start)
 
 
@@ -280,8 +269,9 @@ if __name__=='__main__':
 
     from baysar.input_functions import make_input_dict
 
-    wavelength_axis = [np.linspace(3900, 4150, 512)]
-    experimental_emission = [np.zeros(len(wavelength_axis[0]))+1e12*np.random.normal(0, 1e10)]
+    num_pixels=512
+    wavelength_axis = [np.linspace(3900, 4150, num_pixels)]
+    experimental_emission = [np.zeros(num_pixels)+1e12+np.random.normal(0, 1e10, num_pixels)]
     instrument_function = [np.array([0, 1, 0])]
     emission_constant = [1e11]
     species = ['D', 'N']
@@ -293,25 +283,34 @@ if __name__=='__main__':
     input_dict = make_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
                                 instrument_function=instrument_function, emission_constant=emission_constant,
                                 noise_region=noise_region, species=species, ions=ions,
-                                mystery_lines=mystery_lines, refine=[0.05],
+                                mystery_lines=mystery_lines, refine=[0.25],
                                 ion_resolved_temperatures=False, ion_resolved_tau=True)
 
 
     posterior = BaysarPosterior(input_dict=input_dict, curvature=1e2)
 
     rand_theta=posterior.random_start()
-    start_sample=posterior.sample_start(number=3, order=1, flat=False)
-    print(posterior(rand_theta))
-    for start in start_sample:
-        print(posterior(start), start)
+    print(posterior(rand_theta), rand_theta[posterior.plasma.slices['background0']],
+          np.log10(np.mean(posterior.posterior_components[0].y_data_continuum)))
 
-    # from tulasa.general import plot
-    # from tulasa.plotting_functions import plot_fit
+    from tulasa.general import plot
+    from tulasa.plotting_functions import plot_fit
+
+    start_sample=posterior.sample_start(number=3, order=1, flat=False)
+    for start in start_sample:
+        print(posterior(start), start[posterior.plasma.slices['background0']])
+
+    fm=[posterior.posterior_components[0].y_data]
+    for st in start_sample:
+        posterior(st)
+        fm.append(posterior.posterior_components[0].forward_model())
+
+    plot(fm)
+
     #
     # sample_num = 20
     # sample = posterior.start_sample(sample_num, min_logp=-500)
     #
     # plot([posterior(s) for s in sample])
-    # plot_fit(posterior, sample, size=int(sample_num/2), alpha=0.1, ylim=(1e10, 1e16),
-    #          error_norm=True, plasma_ref=None)
+    # plot_fit(posterior, start_sample, ylim=(1e10, 1e16))
     pass

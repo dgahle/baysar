@@ -22,7 +22,7 @@ from baysar.lineshapes import Gaussian, reduce_wavelength
 
 
 class XLine(object):
-    def __init__(self, cwl, wavelengths, plasma, fractions, fwhm=0.3, species='X', half_range=5):
+    def __init__(self, cwl, wavelengths, plasma, fractions, fwhm=0.2, species='X', half_range=5):
         self.plasma = plasma
         self.species = species
         self.fwhm = fwhm

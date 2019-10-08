@@ -250,7 +250,7 @@ class PlasmaLine():
         else:
             self.background_functions = background_functions
 
-        tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[-1e-4, 1e-4])
+        tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[-1e-5, 1e-5])
         if calwave_functions is None:
             self.calwave_functions = [tmp_func for num in np.arange(self.num_chords)]
         else:
