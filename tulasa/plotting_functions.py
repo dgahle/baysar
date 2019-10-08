@@ -1303,7 +1303,7 @@ def plot_fit(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
 
         posterior(sample[counter0])
 
-        tmp_fit = posterior.posterior_components[0].forward_model() * posterior.plasma.plasma_state['cal0']
+        tmp_fit = posterior.posterior_components[0].forward_model()
 
         ax_fit.plot(waves, tmp_fit, 'pink', alpha=alpha)
 
