@@ -46,7 +46,7 @@ class BaysarPosterior(object):
         if not (-1e50 < run_check and run_check < 0):
             raise ValueError("Posterior is not evalauating correctly")
 
-        print("posterior successfully instanciated")
+        print("Posterior successfully created!") #instantiated
 
     def check_inputs(self, priors, check_bounds, temper, curvature, print_errors):
 

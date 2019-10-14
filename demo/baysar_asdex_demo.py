@@ -1,9 +1,13 @@
 
+
 '''
 demo of the building a posteror for fitting two spectra
 
 has no prior
 '''''
+
+import os, sys, io
+import time as clock
 
 import numpy as np
 from numpy import random
@@ -13,34 +17,19 @@ from scipy.interpolate import interp1d
 
 import matplotlib.pyplot as plt
 
-import os, sys, io
+from tulasa.general import plot, in_between, histagramm
+from tulasa.plotting_functions import plot_fit, histmd
 
-import time as clock
-
-sys.path.append(os.path.expanduser('~/baysar'))
-
-from tulasa import general
-
-# from tulasa.plotting_functions import plot_guess, mini_matrix, stark_pdf, impurity_pdf
-from tulasa import plotting_functions as pf
-
-from tulasa.data_processing import wave_cal, add_noise, time_posterior, \
-                                   add_chain_bounds
-
-from tulasa import general # , fitting
-# from tulasa.plotting_functions import plot_fit
-
-from baysar.lineshapes import GaussianNorm
+from baysar.lineshapes import Gaussian
 from baysar.input_functions import make_input_dict
+from baysar.plasmas import MeshLine, arb_obj
 from baysar.posterior import BaysarPosterior, BaysarPosteriorFilterWrapper
 
 def blackouts(data, regions, level):
     for r in regions:
-        reduce_index = general.in_between(data[0], r)
-        data[1][reduce_index] = level
-
+        reduce_index=in_between(data[0], r)
+        data[1][reduce_index]=level
     return data[1]
-
 
 if __name__=='__main__':
 
@@ -56,8 +45,21 @@ if __name__=='__main__':
     tmp_ems = tmp_data[np.where( np.array(tmp_data) > boundary)] * 1e-1 * 1e-4 # /nm/m2 to /A/cm2
     tmp_wave = tmp_data[np.where( np.array(tmp_data) < boundary)] * 10 # nm to A
 
+    # #load tcv
+    # file = '/home/dgahle/Downloads/64070_NConcTest.mat'
+    # # file='/home/dgahle/baysar_work/data/tcv_shots/oliviers_shots_12_2017/59422_9_DSS.mat'
+    # from scipy.io import loadmat
+    # data = loadmat(file)
+    #
+    # spec_range = slice(480, 800)
+    # tmp_ems = data['Spec'][spec_range].flatten()*1e-4*0.18
+    # tmp_wave = data['WL'][spec_range].flatten()
+    # # chord=15
+    # # tmp_ems = data['shot']['LoadRaw'][0][0]['ACQ'][0][0]['Spectra'][0][0][spec_range, chord, :].mean(1)*1e-4*0.18
+    # # tmp_wave = data['shot']['LoadCal'][0][0]['lambda'][0][0][spec_range, chord]
+
     # Blacking out regions that are not being fitted
-    regions = [ [4072, 4074], [4076.75, 4077.25], [4081, 4083] ]
+    regions = [ [0, 3990], [3997, 4007], [4065, 4200] ]
     tmp_ems = blackouts([tmp_wave, tmp_ems], regions, 0.9e12)
 
 
@@ -69,15 +71,24 @@ if __name__=='__main__':
 
     num_chords = 1
     emission_constant = [a_cal]
-    noise_region = [ [3975, 3990] ] # the wavelength region that the noise is calculated from
+    noise_region = [ [4008, 4020] ] # the wavelength region that the noise is calculated from
 
-    intfun = GaussianNorm(x=np.arange(31), cwl=15)
-    instrument_function_fwhm = 0.4
+    # # tcv instrument_function
+    # file_dss = '/home/dgahle/baysar_work/DSS/InstrFunCharac_404nm_HOR.mat'
+    # dss = loadmat(file_dss)
+    # chord = 15
+    # intfunl = dss['InstrFunL'][chord][::-1]
+    # intfunr = dss['InstrFunR'][chord][1:]
+    # intfun_old = np.concatenate((intfunl, intfunr))
+    # instrument_function = [intfun_old]
+
+    intfun = Gaussian(x=np.arange(31), cwl=15)
+    instrument_function_fwhm = 0.8
     instrument_function = [intfun([instrument_function_fwhm/np.mean(np.diff(tmp_wave)), 1])]
 
     # Emitting plasma species
-    species = ['D', 'N']
-    ions = [ ['0'], ['1', '2', '3'] ]
+    species = ['N']
+    ions = [ ['1'] ]
 
     # Contaiminant lines from unknown species
     mystery_lines = [ [ [4024.78, 4025.33, 4026.33] ], [ [0.541, 0.373, 0.086] ] ]
@@ -91,10 +102,8 @@ if __name__=='__main__':
                             mystery_lines=mystery_lines, refine=[0.05],
                             ion_resolved_temperatures=False, ion_resolved_tau=True)
 
-    from baysar.plasmas import MeshLine, arb_obj
-
-    num_points = 9
-    x = np.linspace(1, 9, num_points)
+    num_points = 10
+    x = np.linspace(0.5, 9.5, num_points)
     profile_function = MeshLine(x=x, zero_bounds=-2, bounds=[0, 10], log=True)
     profile_function = arb_obj(electron_density=profile_function,
                                electron_temperature=profile_function,
@@ -103,48 +112,33 @@ if __name__=='__main__':
                                bounds_ne=[11, 16], bounds_te=[-1, 2])
 
     posterior = BaysarPosterior(input_dict=indict, check_bounds=True,
-                                curvature=1e3, print_errors=False,
+                                curvature=1e2, print_errors=False,
                                 profile_function=profile_function)
 
-    posterior.plasma.theta_bounds[posterior.plasma.slices['cal0']] = [-1, 1]
-    posterior.plasma.theta_bounds[posterior.plasma.slices['background0']] = [11.7, 12.5]
-    posterior.plasma.theta_bounds[posterior.plasma.slices['electron_temperature']] = [-1, 1.5]
-    posterior.plasma.theta_bounds[posterior.plasma.slices['N_1_dens']] = [13, 14]
-    posterior.plasma.theta_bounds[posterior.plasma.slices['N_1_tau']] = [-1, 2]
+    rsample=[posterior.random_start(order=3, flat=True) for n in np.arange(100)]
+    rsample=sorted(rsample, key=posterior.cost)
+    # sample=posterior.sample_start(number=30, order=3, flat=True)
+    # plot_fit(posterior, sample, alpha=1)
 
-    from tulasa.plotting_functions import plot_fit
-
-    # make and plot a starting sample
-    plot_start_samaple = False
-    if plot_start_samaple:
-        from tulasa.general import plot
-
-        sample_num = 20
-        sample = posterior.stormbreaker_start(sample_num, min_logp=-1000)
-
-        plot([posterior(s) for s in sample])
-        plot_fit(posterior, sample, size=int(sample_num / 2), alpha=0.2, ylim=(1e10, 1e16),
-                 error_norm=True, plasma_ref=None)
-
-    # Sampling using ParallelTempering (from inference.mcmc)
-    sample_posterior = False
-    if sample_posterior:
-        from inference.mcmc import GibbsChain, PcaChain, ParallelTempering
-        from scipy.optimize import fmin_l_bfgs_b
-
-        start = posterior.stormbreaker_start(1, min_logp=-500).flatten()
-        opt = fmin_l_bfgs_b(posterior.cost, start, approx_grad=True,
-                            bounds=posterior.plasma.theta_bounds.tolist())
-
-        chain = PcaChain(posterior=posterior, start=opt[0])
-        chain.advance(100)
-
-        try:
-            chain.plot_diagnostics()
-        except:
-            pass
-        chain.trace_plot()
-        # chain.matrix_plot(plot_style='scatter')
-
-        plot_fit(posterior, sample=chain.get_sample()[-50:], size=20, alpha=0.1,
-                 ylim=(1e11, 1e16), error_norm=True)
+    from inference.mcmc import GibbsChain, PcaChain, ParallelTempering
+    chain=PcaChain(posterior=posterior, start=rsample[0], parameter_boundaries=posterior.plasma.theta_bounds.tolist())
+    chain.advance(100)
+    # chain.plot_diagnostics()
+    # chain.burn=500
+    # chain.matrix_plot(reference=chain.mode(), plot_style='scatter')
+    # sample = chain.get_sample(burn=500, thin=5)
+    # plot_fit(posterior, sample, ylim=(1e9, 1e13), alpha=0.02)
+    # conc=[]
+    # n_te=[]
+    # n_ne=[]
+    # for t in sample:
+    #     posterior(t)
+    #     conc.append(posterior.posterior_components[0].lines[0].ems_conc)
+    #     n_te.append(posterior.posterior_components[0].lines[0].ems_te)
+    #     n_ne.append(posterior.posterior_components[0].lines[0].ems_ne)
+    # # histmd(data=[conc, n_te, n_ne], params=[0, 1, 2], labels=None, burn=0, bins=20, save=None)
+    # from tulasa.general import histagramm
+    # histagramm(100*np.array(conc).flatten(), xlabel=r'$c_{N}(\%)$')
+    # histagramm(np.array(n_te).flatten(), xlabel=r'$T_{e} \ / \ eV$')
+    # histagramm(np.array(n_ne).flatten(), xlabel=r'$n_{e} \ / \ cm^{-3}$')
+    # chain.plot_diagnostics()
