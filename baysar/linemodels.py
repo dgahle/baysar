@@ -16,7 +16,8 @@ import warnings
 
 import time as clock
 
-from numpy import sqrt, linspace, diff, arange, zeros, where, nan_to_num, array, log10, trapz, sin, cos, interp
+from numpy import sqrt, linspace, diff, arange, zeros, where, nan_to_num, array, log10, trapz, sin, cos, interp, dot
+from numpy import empty_like
 
 from baysar.lineshapes import Gaussian, reduce_wavelength
 
@@ -272,12 +273,12 @@ class BalmerHydrogenLine(object):
         self.n_upper = self.plasma.input_dict['D_0'][self.cwl]['n_upper']
         self.atomic_mass = get_atomic_mass(self.species)
         self.los = self.plasma.profile_function.electron_density.x
+        self.dl_per_sr = diff(self.los)[0] / (4*pi)
 
         self.reduced_wavelength, self.reduced_wavelength_indicies = \
             reduce_wavelength(wavelengths, cwl, half_range, return_indicies=True)
 
-        self.zeros_peak = zeros(len(self.wavelengths))
-
+        self.len_wavelengths = len(self.wavelengths)
         self.exc_pec = self.plasma.hydrogen_pecs[self.line+'_exc']
         self.rec_pec = self.plasma.hydrogen_pecs[self.line+'_rec']
 
@@ -292,51 +293,50 @@ class BalmerHydrogenLine(object):
         te = self.plasma.plasma_state['electron_temperature']
         bfield = self.plasma.plasma_state['b-field']
         viewangle = self.plasma.plasma_state['viewangle']
-        length = diff(self.los)[0]
-        length_per_sr = length / (4 * pi)
 
         rec_pec = np.power(10, self.rec_pec(ne, te))
         exc_pec = np.power(10, self.exc_pec(ne, te))
-        rec_profile = n1*ne*length_per_sr*rec_pec
-        exc_profile = n0*ne*length_per_sr*nan_to_num(exc_pec)
+        self.rec_profile = n1*ne*self.dl_per_sr*rec_pec
+        self.exc_profile = n0*ne*self.dl_per_sr*nan_to_num(exc_pec)
 
-        min_photons=1.
-        rec_profile.clip(min_photons)
-        exc_profile.clip(min_photons)
+        # set minimum number of photons to be 1
+        self.rec_profile.clip(1.)
+        self.exc_profile.clip(1.)
 
-        low_te = 0.2
-        low_ne = 1e11
-        low_te_indicies = where(te < low_te)
-        low_ne_indicies = where(ne < low_ne)
-        for indicies in [low_te_indicies, low_ne_indicies]:
-            rec_profile[indicies] = min_photons
-            exc_profile[indicies] = min_photons
+        # low_te = 0.2
+        # low_ne = 1e11
+        # indicies = where((te < low_te) | (ne < low_ne))
+        # rec_profile[indicies] = 1
+        # exc_profile[indicies] = 1
 
-        self.f_rec = sum(rec_profile) / sum(rec_profile + exc_profile)
-        self.exc_profile = exc_profile
-        self.rec_profile = rec_profile
-        self.ems_profile = rec_profile + exc_profile
-        self.exc_ne = sum(exc_profile*ne)/sum(exc_profile)
-        self.rec_ne = sum(rec_profile*ne)/sum(rec_profile)
-        self.ems_ne = sum(self.ems_profile*ne)/sum(self.ems_profile)
-        self.exc_te = sum(exc_profile*te)/sum(exc_profile)
-        self.rec_te = sum(rec_profile*te)/sum(rec_profile)
-        self.ems_te = sum(self.ems_profile*te)/sum(self.ems_profile)
+        rec_sum = self.rec_profile.sum()
+        exc_sum = self.exc_profile.sum()
+        ems_sum = rec_sum + exc_sum
 
-        tmp_wavelengths = self.reduced_wavelength
+        # used for the emission lineshape calculation
+        self.ems_profile = self.rec_profile + self.exc_profile
+        self.exc_ne = dot(self.exc_profile, ne) / exc_sum
+        self.rec_ne = dot(self.rec_profile, ne) / rec_sum
+        self.exc_te = dot(self.exc_profile, te) / exc_sum
+        self.rec_te = dot(self.rec_profile, te) / rec_sum
+
+        # just because there are nice to have
+        self.f_rec = rec_sum / ems_sum
+        self.ems_ne = dot(self.ems_profile, ne) / ems_sum
+        self.ems_te = dot(self.ems_profile, te) / ems_sum
+
         self.exc_lineshape_input = [self.exc_ne, self.exc_te, ti, bfield, viewangle]
         self.rec_lineshape_input = [self.rec_ne, self.rec_te, ti, bfield, viewangle]
         self.exc_peak = nan_to_num( self.lineshape(self.exc_lineshape_input) )
         self.rec_peak = nan_to_num( self.lineshape(self.rec_lineshape_input) )
-        tmp_peak = self.rec_peak*sum(rec_profile) + self.exc_peak*sum(exc_profile)
+        tmp_peak = self.rec_peak*rec_sum + self.exc_peak*exc_sum
 
-        peak = self.zeros_peak # zeros(len(self.wavelengths))
-        peak[min(self.reduced_wavelength_indicies):max(self.reduced_wavelength_indicies)+1] = tmp_peak
-
-        if not len(peak) == len(self.wavelengths):
-            raise ValueError('len(peak) != len(self.wavelengths')
+        peak = zeros(self.len_wavelengths) # TODO - replace reduce_wavelength output with a slice
+        peak[self.reduced_wavelength_indicies[0]:self.reduced_wavelength_indicies[1]+1] = tmp_peak
 
         return peak
+
+
 
 
 if __name__=='__main__':
