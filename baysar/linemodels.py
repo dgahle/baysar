@@ -198,12 +198,19 @@ def stehle_param(n_upper, n_lower, cwl, wavelengths, electron_density, electron_
     # Paramaterised MMM Stark profile coefficients from Bart's paper
     a_ij, b_ij, c_ij = loman_coeff[str(n_upper) + str(n_lower)]
     delta_lambda_12ij = c_ij*np.divide( (1e6*electron_density)**a_ij, electron_temperature**b_ij)  # nm
-    ls_s = 1 / (abs((wavelengths - cwl)) ** (5. / 2.) +
-                (10 * delta_lambda_12ij / 2) ** (5. / 2.))
+    ls_s = 1 / (abs((wavelengths - cwl))**(2.5) + (5 * delta_lambda_12ij)**(2.5))
     return ls_s / trapz(ls_s, wavelengths)
 
-def zeeman_split(cwl, peak, wavelengths, b_field, viewangle):
 
+
+from scipy.constants import e as electron_charge
+from scipy.constants import m_e as electron_mass
+from scipy.constants import c as speed_of_light
+
+# cf is central frequency
+b_field_to_cf_shift = electron_charge / (4 * pi *electron_mass * speed_of_light*1e10)
+
+def zeeman_split(cwl, peak, wavelengths, b_field, viewangle):
     """
      returns input lineshape, with Zeeman splitting accounted for by a simple model
 
@@ -216,14 +223,11 @@ def zeeman_split(cwl, peak, wavelengths, b_field, viewangle):
     """
 
     viewangle *= pi
-    electron_charge = scipy.constants.e
-    electron_mass = scipy.constants.m_e
-    speed_of_light = scipy.constants.c
 
     rel_intensity_pi = 0.5 * sin(viewangle) ** 2
     rel_intensity_sigma = 0.25 * (1 + cos(viewangle) ** 2)
-    freq_shift_sigma = electron_charge / (4 * pi *electron_mass) * b_field
-    wave_shift_sigma = abs(cwl - 1 / (1/(cwl) - freq_shift_sigma / speed_of_light*1e10))
+    freq_shift_sigma = b_field_to_cf_shift * b_field
+    wave_shift_sigma = abs(cwl - cwl / (1 - cwl*freq_shift_sigma))
 
     # relative intensities normalised to sum to one
     ls_sigma_minus = rel_intensity_sigma * interp(wavelengths + wave_shift_sigma, wavelengths, peak)
@@ -238,9 +242,11 @@ class HydrogenLineShape(object):
         self.zeeman = zeeman
         self.n_upper=n_upper
         self.n_lower=n_lower
+
+        # TODO - why?
         wavelengths_doppler_num = len(self.wavelengths)
-        if type(wavelengths_doppler_num/2) != int:
-            wavelengths_doppler_num += 1
+        # if wavelengths_doppler_num % 2 != 0:
+        #     wavelengths_doppler_num += 1
 
         self.wavelengths_doppler = linspace(self.cwl-10, self.cwl+10, wavelengths_doppler_num)
         self.doppler_function = DopplerLine(cwl=self.cwl, wavelengths=self.wavelengths_doppler, atomic_mass=atomic_mass, half_range=5000)
@@ -253,8 +259,8 @@ class HydrogenLineShape(object):
 
         stark_component = stehle_param(self.n_upper, self.n_lower, self.cwl, self.wavelengths, electron_density, electron_temperature)
         doppler_component = self.doppler_function(ion_temperature, 1)
-        peak=fftconvolve(stark_component, doppler_component, 'same')
-        peak/=trapz(peak, self.wavelengths)
+        peak = fftconvolve(stark_component, doppler_component, 'same')
+        peak /= trapz(peak, self.wavelengths)
 
         if self.zeeman:
             return zeeman_split(self.cwl, peak, self.wavelengths, b_field, viewangle)
@@ -270,7 +276,7 @@ class BalmerHydrogenLine(object):
         self.cwl = cwl
         self.line = self.species+'_'+str(self.cwl)
         self.wavelengths = wavelengths
-        self.n_upper = self.plasma.input_dict['D_0'][self.cwl]['n_upper']
+        self.n_upper = self.plasma.input_dict[self.species][self.cwl]['n_upper']
         self.atomic_mass = get_atomic_mass(self.species)
         self.los = self.plasma.profile_function.electron_density.x
         self.dl_per_sr = diff(self.los)[0] / (4*pi)

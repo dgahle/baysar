@@ -8,6 +8,7 @@ from baysar.lineshapes import MeshLine
 from baysar.spectrometers import within
 
 from scipy.interpolate import RegularGridInterpolator, RectBivariateSpline
+from adas import run_adas406, read_adf15
 
 def power10(var):
     return np.power(10, var)
@@ -48,8 +49,8 @@ atomic_number={'He':2, 'Li':3, 'Be':4, 'B':5, 'C':6, 'N':7, 'O':8, 'F':9, 'Ne':1
 def get_number_of_ions(element):
     return atomic_number[element]+1
 
-from adas import run_adas406, read_adf15
-from scipy.interpolate import RegularGridInterpolator
+
+
 
 class PlasmaLine():
 
@@ -71,7 +72,7 @@ class PlasmaLine():
         self.hydrogen_species = [s for s in self.species if s not in self.impurity_species]
         self.hydrogen_isotopes = ['H', 'D', 'T']
         self.contains_hydrogen = (self.species!=self.impurity_species)
-        self.adas_plasma_inputs = {'te': np.logspace(-1, 2, 60),
+        self.adas_plasma_inputs = {'te': np.logspace(-1, 2, 60), # TODO can we get the raw data instead?
                                    'ne': np.logspace(12, 15, 15),
                                    'tau': np.logspace(-8, 3, 12)}
         self.adas_plasma_inputs['big_ne'] = np.array([self.adas_plasma_inputs['ne'] for t in self.adas_plasma_inputs['te']]).T
@@ -283,7 +284,7 @@ class PlasmaLine():
 
         self.theta_functions = collections.OrderedDict(theta_functions_tuples)
 
-    def calc_total_impurity_electrons(self, set=True):
+    def calc_total_impurity_electrons(self, set_attribute=True):
         total_impurity_electrons = 0
 
         ne = self.plasma_state['electron_density']
@@ -302,7 +303,7 @@ class PlasmaLine():
 
             total_impurity_electrons += average_charge * conc
 
-        if set:
+        if set_attribute:
             self.total_impurity_electrons = np.nan_to_num(total_impurity_electrons)
         else:
             return np.nan_to_num(total_impurity_electrons)
@@ -367,7 +368,7 @@ class PlasmaLine():
                                               pecs_rec.T*ionbal[t_counter, :, :, ion+1])
 
         # log10 is spitting out errors ::( but it still runs ::)
-        # What about scipy.interpolate.Rbf ?
+        # What about scipy.interpolate.Rbf ? # TODO - 1e40 REEEEEEEEEEEE
         return RegularGridInterpolator((tau, ne, te), np.log10(tec406.clip(1e-40)), bounds_error=False)
 
     def get_impurity_tecs(self):
@@ -407,7 +408,7 @@ class PlasmaLine():
                 rec = self.input_dict[species][line]['rec_block']
 
                 for block, r_tag in zip([exc, rec], ['exc', 'rec']):
-                    rates, _ = read_adf15(file, block, te, ne, all=True)  # (te, ne), _
+                    rates, _ = read_adf15(file, block, te, ne, all=True)  # (te, ne), _# TODO - 1e50 alarm
                     pecs.append( (line_tag+'_'+r_tag, RectBivariateSpline(ne, te, np.log10(rates.T.clip(1e-50))).ev) )
                 # return
 
