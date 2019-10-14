@@ -133,11 +133,11 @@ class SpectrometerChord(object):
         spectra=(spectra/tmp_a_cal)+continuum
 
         if self.instrument_function_matrix is not None:
-            spectra = self.instrument_function_matrix.dot(spectra)
+            spectra=self.instrument_function_matrix.dot(spectra)
         else:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                spectra = fftconvolve(spectra, self.instrument_function, mode='same')
+                spectra=fftconvolve(spectra, self.instrument_function, mode='same')
 
         if dont_interpolate:
             return spectra

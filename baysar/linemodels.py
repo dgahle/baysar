@@ -242,7 +242,7 @@ class HydrogenLineShape(object):
             wavelengths_doppler_num += 1
 
         self.wavelengths_doppler = linspace(self.cwl-10, self.cwl+10, wavelengths_doppler_num)
-        self.doppler_function = DopplerLine(cwl=self.cwl, wavelengths=self.wavelengths_doppler, atomic_mass=atomic_mass, half_range=50)
+        self.doppler_function = DopplerLine(cwl=self.cwl, wavelengths=self.wavelengths_doppler, atomic_mass=atomic_mass, half_range=5000)
 
     def __call__(self, theta):
         if self.zeeman:
@@ -252,8 +252,8 @@ class HydrogenLineShape(object):
 
         stark_component = stehle_param(self.n_upper, self.n_lower, self.cwl, self.wavelengths, electron_density, electron_temperature)
         doppler_component = self.doppler_function(ion_temperature, 1)
-        peak = fftconvolve(stark_component, doppler_component, 'same')
-        peak /= trapz(peak, self.wavelengths)
+        peak=fftconvolve(stark_component, doppler_component, 'same')
+        peak/=trapz(peak, self.wavelengths)
 
         if self.zeeman:
             return zeeman_split(self.cwl, peak, self.wavelengths, b_field, viewangle)
@@ -263,7 +263,7 @@ class HydrogenLineShape(object):
 
 
 class BalmerHydrogenLine(object):
-    def __init__(self, plasma, species, cwl, wavelengths, half_range=40, zeeman=True):
+    def __init__(self, plasma, species, cwl, wavelengths, half_range=400, zeeman=True):
         self.plasma = plasma
         self.species = species
         self.cwl = cwl
@@ -297,16 +297,20 @@ class BalmerHydrogenLine(object):
 
         rec_pec = np.power(10, self.rec_pec(ne, te))
         exc_pec = np.power(10, self.exc_pec(ne, te))
-        rec_profile = n1 * ne * length_per_sr * rec_pec
-        exc_profile = n0 * ne * length_per_sr * nan_to_num( exc_pec )
+        rec_profile = n1*ne*length_per_sr*rec_pec
+        exc_profile = n0*ne*length_per_sr*nan_to_num(exc_pec)
+
+        min_photons=1.
+        rec_profile.clip(min_photons)
+        exc_profile.clip(min_photons)
 
         low_te = 0.2
         low_ne = 1e11
         low_te_indicies = where(te < low_te)
         low_ne_indicies = where(ne < low_ne)
         for indicies in [low_te_indicies, low_ne_indicies]:
-            rec_profile[indicies] = 0.0
-            exc_profile[indicies] = 0.0
+            rec_profile[indicies] = min_photons
+            exc_profile[indicies] = min_photons
 
         self.f_rec = sum(rec_profile) / sum(rec_profile + exc_profile)
         self.exc_profile = exc_profile
@@ -329,7 +333,8 @@ class BalmerHydrogenLine(object):
         peak = self.zeros_peak # zeros(len(self.wavelengths))
         peak[min(self.reduced_wavelength_indicies):max(self.reduced_wavelength_indicies)+1] = tmp_peak
 
-        assert len(peak) == len(self.wavelengths), 'len(peak) != len(self.wavelengths)'
+        if not len(peak) == len(self.wavelengths):
+            raise ValueError('len(peak) != len(self.wavelengths')
 
         return peak
 

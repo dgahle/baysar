@@ -408,6 +408,17 @@ adas_line_data['C'] = {'atomic_mass': 12, 'atomic_charge': 6,
                        'ionisation_balance_year': 96,
                        'ions': ['1', '2', '3', '4']}
 
+adas_line_data['C']['1'] = {'default_pecs': adas_root+'adf15/pec96#c/pec96#c_vsu#c1.dat'}
+
+wavelenghts = [5268.3, 5124.4, 5143.3]
+jj_fraction = [[1], [0.25, 0.25, 0.25, 0.25], [0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.1]] # need to update
+pecs = [None, None, None]
+exc_block = [24, 15, 12]
+rec_block = [74, 65, 62]
+
+adas_line_data['C']['1'] = add_ion_info(adas_line_data['C']['1'], wavelenghts, jj_fraction,
+                                        pecs, exc_block, rec_block)
+
 adas_line_data['N'] = {'atomic_mass': 14, 'atomic_charge': 7,
                        'ionisation_balance_year': 96,
                        'ions': ['1', '2', '3', '4']}
@@ -465,4 +476,3 @@ adas_line_data['N']['4'] = add_ion_info(adas_line_data['N']['4'], wavelenghts, j
 if __name__=='__main__':
 
     pass
-

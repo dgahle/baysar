@@ -111,16 +111,17 @@ def check_input_dict_input(wavelength_axis, experimental_emission, instrument_fu
         raise KeyError(emitter_fails, "not in given line_data")
 
     # mystery_lines must be a list of two lists of the same length which only contains lists
-    if type(mystery_lines)!=list:
-        raise TypeError("type(mystery_lines)!=list")
-    if len(mystery_lines[0])!=len(mystery_lines[1]):
-        raise ValueError("len(mystery_lines[0])!=len(mystery_lines[1]) each mystery line needs a branching ratio even is it is a singlet ([1])")
-    if not all([ len(mystery_lines)==2,
-                 all([type(ml)==list for ml in mystery_lines]),
-                 all([type(l)==list for ml in mystery_lines for l in ml]) ]):
-        raise TypeError("mystery_lines must be a list of two lists than only contain lists")
-    if not all([type(m) in (int, float) for ml in mystery_lines for l in ml for m in l]):
-        raise TypeError("Some of the give mystery line central wavelengths and/or branching ratios are not ints or floats")
+    if mystery_lines is not None:
+        if type(mystery_lines)!=list:
+            raise TypeError("type(mystery_lines)!=list")
+        if len(mystery_lines[0])!=len(mystery_lines[1]):
+            raise ValueError("len(mystery_lines[0])!=len(mystery_lines[1]) each mystery line needs a branching ratio even is it is a singlet ([1])")
+        if not all([ len(mystery_lines)==2,
+                     all([type(ml)==list for ml in mystery_lines]),
+                     all([type(l)==list for ml in mystery_lines for l in ml]) ]):
+            raise TypeError("mystery_lines must be a list of two lists than only contain lists")
+        if not all([type(m) in (int, float) for ml in mystery_lines for l in ml for m in l]):
+            raise TypeError("Some of `the give mystery line central wavelengths and/or branching ratios are not ints or floats")
 
     # refine must either a float or a list or array of the same length of all the other spectrometer input
     if type(refine) in (float, int):

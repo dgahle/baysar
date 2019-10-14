@@ -54,6 +54,8 @@ class BaysarPosterior(object):
         'input_dict input has been checked if created with make_input_dict'
         self.check_inputs(priors, check_bounds, temper, curvature, print_errors)
 
+        print("Building BaySAR posterior object") 
+
         self.input_dict = input_dict
         self.plasma = PlasmaLine(input_dict=input_dict, profile_function=profile_function)
 
@@ -69,6 +71,8 @@ class BaysarPosterior(object):
         self.posterior_components.extend(priors)
 
         self.nan_thetas = []
+        self.inf_thetas = []
+        self.positive_thetas = []
         self.runtimes = []
 
         start=self.random_start()
@@ -82,16 +86,13 @@ class BaysarPosterior(object):
         print("Posterior successfully created!") #instantiated
 
     def check_inputs(self, priors, check_bounds, temper, curvature, print_errors):
-
         if len(priors)>0:
             if type(priors) is not list:
                 raise TypeError("If priors are being passed then it must be a list of functions")
-
         if type(check_bounds) is not bool:
             raise TypeError("check_bounds must be True or False and is False by default")
-
-        if type(temper) not in (int, float, np.int64, np.float64):
-            raise TypeError("temper must be an int or fa_calloat")
+        if not np.isreal(temper):
+            raise TypeError("temper must be a real number")
         elif temper < 0:
             raise ValueError("temper must be positive (should, but doesn't have to, be greater than 1)")
         else:
@@ -107,8 +108,8 @@ class BaysarPosterior(object):
             raise TypeError("print_errors must be True or False and is False by default")
 
     def __call__(self, theta, skip_error=True):
-        theta = list(theta)
-        self.last_proposal = theta
+        theta=list(theta)
+        self.last_proposal=theta
         # updating plasma state
         self.plasma(theta)
         prob = [p() for p in self.posterior_components]
@@ -118,10 +119,13 @@ class BaysarPosterior(object):
 
     def check_output(self, prob):
         if np.isnan(prob):
-            raise ValueError('logP = NaNs')
+            self.nan_thetas.append(self.last_proposal)
+            raise ValueError('logP is NaNs')
         if np.isinf(prob):
-            raise ValueError('logP = NaNs')
+            self.inf_thetas.append(self.last_proposal)
+            raise ValueError('logP is inf')
         if prob >= 0:
+            self.positive_thetas.append(self.last_proposal)
             raise ValueError('lopP is positive')
 
     def cost(self, theta):
@@ -132,13 +136,6 @@ class BaysarPosterior(object):
         for chord_num, refine in enumerate(self.input_dict['refine']):
             chord = SpectrometerChord(plasma=self.plasma, refine=refine, chord_number=chord_num)
             self.posterior_components.append(chord)
-
-    def sample_start(self, number, order=1, flat=False):
-        sample=[]
-        for i in progressbar(np.arange(number), 'Building starting sample: ', 30):
-            start, logp, info=fmin_l_bfgs_b(self.cost, self.random_start(order, flat), approx_grad=True, bounds=self.plasma.theta_bounds.tolist())
-            sample.append((start, logp))
-        return [s[0].tolist() for s in sorted(sample, key=lambda x:x[1])]
 
     def random_start(self, order=1, flat=False):
         start = [np.mean(np.random.uniform(bounds[0], bounds[1], size=order)) for bounds in self.plasma.theta_bounds]
@@ -164,6 +161,24 @@ class BaysarPosterior(object):
                 start[self.plasma.slices[xline.line_tag].start]=np.random.uniform(*(np.log10(estemate_ems)-1+1e1*half_width_range))
                 # np.log10(estemate_ems)-1+np.random.normal(0, 0.1)
         return np.array(start)
+
+    def random_sample(self, number=1, order=1, flat=False):
+        sample=[]
+        for rstart in progressbar(np.arange(number), 'Building random sample: ', 30):
+            sample.append(self.random_start(order, flat))
+        # sample_and_prob=[]
+        # for s in progressbar(sample, 'Sorting from high to low probability: ', 30):
+        #     sample_and_prob.append((self.cost(s), s))
+        print('Sorting random sample from high to low probability')
+        return sorted(sample, key=lambda x:self.cost(x))
+
+    def sample_start(self, number, scale=1, order=1, flat=False):
+        sample=[]
+        random_sample=self.random_sample(number*scale, order, flat)[:number]
+        for rstart in progressbar(random_sample, 'Building starting sample: ', 30):
+            start, logp, info=fmin_l_bfgs_b(self.cost, rstart, approx_grad=True, bounds=self.plasma.theta_bounds.tolist())
+            sample.append((start, logp))
+        return [s[0].tolist() for s in sorted(sample, key=lambda x:x[1])]
 
 
 
