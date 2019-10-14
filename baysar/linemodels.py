@@ -8,16 +8,12 @@ from scipy.constants import pi
 from scipy.interpolate import RegularGridInterpolator, RectBivariateSpline
 
 from scipy.signal import fftconvolve
-import scipy.constants
-
-import numpy as np
 
 import warnings
 
 import time as clock
 
 from numpy import sqrt, linspace, diff, arange, zeros, where, nan_to_num, array, log10, trapz, sin, cos, interp, dot
-from numpy import empty_like
 
 from baysar.lineshapes import Gaussian, reduce_wavelength
 
@@ -38,12 +34,13 @@ class XLine(object):
         return self.line(ems)
 
     def estimate_log_ems(self, wavelength, spectra):
-        self.log_ems_estimate=0
+        log_ems_estimate=0
         half_width=0.3
         for cwl in self.line.cwl:
-            condition=((cwl-half_width)<wavelength) and (wavelength<(cwl-half_width))
-            index=np.where(condition)[0]
-            self.log_ems_estimate+=np.log10(sum(spectra[index]))
+            condition = ((cwl-half_width) < wavelength) and (wavelength < (cwl-half_width))
+            index = np.where(condition)[0]
+            log_ems_estimate += spectra[index].sum()
+        self.log_ems_estimate = np.log10(log_ems_estimate)
 
 
 def ti_to_fwhm(cwl, atomic_mass, ti):
@@ -153,13 +150,14 @@ class ADAS406Lines(object):
 
         ems = n0 * tec * length_per_sr
         ems = ems.clip(min=1e-20)
+        ems_sum = ems.sum()
 
         self.emission_profile = ems
-        self.ems_ne = sum(ems*ne) / sum(ems)
+        self.ems_ne = dot(ems*ne) / ems_sum
         self.ems_conc = n0 / self.ems_ne
-        self.ems_te = sum(ems*te) / sum(ems)
+        self.ems_te = dot(ems*te) / ems_sum
 
-        return self.linefunction(ti, sum(ems))
+        return self.linefunction(ti, ems_sum )
 
 
 # def comparison(self, theta, line_model='stehle_param'):

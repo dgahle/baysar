@@ -112,8 +112,7 @@ class BaysarPosterior(object):
         self.last_proposal=theta
         # updating plasma state
         self.plasma(theta)
-        prob = [p() for p in self.posterior_components]
-        prob = sum(prob)
+        prob = sum( p() for p in self.posterior_components )
         self.check_output(prob)
         return prob/self.temper # temper default is 1
 
