@@ -13,6 +13,7 @@ import warnings
 
 import time as clock
 
+import numpy as np
 from numpy import sqrt, linspace, diff, arange, zeros, where, nan_to_num, array, log10, trapz, sin, cos, interp, dot
 
 from baysar.lineshapes import Gaussian, reduce_wavelength
@@ -153,9 +154,9 @@ class ADAS406Lines(object):
         ems_sum = ems.sum()
 
         self.emission_profile = ems
-        self.ems_ne = dot(ems*ne) / ems_sum
+        self.ems_ne = dot(ems,ne) / ems_sum
         self.ems_conc = n0 / self.ems_ne
-        self.ems_te = dot(ems*te) / ems_sum
+        self.ems_te = dot(ems,te) / ems_sum
 
         return self.linefunction(ti, ems_sum )
 

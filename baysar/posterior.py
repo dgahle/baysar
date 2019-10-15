@@ -54,7 +54,7 @@ class BaysarPosterior(object):
         'input_dict input has been checked if created with make_input_dict'
         self.check_inputs(priors, check_bounds, temper, curvature, print_errors)
 
-        print("Building BaySAR posterior object") 
+        print("Building BaySAR posterior object")
 
         self.input_dict = input_dict
         self.plasma = PlasmaLine(input_dict=input_dict, profile_function=profile_function)
@@ -303,28 +303,12 @@ if __name__=='__main__':
 
     posterior = BaysarPosterior(input_dict=input_dict, curvature=1e2)
 
-    rand_theta=posterior.random_start()
-    print(posterior(rand_theta), rand_theta[posterior.plasma.slices['background0']],
-          np.log10(np.mean(posterior.posterior_components[0].y_data_continuum)))
-
     from tulasa.general import plot
     from tulasa.plotting_functions import plot_fit
 
-    start_sample=posterior.sample_start(number=3, order=1, flat=False)
-    for start in start_sample:
-        print(posterior(start), start[posterior.plasma.slices['background0']])
+    random_sample=posterior.random_sample(number=1000, order=3, flat=True)
+    # start_sample=posterior.sample_start(number=10, scale=1000, order=3, flat=True)
+    plot_fit(posterior, random_sample, alpha=0.3)
+    plot([posterior(t) for t in random_sample])
 
-    fm=[posterior.posterior_components[0].y_data]
-    for st in start_sample:
-        posterior(st)
-        fm.append(posterior.posterior_components[0].forward_model())
-
-    plot(fm)
-
-    #
-    # sample_num = 20
-    # sample = posterior.start_sample(sample_num, min_logp=-500)
-    #
-    # plot([posterior(s) for s in sample])
-    # plot_fit(posterior, start_sample, ylim=(1e10, 1e16))
     pass
