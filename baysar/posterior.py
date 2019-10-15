@@ -54,7 +54,7 @@ class BaysarPosterior(object):
         'input_dict input has been checked if created with make_input_dict'
         self.check_inputs(priors, check_bounds, temper, curvature, print_errors)
 
-        print("Building BaySAR posterior object") 
+        print("Building BaySAR posterior object")
 
         self.input_dict = input_dict
         self.plasma = PlasmaLine(input_dict=input_dict, profile_function=profile_function)
@@ -181,102 +181,48 @@ class BaysarPosterior(object):
         return [s[0].tolist() for s in sorted(sample, key=lambda x:x[1])]
 
 
+from copy import copy
 
-# TODO: Write wrapper posteriorS to be able to do low dimentional fits - produce with a demo
-# Todo: update to use with new BaysarPosterior
 # Todo: add a check input function
-class BaysarPosteriorFilterWrapper(BaysarPosterior):
+class BaysarPosteriorFilterWrapper(object):
 
     """
     BaysarPosteriorFilterWrapper is a wrapper for BaysarPosterior (and inherits that object) which allows
     for the sampling of a subset of parameters that compose of the full parameters of the forward model.
     """
 
-    def __init__(self, input_dict, reference, indicies, profile_function=None, check_bounds=False):
-
-        super().__init__(input_dict, profile_function=profile_function, check_bounds=False)
-
-        self.reference = reference
-        self.indicies = indicies
-
-        self.calc_reduced_theta_bounds()
-        self.check_reduced_bounds = check_bounds
-
-    def __call__(self, theta, print_ref_new=False):
-
-        if self.check_reduced_bounds:
-            if not all(self.is_theta_within_bounds(theta)):
-                prob = -1e50
-                # print('Out of Bounds')
-            else:
-                prob = self.call(theta, print_ref_new=False)
+    def __init__(self, posterior, reference, indicies=None, tags=None):
+        self.posterior=posterior
+        self.reference=reference
+        if tags is None:
+            self.filter_indices=list(indicies)
         else:
-            prob = self.call(theta, print_ref_new=False)
+            self.filter_indices_from_tags(tags)
 
-        return prob
+        reduce_indices=set(self.filter_indices).symmetric_difference( set(np.arange(len(self.reference)).tolist()) )
+        self.reduced_indices=list(reduce_indices)
 
-    def call(self, theta, print_ref_new=False):
+    def __call__(self, theta):
+        return self.posterior(self.expand_theta(theta))
 
-        new_theta = self.reference
+    def cost(self, theta):
+        return -self.__call__(theta)
 
-        for counter, new_theta_index in enumerate(self.indicies):
+    def reduce_theta(self, theta):
+        reduced_theta=[]
+        for index in self.reduced_indices:
+            reduced_theta.append(theta[index])
+        return reduced_theta
 
-            new_theta[new_theta_index] = theta[counter]
+    def expand_theta(self, reduced_theta):
+        theta=copy(self.reference)
+        for index, param in zip(self.reduced_indices, reduced_theta):
+            theta[index]=param
+        return theta
 
-        if print_ref_new:
-            print( theta )
-            print( self.reference )
-            print( new_theta )
-
-        self.last_proposal = theta
-        self.last_proposal_long = new_theta
-
-        return super().__call__(new_theta)
-
-    def negative_call(self, theta):
-
-        return - self.__call__(theta)
-
-    def calc_reduced_theta_bounds(self):
-
-        self.reduced_theta_bounds = []
-        self.reduced_theta_widths = []
-
-        self.plasma.reduced_default_start = []
-
-        for new_theta_index in self.indicies:
-
-            self.reduced_theta_bounds.append(self.plasma.theta_bounds[new_theta_index])
-            self.reduced_theta_widths.append(self.plasma.theta_widths[new_theta_index])
-
-            self.plasma.reduced_default_start.append(self.plasma.default_start[new_theta_index])
-
-    def is_theta_within_bounds(self, theta):
-
-        out = []
-
-        for counter, bound in enumerate(self.reduced_theta_bounds):
-            out.append(within(theta[counter], bound))
-
-        return out
-
-    def random_start(self, normal=False):
-
-        start = []
-
-        for bounds in self.reduced_theta_bounds:
-
-            if not normal:
-                start.append( np.random.uniform(min(bounds), max(bounds)) )
-            else:
-                sigma = abs(min(bounds) - max(bounds)) / 2
-                nu = min(bounds) + sigma
-
-                start.append(np.random.normal(nu, sigma/3))
-
-        return start
-
-    # Building input dict
+    def filter_indices_from_tags(self, tags):
+        slices=[self.posterior.plasma.slices[t] for t in tags]
+        self.filter_indices=np.concatenate([np.arange(s.start, s.stop) for s in slices]).tolist()
 
 
 
