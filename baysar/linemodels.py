@@ -45,8 +45,8 @@ class XLine(object):
 
 
 def ti_to_fwhm(cwl, atomic_mass, ti):
-    tmp = 7.715e-5 * sqrt(ti / atomic_mass)
-    return cwl * tmp # = fwhm
+    return cwl * 7.715e-5 * sqrt(ti / atomic_mass)
+
 
 class DopplerLine(object):
 
@@ -61,7 +61,7 @@ class DopplerLine(object):
         self.line = Gaussian(x=wavelengths, cwl=cwl, fwhm=None, fractions=fractions, normalise=True)
 
     def __call__(self, ti, ems):
-        fwhm = [ti_to_fwhm(cwl, self.atomic_mass, ti) for cwl in self.line.cwl]
+        fwhm=self.line.cwl*7.715e-5*sqrt(ti/self.atomic_mass)
         return self.line([fwhm, ems])
 
 
@@ -80,6 +80,8 @@ def species_to_element(species):
 def get_atomic_mass(species):
     elm = species_to_element(species)
     return atomic_masses[elm]
+
+from profilehooks import profile
 
 class ADAS406Lines(object):
 
@@ -133,30 +135,37 @@ class ADAS406Lines(object):
         self.linefunction = DopplerLine(self.lines, self.wavelengths, atomic_mass=self.atomic_mass, fractions=self.jj_frac, half_range=5)
         self.tec406 = self.plasma.impurity_tecs[self.line]
 
+        length = diff(self.los)[0]
+        self.length_per_sr = length / (4 * pi)
+        len_los=len(self.los)
+        self.tec_in=np.zeros((len_los, 3))
+
+    @profile
     def __call__(self):
 
         n0 = self.plasma.plasma_state[self.species+'_dens']
         ti = self.plasma.plasma_state[self.species+'_Ti']
-        ne = self.plasma.plasma_state['electron_density']
-        te = self.plasma.plasma_state['electron_temperature']
-        tau = np.array([self.plasma.plasma_state[self.species+'_tau'][0] for n in ne])
+        # ne = self.plasma.plasma_state['electron_density']
+        # te = self.plasma.plasma_state['electron_temperature']
+        # tau = np.array([self.plasma.plasma_state[self.species+'_tau'][0] for n in ne])
+        # tau = np.zeros(len(ne))+self.plasma.plasma_state[self.species+'_tau'][0]
 
-        tec_in = (tau, ne, te)
-        tec = self.tec406(tec_in)
-        tec = np.power(10, tec)
-        tec = np.nan_to_num(tec)
+        self.tec_in[:, 0] = self.plasma.plasma_state[self.species+'_tau'][0]# np.array([tau, ne, te])
+        self.tec_in[:, 1] = self.plasma.plasma_state['electron_density']
+        self.tec_in[:, 2] = self.plasma.plasma_state['electron_temperature']
 
-        length = diff(self.los)[0]
-        length_per_sr = length / (4 * pi)
+        tec = self.tec406(self.tec_in)
+        tec = np.exp(tec)
+        tec = np.nan_to_num(tec) # todo - why? and fix!
 
-        ems = n0 * tec * length_per_sr
+        ems = n0 * tec * self.length_per_sr
         ems = ems.clip(min=1e-20)
         ems_sum = ems.sum()
 
         self.emission_profile = ems
-        self.ems_ne = dot(ems,ne) / ems_sum
+        self.ems_ne = dot(ems,self.tec_in[:, 1]) / ems_sum
         self.ems_conc = n0 / self.ems_ne
-        self.ems_te = dot(ems,te) / ems_sum
+        self.ems_te = dot(ems,self.tec_in[:, 2]) / ems_sum
 
         return self.linefunction(ti, ems_sum )
 
@@ -299,8 +308,8 @@ class BalmerHydrogenLine(object):
         bfield = self.plasma.plasma_state['b-field']
         viewangle = self.plasma.plasma_state['viewangle']
 
-        rec_pec = np.power(10, self.rec_pec(ne, te))
-        exc_pec = np.power(10, self.exc_pec(ne, te))
+        rec_pec = np.exp(self.rec_pec(ne, te))
+        exc_pec = np.exp(self.exc_pec(ne, te))
         self.rec_profile = n1*ne*self.dl_per_sr*rec_pec
         self.exc_profile = n0*ne*self.dl_per_sr*nan_to_num(exc_pec)
 

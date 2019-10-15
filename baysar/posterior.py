@@ -38,7 +38,6 @@ class AntiprotonCost(object):
         else:
             return 0.
 
-
 class BaysarPosterior(object):
 
     """
@@ -181,104 +180,6 @@ class BaysarPosterior(object):
 
 
 
-# TODO: Write wrapper posteriorS to be able to do low dimentional fits - produce with a demo
-# Todo: update to use with new BaysarPosterior
-# Todo: add a check input function
-class BaysarPosteriorFilterWrapper(BaysarPosterior):
-
-    """
-    BaysarPosteriorFilterWrapper is a wrapper for BaysarPosterior (and inherits that object) which allows
-    for the sampling of a subset of parameters that compose of the full parameters of the forward model.
-    """
-
-    def __init__(self, input_dict, reference, indicies, profile_function=None, check_bounds=False):
-
-        super().__init__(input_dict, profile_function=profile_function, check_bounds=False)
-
-        self.reference = reference
-        self.indicies = indicies
-
-        self.calc_reduced_theta_bounds()
-        self.check_reduced_bounds = check_bounds
-
-    def __call__(self, theta, print_ref_new=False):
-
-        if self.check_reduced_bounds:
-            if not all(self.is_theta_within_bounds(theta)):
-                prob = -1e50
-                # print('Out of Bounds')
-            else:
-                prob = self.call(theta, print_ref_new=False)
-        else:
-            prob = self.call(theta, print_ref_new=False)
-
-        return prob
-
-    def call(self, theta, print_ref_new=False):
-
-        new_theta = self.reference
-
-        for counter, new_theta_index in enumerate(self.indicies):
-
-            new_theta[new_theta_index] = theta[counter]
-
-        if print_ref_new:
-            print( theta )
-            print( self.reference )
-            print( new_theta )
-
-        self.last_proposal = theta
-        self.last_proposal_long = new_theta
-
-        return super().__call__(new_theta)
-
-    def negative_call(self, theta):
-
-        return - self.__call__(theta)
-
-    def calc_reduced_theta_bounds(self):
-
-        self.reduced_theta_bounds = []
-        self.reduced_theta_widths = []
-
-        self.plasma.reduced_default_start = []
-
-        for new_theta_index in self.indicies:
-
-            self.reduced_theta_bounds.append(self.plasma.theta_bounds[new_theta_index])
-            self.reduced_theta_widths.append(self.plasma.theta_widths[new_theta_index])
-
-            self.plasma.reduced_default_start.append(self.plasma.default_start[new_theta_index])
-
-    def is_theta_within_bounds(self, theta):
-
-        out = []
-
-        for counter, bound in enumerate(self.reduced_theta_bounds):
-            out.append(within(theta[counter], bound))
-
-        return out
-
-    def random_start(self, normal=False):
-
-        start = []
-
-        for bounds in self.reduced_theta_bounds:
-
-            if not normal:
-                start.append( np.random.uniform(min(bounds), max(bounds)) )
-            else:
-                sigma = abs(min(bounds) - max(bounds)) / 2
-                nu = min(bounds) + sigma
-
-                start.append(np.random.normal(nu, sigma/3))
-
-        return start
-
-    # Building input dict
-
-
-
 if __name__=='__main__':
 
     from baysar.input_functions import make_input_dict
@@ -306,9 +207,12 @@ if __name__=='__main__':
     from tulasa.general import plot
     from tulasa.plotting_functions import plot_fit
 
-    random_sample=posterior.random_sample(number=1000, order=3, flat=True)
-    # start_sample=posterior.sample_start(number=10, scale=1000, order=3, flat=True)
-    plot_fit(posterior, random_sample, alpha=0.3)
-    plot([posterior(t) for t in random_sample])
+    # random_sample=posterior.random_sample(number=1000, order=3, flat=True)
+    # # start_sample=posterior.sample_start(number=10, scale=1000, order=3, flat=True)
+    # plot_fit(posterior, random_sample, alpha=0.3)
+    # plot([posterior(t) for t in random_sample])
+
+    for n in np.arange(100):
+        posterior(posterior.random_start())
 
     pass

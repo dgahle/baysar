@@ -299,7 +299,7 @@ class PlasmaLine():
             tau = np.zeros(len(ne)) + tau
 
             tmp_in = (tau, ne, te)
-            average_charge = np.power(10, self.impurity_average_charge[species](tmp_in))
+            average_charge = np.exp(self.impurity_average_charge[species](tmp_in))
 
             total_impurity_electrons += average_charge * conc
 
@@ -327,7 +327,7 @@ class PlasmaLine():
 
         z_eff = ion*self.impurity_ion_bal[elem][:, :, :, ion] + ionp1*self.impurity_ion_bal[elem][:, :, :, ionp1]
 
-        return RegularGridInterpolator((tau, ne, te), np.log10(z_eff), bounds_error=False)
+        return RegularGridInterpolator((tau, ne, te), np.log(z_eff), bounds_error=False)
 
     def get_impurity_ion_bal(self):
 
@@ -369,7 +369,7 @@ class PlasmaLine():
 
         # log10 is spitting out errors ::( but it still runs ::)
         # What about scipy.interpolate.Rbf ? # TODO - 1e40 REEEEEEEEEEEE
-        return RegularGridInterpolator((tau, ne, te), np.log10(tec406.clip(1e-40)), bounds_error=False)
+        return RegularGridInterpolator((tau, ne, te), np.log(tec406.clip(1e-40)), bounds_error=False)
 
     def get_impurity_tecs(self):
         tecs = []
@@ -409,7 +409,7 @@ class PlasmaLine():
 
                 for block, r_tag in zip([exc, rec], ['exc', 'rec']):
                     rates, _ = read_adf15(file, block, te, ne, all=True)  # (te, ne), _# TODO - 1e50 alarm
-                    pecs.append( (line_tag+'_'+r_tag, RectBivariateSpline(ne, te, np.log10(rates.T.clip(1e-50))).ev) )
+                    pecs.append( (line_tag+'_'+r_tag, RectBivariateSpline(ne, te, np.log(rates.T.clip(1e-50))).ev) )
                 # return
 
         self.hydrogen_pecs = dict(pecs)
