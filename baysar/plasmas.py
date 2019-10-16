@@ -362,14 +362,19 @@ class PlasmaLine():
 
         tec406 = np.zeros((len(tau), len(ne), len(te)))
 
+        tec_splines=[]
         for t_counter, t in enumerate(tau):
             ionbal = self.impurity_ion_bal[elem]
-            tec406[t_counter, :, :] = big_ne*(pecs_exc.T*ionbal[t_counter, :, :, ion] +
+            rates = big_ne*(pecs_exc.T*ionbal[t_counter, :, :, ion] +
                                               pecs_rec.T*ionbal[t_counter, :, :, ion+1])
+            # tec406[t_counter, :, :] = big_ne*(pecs_exc.T*ionbal[t_counter, :, :, ion] +
+            #                                   pecs_rec.T*ionbal[t_counter, :, :, ion+1])
+            tec_splines.append(RectBivariateSpline(ne, te, np.log(rates.clip(1e-50))).ev)
 
-        # log10 is spitting out errors ::( but it still runs ::)
-        # What about scipy.interpolate.Rbf ? # TODO - 1e40 REEEEEEEEEEEE
-        return RegularGridInterpolator((tau, ne, te), np.log(tec406.clip(1e-40)), bounds_error=False)
+        # # log10 is spitting out errors ::( but it still runs ::)
+        # # What about scipy.interpolate.Rbf ? # TODO - 1e40 REEEEEEEEEEEE
+        # return RegularGridInterpolator((tau, ne, te), np.log(tec406.clip(1e-40)), bounds_error=False)
+        return tec_splines
 
     def get_impurity_tecs(self):
         tecs = []

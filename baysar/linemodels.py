@@ -140,22 +140,30 @@ class ADAS406Lines(object):
         len_los=len(self.los)
         self.tec_in=np.zeros((len_los, 3))
 
-    @profile
     def __call__(self):
 
         n0 = self.plasma.plasma_state[self.species+'_dens']
         ti = self.plasma.plasma_state[self.species+'_Ti']
         # ne = self.plasma.plasma_state['electron_density']
         # te = self.plasma.plasma_state['electron_temperature']
-        # tau = np.array([self.plasma.plasma_state[self.species+'_tau'][0] for n in ne])
+        tau = self.plasma.plasma_state[self.species+'_tau'][0]
         # tau = np.zeros(len(ne))+self.plasma.plasma_state[self.species+'_tau'][0]
 
-        self.tec_in[:, 0] = self.plasma.plasma_state[self.species+'_tau'][0]# np.array([tau, ne, te])
+        # self.tec_in[:, 0] = self.plasma.plasma_state[self.species+'_tau'][0]# np.array([tau, ne, te])
         self.tec_in[:, 1] = self.plasma.plasma_state['electron_density']
         self.tec_in[:, 2] = self.plasma.plasma_state['electron_temperature']
+        # TODO: comparison to weight on log(tau) vs tau
+        adas_taus = self.plasma.adas_plasma_inputs['tau']
+        j=adas_taus.searchsorted(tau)
+        i=j-1
 
-        tec = self.tec406(self.tec_in)
-        tec = np.exp(tec)
+        d_tau=1/(adas_taus[j]-adas_taus[i])
+        i_weight = (tau-adas_taus[i])*d_tau
+        j_weight = (adas_taus[j]-tau)*d_tau
+
+        tec406_lhs = self.tec406[i](self.tec_in[:, 1], self.tec_in[:, 2])
+        tec406_rhs = self.tec406[j](self.tec_in[:, 1], self.tec_in[:, 2])
+        tec = np.exp(tec406_lhs*i_weight+tec406_rhs*j_weight)
         tec = np.nan_to_num(tec) # todo - why? and fix!
 
         ems = n0 * tec * self.length_per_sr
@@ -252,13 +260,14 @@ class HydrogenLineShape(object):
         self.n_lower=n_lower
 
         # TODO - why?
-        wavelengths_doppler_num = len(self.wavelengths)
+        wavelengths_doppler_num = len(self.wavelengths) # todo make a power of 2
         # if wavelengths_doppler_num % 2 != 0:
         #     wavelengths_doppler_num += 1
 
         self.wavelengths_doppler = linspace(self.cwl-10, self.cwl+10, wavelengths_doppler_num)
         self.doppler_function = DopplerLine(cwl=self.cwl, wavelengths=self.wavelengths_doppler, atomic_mass=atomic_mass, half_range=5000)
 
+    @profile
     def __call__(self, theta):
         if self.zeeman:
             electron_density, electron_temperature, ion_temperature, b_field, viewangle = theta
@@ -290,7 +299,7 @@ class BalmerHydrogenLine(object):
         self.dl_per_sr = diff(self.los)[0] / (4*pi)
 
         self.reduced_wavelength, self.reduced_wavelength_indicies = \
-            reduce_wavelength(wavelengths, cwl, half_range, return_indicies=True)
+            reduce_wavelength(wavelengths, cwl, half_range, return_indicies=True, power2=True)
 
         self.len_wavelengths = len(self.wavelengths)
         self.exc_pec = self.plasma.hydrogen_pecs[self.line+'_exc']

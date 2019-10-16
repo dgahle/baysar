@@ -10,7 +10,7 @@ from scipy.interpolate import interp1d
 from scipy import interpolate
 from scipy.interpolate import UnivariateSpline # , BSpline
 
-def reduce_wavelength_check_input(wavelengths, cwl, half_range, return_indicies):
+def reduce_wavelength_check_input(wavelengths, cwl, half_range, return_indicies, power2):
     # :param 1D ndarray wavelengths: Input array to be reduced
     if type(wavelengths) is not np.ndarray:
         raise TypeError("type(wavelengths) is not np.ndarray")
@@ -26,9 +26,11 @@ def reduce_wavelength_check_input(wavelengths, cwl, half_range, return_indicies)
     #                              of 'wavelengths' that match the beginning and end of the reduced array
     if type(return_indicies) is not bool:
         raise TypeError("return_indicies must be a Boolean")
+    if type(power2) is not bool:
+        raise TypeError("power2 must be a Boolean")
 
 
-def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
+def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False, power2=False):
 
 
     """
@@ -45,7 +47,7 @@ def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
              'half_range'
     """
 
-    reduce_wavelength_check_input(wavelengths, cwl, half_range, return_indicies)
+    reduce_wavelength_check_input(wavelengths, cwl, half_range, return_indicies, power2)
 
     if type(cwl) is list:
         cwl=cwl[0]
@@ -65,12 +67,22 @@ def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
         tmp_wave = abs(wavelengths - lower_cwl)
         lower_index = np.where(tmp_wave == min(tmp_wave))[0][0]
 
-    # print(lower_index, upper_index)
+    new_waves=wavelengths[lower_index:upper_index+1]
+    if power2:
+        new_len=2**int(np.log2(len(new_waves))//1)
+        diff_len=len(new_waves)-new_len
+        lower_index += diff_len // 2
+        upper_index -= diff_len // 2
+        if diff_len % 2 == 1:
+            upper_index-=1
+        new_waves=wavelengths[lower_index:upper_index+1]
 
+        print(len(new_waves))
+        
     if return_indicies:
-        return wavelengths[lower_index:upper_index+1], [lower_index, upper_index]
+        return new_waves, [lower_index, upper_index]
     else:
-        return wavelengths[lower_index:upper_index + 1]
+        return new_waves
 
 def gaussian_check_input(x, cwl, fwhm, intensity):
     # :param 1D np.ndarray x: Axis to evaluate gaussian
