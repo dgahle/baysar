@@ -299,7 +299,7 @@ class BalmerHydrogenLine(object):
         self.dl_per_sr = diff(self.los)[0] / (4*pi)
 
         self.reduced_wavelength, self.reduced_wavelength_indicies = \
-            reduce_wavelength(wavelengths, cwl, half_range, return_indicies=True, power2=True)
+            reduce_wavelength(wavelengths, cwl, half_range, return_indicies=True, power2=False)
 
         self.len_wavelengths = len(self.wavelengths)
         self.exc_pec = self.plasma.hydrogen_pecs[self.line+'_exc']
