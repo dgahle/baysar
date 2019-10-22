@@ -10,7 +10,7 @@ from scipy.interpolate import interp1d
 from scipy import interpolate
 from scipy.interpolate import UnivariateSpline # , BSpline
 
-def reduce_wavelength_check_input(wavelengths, cwl, half_range, return_indicies):
+def reduce_wavelength_check_input(wavelengths, cwl, half_range, return_indicies, power2):
     # :param 1D ndarray wavelengths: Input array to be reduced
     if type(wavelengths) is not np.ndarray:
         raise TypeError("type(wavelengths) is not np.ndarray")
@@ -26,9 +26,11 @@ def reduce_wavelength_check_input(wavelengths, cwl, half_range, return_indicies)
     #                              of 'wavelengths' that match the beginning and end of the reduced array
     if type(return_indicies) is not bool:
         raise TypeError("return_indicies must be a Boolean")
+    if type(power2) is not bool:
+        raise TypeError("power2 must be a Boolean")
 
 
-def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
+def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False, power2=False):
 
 
     """
@@ -45,7 +47,7 @@ def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
              'half_range'
     """
 
-    reduce_wavelength_check_input(wavelengths, cwl, half_range, return_indicies)
+    reduce_wavelength_check_input(wavelengths, cwl, half_range, return_indicies, power2)
 
     if type(cwl) is list:
         cwl=cwl[0]
@@ -65,12 +67,22 @@ def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
         tmp_wave = abs(wavelengths - lower_cwl)
         lower_index = np.where(tmp_wave == min(tmp_wave))[0][0]
 
-    # print(lower_index, upper_index)
+    new_waves=wavelengths[lower_index:upper_index+1]
+    if power2:
+        new_len=2**int(np.log2(len(new_waves))//1)
+        diff_len=len(new_waves)-new_len
+        lower_index += diff_len // 2
+        upper_index -= diff_len // 2
+        if diff_len % 2 == 1:
+            upper_index-=1
+        new_waves=wavelengths[lower_index:upper_index+1]
 
+        print(len(new_waves))
+        
     if return_indicies:
-        return wavelengths[lower_index:upper_index+1], [lower_index, upper_index]
+        return new_waves, [lower_index, upper_index]
     else:
-        return wavelengths[lower_index:upper_index + 1]
+        return new_waves
 
 def gaussian_check_input(x, cwl, fwhm, intensity):
     # :param 1D np.ndarray x: Axis to evaluate gaussian
@@ -92,6 +104,7 @@ def gaussian_check_input(x, cwl, fwhm, intensity):
     if intensity<=0:
         raise ValueError("fwhm must be a positive scalar")
 
+fwhm_to_sigma=1/np.sqrt(8*np.log(2))
 def gaussian(x, cwl, fwhm, intensity):
     '''
     Function for calculating a height normalised gaussian
@@ -102,12 +115,20 @@ def gaussian(x, cwl, fwhm, intensity):
     :return: 1D np.ndarray containing the gaussian
     '''
     gaussian_check_input(x, cwl, fwhm, intensity)
-    sigma = fwhm/np.sqrt(8*np.log(2))
+    sigma = fwhm*fwhm_to_sigma
     return intensity*np.exp(-0.5*((x-cwl)/sigma)**2)
 
+root_half_steradian=np.sqrt(2*np.pi)
 def gaussian_norm(x, cwl, fwhm, intensity):
-    k = np.sqrt(2*np.pi*np.square(fwhm/np.sqrt(8*np.log(2))))
-    return gaussian(x, cwl, fwhm, intensity)/k
+    gaussian_check_input(x, cwl, fwhm, intensity)
+    sigma=fwhm*fwhm_to_sigma
+    k= intensity/(root_half_steradian*sigma)
+    peak=np.exp(-0.5*((x-cwl)/sigma)**2)
+    return k*peak
+
+# def gaussian_norm(x, cwl, fwhm, intensity):
+#     k = np.sqrt(half_steradian*np.square(fwhm*fwhm_to_sigma))
+#     return gaussian(x, cwl, fwhm, intensity)/k
 
 def put_in_iterable(input):
     if type(input) not in (tuple, list, np.ndarray):
@@ -118,7 +139,7 @@ def put_in_iterable(input):
 class Gaussian(object):
     def __init__(self, x=None, cwl=None, fwhm=None, fractions=None, normalise=True, reduced_range=None):
         self.x=x
-        self.cwl=put_in_iterable(cwl)
+        self.cwl=np.array(put_in_iterable(cwl))
         self.fwhm=fwhm
         self.normalise=normalise
 
@@ -143,25 +164,36 @@ class Gaussian(object):
         else:
             self.func = gaussian
 
-    def __call__(self, theta):
         if self.cwl is not None and self.fwhm is not None:
-            intensity = theta
-            fwhm = self.fwhm
-            cwl = self.cwl
+            self.peak=self.peak_1d
         elif self.cwl is not None:
-            fwhm, intensity = theta
-            cwl = self.cwl
+            self.peak=self.peak_2d
         else:
-            cwl, fwhm, intensity = theta
-            cwl = list(cwl)
+            self.peak=self.peak_3d
 
+    def __call__(self, theta):
+        return self.peak(theta)
+
+    def peak_1d(self, intensity):
+        return self.make_peak(self.cwl, self.fwhm, intensity)
+
+    def peak_2d(self, theta):
+        fwhm, intensity = theta
+        return self.make_peak(self.cwl, fwhm, intensity)
+
+    def peak_3d(self, theta):
+        cwl, fwhm, intensity = theta
+        cwl = list(cwl)
+        return self.make_peak(self.cwl, fwhm, intensity)
+
+    def make_peak(self, cwl, fwhm, intensity):
         fwhm = put_in_iterable(fwhm)
         if len(fwhm)<len(cwl) and len(fwhm)==1:
             fwhm = [fwhm[0] for c in cwl]
 
         peak = np.zeros(len(self.x))
         for f, c, fw, rx, rxi in zip(self.fractions, cwl, fwhm, self.reducedx, self.reducedx_indicies):
-            peak[min(rxi):max(rxi)+1] += f*self.func(rx, c, fw, 1)
+            peak[rxi[0]:rxi[1]+1] += self.func(rx, c, fw, f)
 
         return intensity*peak
 

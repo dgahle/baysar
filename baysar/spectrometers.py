@@ -90,6 +90,9 @@ class SpectrometerChord(object):
         else:
             self.x_data_fm=self.x_data
 
+        self.dispersion=diff(self.x_data)[0]
+        self.dispersion_fm=diff(self.x_data_fm)[0]
+        self.dispersion_ratios=self.dispersion_fm/self.dispersion
         self.instrument_function=centre_peak(self.input_dict['instrument_function'][self.chord_number])
         self.instrument_function=np.true_divide(self.instrument_function, self.instrument_function.sum())
         self.noise_region = self.input_dict['noise_region'][self.chord_number]
@@ -123,7 +126,7 @@ class SpectrometerChord(object):
         assert likeli != nan, 'likeli == nan'
         return likeli
 
-    def forward_model(self, dont_interpolate=False):
+    def forward_model(self):
         wave_cal = self.plasma.plasma_state['calwave'+str(self.chord_number)]
         self.wavelength_scaling(wave_cal)
         spectra = sum([l().flatten() for l in self.lines]) # TODO: This is what takes all the time?
@@ -132,21 +135,8 @@ class SpectrometerChord(object):
         tmp_a_cal=self.plasma.plasma_state['cal'+str(self.chord_number)]
         spectra=(spectra/tmp_a_cal)+continuum
 
-        if self.instrument_function_matrix is not None:
-            spectra=self.instrument_function_matrix.dot(spectra)
-        else:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                spectra=fftconvolve(spectra, self.instrument_function, mode='same')
-
-        if dont_interpolate:
-            return spectra
-
-        if self.refine is not None:
-            spectra_interp=interp1d(self.x_data_fm, spectra, bounds_error=False, fill_value='extrapolate')
-            spectra=spectra_interp(self.x_data)
-
-        return spectra
+        # TODO - BIG SAVINGS BOGOF
+        return self.instrument_function_matrix.dot(spectra)
 
     def wavelength_scaling(self, wave_cal):
         for line in self.lines:
@@ -178,34 +168,31 @@ class SpectrometerChord(object):
 
     def int_func_sparce_matrix(self):
         # self.centre_instrument_function()
-        if self.refine is not None:
-            len_instrument_function=len(self.instrument_function)
-            self.instrument_function_x=arange(len_instrument_function)
-            int_func_interp = interp1d(self.instrument_function_x, self.instrument_function)
-            self.instrument_function_inter_x=np.linspace(self.instrument_function_x.min(),
-                                                         self.instrument_function_x.max(),
-                                                         int(len_instrument_function*len(self.x_data_fm)/len(self.x_data)))
-            int_func = int_func_interp(self.instrument_function_inter_x)
+        # todo - set default to refine=1 not None
+        len_instrument_function = len(self.instrument_function)
+
+        if len_instrument_function % 2 == 0:
+            self.instrument_function_x = linspace(-(len_instrument_function // 2 - 0.5),
+                                                  len_instrument_function // 2 - 0.5, len_instrument_function)
         else:
-            int_func = self.instrument_function
+            self.instrument_function_x = linspace(-len_instrument_function // 2, len_instrument_function // 2,
+                                                  len_instrument_function)
 
-        res=len(self.x_data_fm)
-        shape = (res, res)
+        int_func_interp = interp1d(self.instrument_function_x, self.instrument_function, bounds_error=False, fill_value=0.)
+        fine_axis = linspace(0, len(self.x_data), len(self.x_data_fm))
+        shape = (len(self.x_data), len(self.x_data_fm))
         matrix = zeros(shape)
-        buffer = zeros(res)
-
-        long_int_func = concatenate( (buffer, int_func[::-1], buffer) )
-        rang = arange(res)[::-1] + int( (len(int_func) + 1) / 2 ) # 16
-
-        for i in progressbar(np.arange(len(rang)), 'Building convolution matrix: ', 30):
-            key_i = rang[i]
-            matrix_i = long_int_func[key_i:key_i + res]  # matrix_i # [::-1]
+        for i in progressbar(np.arange(len(self.x_data)), 'Building convolution matrix: ', 30):
+            matrix_i = int_func_interp(fine_axis - i)
             k = sum(matrix_i)
             if k == 0:
                 k = 1
             matrix[i, :] = matrix_i / k
 
-        self.instrument_function_matrix = sparse.csc_matrix(matrix)
+        self.instrument_function_matrix = sparse.csc_matrix(self.dispersion_ratios*matrix)
+        self.instrument_function_matrix.eliminate_zeros()
+
+
 
 
 if __name__=='__main__':

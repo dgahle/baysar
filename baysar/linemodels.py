@@ -8,15 +8,13 @@ from scipy.constants import pi
 from scipy.interpolate import RegularGridInterpolator, RectBivariateSpline
 
 from scipy.signal import fftconvolve
-import scipy.constants
-
-import numpy as np
 
 import warnings
 
 import time as clock
 
-from numpy import sqrt, linspace, diff, arange, zeros, where, nan_to_num, array, log10, trapz, sin, cos, interp
+import numpy as np
+from numpy import sqrt, linspace, diff, arange, zeros, where, nan_to_num, array, log10, trapz, sin, cos, interp, dot
 
 from baysar.lineshapes import Gaussian, reduce_wavelength
 
@@ -37,17 +35,18 @@ class XLine(object):
         return self.line(ems)
 
     def estimate_log_ems(self, wavelength, spectra):
-        self.log_ems_estimate=0
+        log_ems_estimate=0
         half_width=0.3
         for cwl in self.line.cwl:
-            condition=((cwl-half_width)<wavelength) and (wavelength<(cwl-half_width))
-            index=np.where(condition)[0]
-            self.log_ems_estimate+=np.log10(sum(spectra[index]))
+            condition = ((cwl-half_width) < wavelength) and (wavelength < (cwl-half_width))
+            index = np.where(condition)[0]
+            log_ems_estimate += spectra[index].sum()
+        self.log_ems_estimate = np.log10(log_ems_estimate)
 
 
 def ti_to_fwhm(cwl, atomic_mass, ti):
-    tmp = 7.715e-5 * sqrt(ti / atomic_mass)
-    return cwl * tmp # = fwhm
+    return cwl * 7.715e-5 * sqrt(ti / atomic_mass)
+
 
 class DopplerLine(object):
 
@@ -62,7 +61,7 @@ class DopplerLine(object):
         self.line = Gaussian(x=wavelengths, cwl=cwl, fwhm=None, fractions=fractions, normalise=True)
 
     def __call__(self, ti, ems):
-        fwhm = [ti_to_fwhm(cwl, self.atomic_mass, ti) for cwl in self.line.cwl]
+        fwhm=self.line.cwl*7.715e-5*sqrt(ti/self.atomic_mass)
         return self.line([fwhm, ems])
 
 
@@ -81,6 +80,8 @@ def species_to_element(species):
 def get_atomic_mass(species):
     elm = species_to_element(species)
     return atomic_masses[elm]
+
+from profilehooks import profile
 
 class ADAS406Lines(object):
 
@@ -134,31 +135,47 @@ class ADAS406Lines(object):
         self.linefunction = DopplerLine(self.lines, self.wavelengths, atomic_mass=self.atomic_mass, fractions=self.jj_frac, half_range=5)
         self.tec406 = self.plasma.impurity_tecs[self.line]
 
+        length = diff(self.los)[0]
+        self.length_per_sr = length / (4 * pi)
+        len_los=len(self.los)
+        self.tec_in=np.zeros((len_los, 3))
+
     def __call__(self):
 
         n0 = self.plasma.plasma_state[self.species+'_dens']
         ti = self.plasma.plasma_state[self.species+'_Ti']
-        ne = self.plasma.plasma_state['electron_density']
-        te = self.plasma.plasma_state['electron_temperature']
-        tau = np.array([self.plasma.plasma_state[self.species+'_tau'][0] for n in ne])
+        # ne = self.plasma.plasma_state['electron_density']
+        # te = self.plasma.plasma_state['electron_temperature']
+        tau = self.plasma.plasma_state[self.species+'_tau'][0]
+        # tau = np.zeros(len(ne))+self.plasma.plasma_state[self.species+'_tau'][0]
 
-        tec_in = (tau, ne, te)
-        tec = self.tec406(tec_in)
-        tec = np.power(10, tec)
-        tec = np.nan_to_num(tec)
+        # self.tec_in[:, 0] = self.plasma.plasma_state[self.species+'_tau'][0]# np.array([tau, ne, te])
+        self.tec_in[:, 1] = self.plasma.plasma_state['electron_density']
+        self.tec_in[:, 2] = self.plasma.plasma_state['electron_temperature']
+        # TODO: comparison to weight on log(tau) vs tau
+        adas_taus = self.plasma.adas_plasma_inputs['tau']
+        j=adas_taus.searchsorted(tau)
+        i=j-1
 
-        length = diff(self.los)[0]
-        length_per_sr = length / (4 * pi)
+        d_tau=1/(adas_taus[j]-adas_taus[i])
+        i_weight = (tau-adas_taus[i])*d_tau
+        j_weight = (adas_taus[j]-tau)*d_tau
 
-        ems = n0 * tec * length_per_sr
+        tec406_lhs = self.tec406[i](self.tec_in[:, 1], self.tec_in[:, 2])
+        tec406_rhs = self.tec406[j](self.tec_in[:, 1], self.tec_in[:, 2])
+        tec = np.exp(tec406_lhs*i_weight+tec406_rhs*j_weight)
+        tec = np.nan_to_num(tec) # todo - why? and fix!
+
+        ems = n0 * tec * self.length_per_sr
         ems = ems.clip(min=1e-20)
+        ems_sum = ems.sum()
 
         self.emission_profile = ems
-        self.ems_ne = sum(ems*ne) / sum(ems)
+        self.ems_ne = dot(ems,self.tec_in[:, 1]) / ems_sum
         self.ems_conc = n0 / self.ems_ne
-        self.ems_te = sum(ems*te) / sum(ems)
+        self.ems_te = dot(ems,self.tec_in[:, 2]) / ems_sum
 
-        return self.linefunction(ti, sum(ems))
+        return self.linefunction(ti, ems_sum )
 
 
 # def comparison(self, theta, line_model='stehle_param'):
@@ -197,12 +214,19 @@ def stehle_param(n_upper, n_lower, cwl, wavelengths, electron_density, electron_
     # Paramaterised MMM Stark profile coefficients from Bart's paper
     a_ij, b_ij, c_ij = loman_coeff[str(n_upper) + str(n_lower)]
     delta_lambda_12ij = c_ij*np.divide( (1e6*electron_density)**a_ij, electron_temperature**b_ij)  # nm
-    ls_s = 1 / (abs((wavelengths - cwl)) ** (5. / 2.) +
-                (10 * delta_lambda_12ij / 2) ** (5. / 2.))
+    ls_s = 1 / (abs((wavelengths - cwl))**(2.5) + (5 * delta_lambda_12ij)**(2.5))
     return ls_s / trapz(ls_s, wavelengths)
 
-def zeeman_split(cwl, peak, wavelengths, b_field, viewangle):
 
+
+from scipy.constants import e as electron_charge
+from scipy.constants import m_e as electron_mass
+from scipy.constants import c as speed_of_light
+
+# cf is central frequency
+b_field_to_cf_shift = electron_charge / (4 * pi *electron_mass * speed_of_light*1e10)
+
+def zeeman_split(cwl, peak, wavelengths, b_field, viewangle):
     """
      returns input lineshape, with Zeeman splitting accounted for by a simple model
 
@@ -215,15 +239,11 @@ def zeeman_split(cwl, peak, wavelengths, b_field, viewangle):
     """
 
     viewangle *= pi
-    electron_charge = scipy.constants.e
-    electron_mass = scipy.constants.m_e
-    speed_of_light = scipy.constants.c
 
     rel_intensity_pi = 0.5 * sin(viewangle) ** 2
     rel_intensity_sigma = 0.25 * (1 + cos(viewangle) ** 2)
-    freq_shift_sigma = b_field * electron_charge / (4 * pi *electron_mass)
-    # wave_shift_sigma = abs(cwl - 1 / (1/(cwl) - freq_shift_sigma / speed_of_light*1e10))
-    wave_shift_sigma = abs(cwl-freq_shift_sigma / speed_of_light*1e10)
+    freq_shift_sigma = b_field_to_cf_shift * b_field
+    wave_shift_sigma = abs(cwl - cwl / (1 - cwl*freq_shift_sigma))
 
     # relative intensities normalised to sum to one
     ls_sigma_minus = rel_intensity_sigma * interp(wavelengths + wave_shift_sigma, wavelengths, peak)
@@ -238,13 +258,16 @@ class HydrogenLineShape(object):
         self.zeeman = zeeman
         self.n_upper=n_upper
         self.n_lower=n_lower
-        wavelengths_doppler_num = len(self.wavelengths)
-        if type(wavelengths_doppler_num/2) != int:
-            wavelengths_doppler_num += 1
+
+        # TODO - why?
+        wavelengths_doppler_num = len(self.wavelengths) # todo make a power of 2
+        # if wavelengths_doppler_num % 2 != 0:
+        #     wavelengths_doppler_num += 1
 
         self.wavelengths_doppler = linspace(self.cwl-10, self.cwl+10, wavelengths_doppler_num)
         self.doppler_function = DopplerLine(cwl=self.cwl, wavelengths=self.wavelengths_doppler, atomic_mass=atomic_mass, half_range=5000)
 
+    @profile
     def __call__(self, theta):
         if self.zeeman:
             electron_density, electron_temperature, ion_temperature, b_field, viewangle = theta
@@ -270,15 +293,15 @@ class BalmerHydrogenLine(object):
         self.cwl = cwl
         self.line = self.species+'_'+str(self.cwl)
         self.wavelengths = wavelengths
-        self.n_upper = self.plasma.input_dict['D_0'][self.cwl]['n_upper']
+        self.n_upper = self.plasma.input_dict[self.species][self.cwl]['n_upper']
         self.atomic_mass = get_atomic_mass(self.species)
         self.los = self.plasma.profile_function.electron_density.x
+        self.dl_per_sr = diff(self.los)[0] / (4*pi)
 
         self.reduced_wavelength, self.reduced_wavelength_indicies = \
-            reduce_wavelength(wavelengths, cwl, half_range, return_indicies=True)
+            reduce_wavelength(wavelengths, cwl, half_range, return_indicies=True, power2=False)
 
-        self.zeros_peak = zeros(len(self.wavelengths))
-
+        self.len_wavelengths = len(self.wavelengths)
         self.exc_pec = self.plasma.hydrogen_pecs[self.line+'_exc']
         self.rec_pec = self.plasma.hydrogen_pecs[self.line+'_rec']
 
@@ -293,51 +316,50 @@ class BalmerHydrogenLine(object):
         te = self.plasma.plasma_state['electron_temperature']
         bfield = self.plasma.plasma_state['b-field']
         viewangle = self.plasma.plasma_state['viewangle']
-        length = diff(self.los)[0]
-        length_per_sr = length / (4 * pi)
 
-        rec_pec = np.power(10, self.rec_pec(ne, te))
-        exc_pec = np.power(10, self.exc_pec(ne, te))
-        rec_profile = n1*ne*length_per_sr*rec_pec
-        exc_profile = n0*ne*length_per_sr*nan_to_num(exc_pec)
+        rec_pec = np.exp(self.rec_pec(ne, te))
+        exc_pec = np.exp(self.exc_pec(ne, te))
+        self.rec_profile = n1*ne*self.dl_per_sr*rec_pec
+        self.exc_profile = n0*ne*self.dl_per_sr*nan_to_num(exc_pec)
 
-        min_photons=1.
-        rec_profile.clip(min_photons)
-        exc_profile.clip(min_photons)
+        # set minimum number of photons to be 1
+        self.rec_profile.clip(1.)
+        self.exc_profile.clip(1.)
 
-        low_te = 0.2
-        low_ne = 1e11
-        low_te_indicies = where(te < low_te)
-        low_ne_indicies = where(ne < low_ne)
-        for indicies in [low_te_indicies, low_ne_indicies]:
-            rec_profile[indicies] = min_photons
-            exc_profile[indicies] = min_photons
+        # low_te = 0.2
+        # low_ne = 1e11
+        # indicies = where((te < low_te) | (ne < low_ne))
+        # rec_profile[indicies] = 1
+        # exc_profile[indicies] = 1
 
-        self.f_rec = sum(rec_profile) / sum(rec_profile + exc_profile)
-        self.exc_profile = exc_profile
-        self.rec_profile = rec_profile
-        self.ems_profile = rec_profile + exc_profile
-        self.exc_ne = sum(exc_profile*ne)/sum(exc_profile)
-        self.rec_ne = sum(rec_profile*ne)/sum(rec_profile)
-        self.ems_ne = sum(self.ems_profile*ne)/sum(self.ems_profile)
-        self.exc_te = sum(exc_profile*te)/sum(exc_profile)
-        self.rec_te = sum(rec_profile*te)/sum(rec_profile)
-        self.ems_te = sum(self.ems_profile*te)/sum(self.ems_profile)
+        rec_sum = self.rec_profile.sum()
+        exc_sum = self.exc_profile.sum()
+        ems_sum = rec_sum + exc_sum
 
-        tmp_wavelengths = self.reduced_wavelength
+        # used for the emission lineshape calculation
+        self.ems_profile = self.rec_profile + self.exc_profile
+        self.exc_ne = dot(self.exc_profile, ne) / exc_sum
+        self.rec_ne = dot(self.rec_profile, ne) / rec_sum
+        self.exc_te = dot(self.exc_profile, te) / exc_sum
+        self.rec_te = dot(self.rec_profile, te) / rec_sum
+
+        # just because there are nice to have
+        self.f_rec = rec_sum / ems_sum
+        self.ems_ne = dot(self.ems_profile, ne) / ems_sum
+        self.ems_te = dot(self.ems_profile, te) / ems_sum
+
         self.exc_lineshape_input = [self.exc_ne, self.exc_te, ti, bfield, viewangle]
         self.rec_lineshape_input = [self.rec_ne, self.rec_te, ti, bfield, viewangle]
         self.exc_peak = nan_to_num( self.lineshape(self.exc_lineshape_input) )
         self.rec_peak = nan_to_num( self.lineshape(self.rec_lineshape_input) )
-        tmp_peak = self.rec_peak*sum(rec_profile) + self.exc_peak*sum(exc_profile)
+        tmp_peak = self.rec_peak*rec_sum + self.exc_peak*exc_sum
 
-        peak = self.zeros_peak # zeros(len(self.wavelengths))
-        peak[min(self.reduced_wavelength_indicies):max(self.reduced_wavelength_indicies)+1] = tmp_peak
-
-        if not len(peak) == len(self.wavelengths):
-            raise ValueError('len(peak) != len(self.wavelengths')
+        peak = zeros(self.len_wavelengths) # TODO - replace reduce_wavelength output with a slice
+        peak[self.reduced_wavelength_indicies[0]:self.reduced_wavelength_indicies[1]+1] = tmp_peak
 
         return peak
+
+
 
 
 if __name__=='__main__':

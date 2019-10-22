@@ -46,7 +46,6 @@ class AntiprotonCost(object):
         else:
             return 0.
 
-
 class BaysarPosterior(object):
 
     """
@@ -120,8 +119,7 @@ class BaysarPosterior(object):
         self.last_proposal=theta
         # updating plasma state
         self.plasma(theta)
-        prob = [p() for p in self.posterior_components]
-        prob = sum(prob)
+        prob = sum( p() for p in self.posterior_components )
         self.check_output(prob)
         return prob/self.temper # temper default is 1
 
@@ -258,28 +256,15 @@ if __name__=='__main__':
 
     posterior = BaysarPosterior(input_dict=input_dict, curvature=1e2)
 
-    rand_theta=posterior.random_start()
-    print(posterior(rand_theta), rand_theta[posterior.plasma.slices['background0']],
-          np.log10(np.mean(posterior.posterior_components[0].y_data_continuum)))
-
     from tulasa.general import plot
     from tulasa.plotting_functions import plot_fit
 
-    start_sample=posterior.sample_start(number=3, order=1, flat=False)
-    for start in start_sample:
-        print(posterior(start), start[posterior.plasma.slices['background0']])
+    # random_sample=posterior.random_sample(number=1000, order=3, flat=True)
+    # # start_sample=posterior.sample_start(number=10, scale=1000, order=3, flat=True)
+    # plot_fit(posterior, random_sample, alpha=0.3)
+    # plot([posterior(t) for t in random_sample])
 
-    fm=[posterior.posterior_components[0].y_data]
-    for st in start_sample:
-        posterior(st)
-        fm.append(posterior.posterior_components[0].forward_model())
+    for n in np.arange(100):
+        posterior(posterior.random_start())
 
-    plot(fm)
-
-    #
-    # sample_num = 20
-    # sample = posterior.start_sample(sample_num, min_logp=-500)
-    #
-    # plot([posterior(s) for s in sample])
-    # plot_fit(posterior, start_sample, ylim=(1e10, 1e16))
     pass
