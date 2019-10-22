@@ -221,8 +221,9 @@ def zeeman_split(cwl, peak, wavelengths, b_field, viewangle):
 
     rel_intensity_pi = 0.5 * sin(viewangle) ** 2
     rel_intensity_sigma = 0.25 * (1 + cos(viewangle) ** 2)
-    freq_shift_sigma = electron_charge / (4 * pi *electron_mass) * b_field
-    wave_shift_sigma = abs(cwl - 1 / (1/(cwl) - freq_shift_sigma / speed_of_light*1e10))
+    freq_shift_sigma = b_field * electron_charge / (4 * pi *electron_mass)
+    # wave_shift_sigma = abs(cwl - 1 / (1/(cwl) - freq_shift_sigma / speed_of_light*1e10))
+    wave_shift_sigma = abs(cwl-freq_shift_sigma / speed_of_light*1e10)
 
     # relative intensities normalised to sum to one
     ls_sigma_minus = rel_intensity_sigma * interp(wavelengths + wave_shift_sigma, wavelengths, peak)
@@ -250,8 +251,8 @@ class HydrogenLineShape(object):
         else:
             electron_density, electron_temperature, ion_temperature = theta
 
-        stark_component = stehle_param(self.n_upper, self.n_lower, self.cwl, self.wavelengths, electron_density, electron_temperature)
         doppler_component = self.doppler_function(ion_temperature, 1)
+        stark_component = stehle_param(self.n_upper, self.n_lower, self.cwl, self.wavelengths, electron_density, electron_temperature)
         peak=fftconvolve(stark_component, doppler_component, 'same')
         peak/=trapz(peak, self.wavelengths)
 
@@ -263,7 +264,7 @@ class HydrogenLineShape(object):
 
 
 class BalmerHydrogenLine(object):
-    def __init__(self, plasma, species, cwl, wavelengths, half_range=400, zeeman=True):
+    def __init__(self, plasma, species, cwl, wavelengths, half_range=40000, zeeman=True):
         self.plasma = plasma
         self.species = species
         self.cwl = cwl
@@ -389,3 +390,14 @@ if __name__=='__main__':
     cwl = 3968.99
     hline = BalmerHydrogenLine(plasma, species, cwl, tmp_wavelengths)
     hline()
+
+    cwl=4100
+    wavelengths=np.linspace(4090, 4110, 100)
+    n_lower=2
+    atomic_mass=2
+    peaks=[]
+    for n_upper in (3, 4, 5, 6, 7, 8, 9):
+        bline=HydrogenLineShape(cwl, wavelengths, n_upper, n_lower, atomic_mass, zeeman=True)
+        # electron_density, electron_temperature, ion_temperature, b_field, viewangle
+        peaks.append(bline([5e14, 5, 5, 0, 0]))
+    plot(peaks, log=True, multi='fake')

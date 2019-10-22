@@ -9,7 +9,7 @@ from numpy import random
 
 import os, sys, io, copy
 
-from baysar.line_data import line_data_multiplet, adas_line_data
+from baysar.line_data import adas_line_data
 
 def within(stuff, boxes):
 

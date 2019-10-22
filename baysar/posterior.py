@@ -22,10 +22,18 @@ class CurvatureCost(object):
     def __init__(self, plasma, scale):
         self.plasma=plasma
         self.scale=scale
+
+        self.los=plasma.profile_function.electron_density.x_points
+        self.empty_array=plasma.profile_function.electron_density.empty_theta
+        if plasma.profile_function.electron_density.zero_bounds is not None:
+            self.slice=slice(1, -1)
+        else:
+            self.slice=slice(0, len(self.empty_array))
     def __call__(self):
         curves=0
-        for p in ['electron_density', 'electron_temperature']:
-            curves+=curvature(self.plasma.plasma_state[p])
+        for tag in ['electron_density']: # , 'electron_temperature']:
+            self.empty_array[self.slice]=self.plasma.plasma_theta.get(tag)
+            curves+=curvature(self.empty_array)
         return curves*self.scale
 
 class AntiprotonCost(object):
