@@ -81,7 +81,6 @@ def get_atomic_mass(species):
     elm = species_to_element(species)
     return atomic_masses[elm]
 
-from profilehooks import profile
 
 class ADAS406Lines(object):
 
@@ -267,7 +266,6 @@ class HydrogenLineShape(object):
         self.wavelengths_doppler = linspace(self.cwl-10, self.cwl+10, wavelengths_doppler_num)
         self.doppler_function = DopplerLine(cwl=self.cwl, wavelengths=self.wavelengths_doppler, atomic_mass=atomic_mass, half_range=5000)
 
-    @profile
     def __call__(self, theta):
         if self.zeeman:
             electron_density, electron_temperature, ion_temperature, b_field, viewangle = theta

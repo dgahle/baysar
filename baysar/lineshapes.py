@@ -78,7 +78,7 @@ def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False, power
         new_waves=wavelengths[lower_index:upper_index+1]
 
         print(len(new_waves))
-        
+
     if return_indicies:
         return new_waves, [lower_index, upper_index]
     else:
@@ -215,33 +215,41 @@ class SuperGaussian(object):
 
 class MeshLine(object):
     def __init__(self, x, bounds=[-10, 10], zero_bounds=None, resolution=0.1, log=False, kind='linear'):
-        self.x_points = x
         self.x = np.arange(min(bounds), max(bounds), resolution)
-        self.empty_theta = np.zeros(len(self.x_points))        
         self.log = log
         self.kind = kind
-
         self.zero_bounds = zero_bounds
         if self.zero_bounds is not None:
-            tmp_x = np.zeros(len(self.x_points)+2)
-            tmp_x[0] = min(bounds)
-            tmp_x[-1] = max(bounds)
-            tmp_x[1:-1] = self.x_points
-            self.x_points = tmp_x
-            self.empty_theta[0] = zero_bounds
-            self.empty_theta[-1] = zero_bounds
+            self.slice=slice(1, -1)
+            self.empty_theta=np.zeros(len(x)+2)
+            self.empty_theta[0]=zero_bounds
+            self.empty_theta[-1]=zero_bounds
+        else:
+            self.empty_theta = np.zeros(len(x))
+            self.slice=slice(0, len(self.empty_theta))
+        self.x_points = np.linspace(min(bounds), max(bounds), len(self.empty_theta))
+
+        self.check_init()
+
+    def check_init(self):
+        if len(self.x_points) != len(self.empty_theta):
+            print('self.x_points', self.x_points)
+            print('self.empty_theta', self.empty_theta)
+            raise ValueError("len(self.x_points) != len(self.empty_theta)")
+        # if self.zero_bounds is None:
+        #     if len(self.x_points) != len(self.empty_theta):
+        #         print('self.x_points', self.x_points)
+        #         print('self.empty_theta', self.empty_theta)
+        #         raise ValueError("len(self.x_points) != len(self.empty_theta)")
+        # else:
+        #     if len(self.x_points) != len(self.empty_theta)-2:
+        #         print('self.x_points', self.x_points)
+        #         print('self.empty_theta', self.empty_theta)
+        #         raise ValueError("len(self.x_points) != len(self.empty_theta)-2")
+
 
     def __call__(self, theta, *args, **kwargs):
-        if self.zero_bounds is not None:
-            self.empty_theta[1:-1] = theta
-            theta = self.empty_theta
-        assert len(theta) == len(self.x_points), 'len(theta) != len(self.x)' + \
-                                             str(len(theta)) + ' ' + str(len(self.x_points))
-
-        # get_new_profile = InterpolatedUnivariateSpline(self.x, theta)
-        # get_new_profile = UnivariateSpline(self.x_points, theta)
-        get_new_profile = interp1d(self.x_points, theta, self.kind, bounds_error=False, fill_value='extrapolate')
-
+        get_new_profile = interp1d(self.x_points, self.empty_theta, self.kind, bounds_error=False, fill_value='extrapolate')
         if self.log:
             return np.power(10, get_new_profile(self.x))
         else:

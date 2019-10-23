@@ -4,37 +4,20 @@ from numpy import random
 import time as clock
 from scipy.optimize import fmin_l_bfgs_b
 
+from baysar.priors import CurvatureCost
 from baysar.plasmas import PlasmaLine
 from baysar.spectrometers import SpectrometerChord, within, progressbar, clip_data
 from baysar.linemodels import XLine
 
+'''
+# if you want to do profiling import profilehooks
+from profilehooks import profile
+# the above the relavent function (even in classes) place the following 'hook'
+@profile
+'''
 
 def tmp_func(*args, **kwargs):
     return random.rand() * 1e1
-
-def curvature(profile):
-    grad1 = np.gradient(profile / max(profile))
-    grad2 = np.gradient(grad1)
-    return - sum(np.square(grad2) / np.power((1 + np.square(grad1)), 3)) # curvature
-
-
-class CurvatureCost(object):
-    def __init__(self, plasma, scale):
-        self.plasma=plasma
-        self.scale=scale
-
-        self.los=plasma.profile_function.electron_density.x_points
-        self.empty_array=plasma.profile_function.electron_density.empty_theta
-        if plasma.profile_function.electron_density.zero_bounds is not None:
-            self.slice=slice(1, -1)
-        else:
-            self.slice=slice(0, len(self.empty_array))
-    def __call__(self):
-        curves=0
-        for tag in ['electron_density']: # , 'electron_temperature']:
-            self.empty_array[self.slice]=self.plasma.plasma_theta.get(tag)
-            curves+=curvature(self.empty_array)
-        return curves*self.scale
 
 class AntiprotonCost(object):
     def __init__(self, plasma):
@@ -236,13 +219,13 @@ if __name__=='__main__':
 
     from baysar.input_functions import make_input_dict
 
-    num_pixels=512
-    wavelength_axis = [np.linspace(3900, 4150, num_pixels)]
+    num_pixels=1024
+    wavelength_axis = [np.linspace(3800, 4350, num_pixels)]
     experimental_emission = [np.zeros(num_pixels)+1e12+np.random.normal(0, 1e10, num_pixels)]
     instrument_function = [np.array([0, 1, 0])]
     emission_constant = [1e11]
-    species = ['D', 'N']
-    ions = [ ['0'], ['1', '2', '3'] ]
+    species = ['D', 'C', 'N']
+    ions = [ ['0'] , ['1'], ['1', '2', '3', '4'] ]
     noise_region = [[4040, 4050]]
     mystery_lines = [ [ [4070], [4001, 4002] ],
                       [    [1],    [0.4, 0.6]]]
@@ -250,7 +233,7 @@ if __name__=='__main__':
     input_dict = make_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
                                 instrument_function=instrument_function, emission_constant=emission_constant,
                                 noise_region=noise_region, species=species, ions=ions,
-                                mystery_lines=mystery_lines, refine=[0.25],
+                                mystery_lines=mystery_lines, refine=[0.05],
                                 ion_resolved_temperatures=False, ion_resolved_tau=True)
 
 
@@ -259,12 +242,16 @@ if __name__=='__main__':
     from tulasa.general import plot
     from tulasa.plotting_functions import plot_fit
 
-    # random_sample=posterior.random_sample(number=1000, order=3, flat=True)
-    # # start_sample=posterior.sample_start(number=10, scale=1000, order=3, flat=True)
+    random_sample=posterior.random_sample(number=100, order=3, flat=True)
+    chord = posterior.posterior_components[0]
+    posterior(random_sample[-1])
+    plot(chord.forward_model())
+    print(chord.lines)
+
+    # start_sample=posterior.sample_start(number=10, scale=1000, order=3, flat=True)
     # plot_fit(posterior, random_sample, alpha=0.3)
     # plot([posterior(t) for t in random_sample])
 
-    for n in np.arange(100):
-        posterior(posterior.random_start())
+
 
     pass
