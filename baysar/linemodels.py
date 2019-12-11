@@ -62,6 +62,7 @@ class DopplerLine(object):
 
     def __call__(self, ti, ems):
         fwhm=self.line.cwl*7.715e-5*sqrt(ti/self.atomic_mass)
+        # print(self.line.cwl, self.atomic_mass, fwhm, ti)
         return self.line([fwhm, ems])
 
 
@@ -148,7 +149,7 @@ class ADAS406Lines(object):
         tau = self.plasma.plasma_state[self.species+'_tau'][0]
         # tau = np.zeros(len(ne))+self.plasma.plasma_state[self.species+'_tau'][0]
 
-        # self.tec_in[:, 0] = self.plasma.plasma_state[self.species+'_tau'][0]# np.array([tau, ne, te])
+        self.tec_in[:, 0] = self.plasma.plasma_state[self.species+'_tau'][0]# np.array([tau, ne, te])
         self.tec_in[:, 1] = self.plasma.plasma_state['electron_density']
         self.tec_in[:, 2] = self.plasma.plasma_state['electron_temperature']
         # TODO: comparison to weight on log(tau) vs tau
@@ -250,13 +251,22 @@ def zeeman_split(cwl, peak, wavelengths, b_field, viewangle):
     ls_pi = rel_intensity_pi * peak
     return ls_sigma_minus + ls_pi + ls_sigma_plus
 
+from copy import copy
+
 class HydrogenLineShape(object):
     def __init__(self, cwl, wavelengths, n_upper, n_lower, atomic_mass, zeeman=True):
         self.cwl = cwl
         self.wavelengths = wavelengths
         self.zeeman = zeeman
-        self.n_upper=n_upper
-        self.n_lower=n_lower
+        if int(n_lower)==1:
+            self.n_upper=n_upper+1
+            self.n_lower=2
+            UserWarning("Using the Balmer Stark shape coefficients for the Lyman series. Transition n=%d -> %d | %f A"%(self.n_upper, self.n_lower, np.round(self.cwl, 2)))
+        else:
+            self.n_upper=n_upper
+            self.n_lower=n_lower
+
+        # print("Transition n=%d -> %d | %f A"%(self.n_upper, self.n_lower, np.round(self.cwl, 2)))
 
         # TODO - why?
         wavelengths_doppler_num = len(self.wavelengths) # todo make a power of 2
@@ -264,7 +274,7 @@ class HydrogenLineShape(object):
         #     wavelengths_doppler_num += 1
 
         self.wavelengths_doppler = linspace(self.cwl-10, self.cwl+10, wavelengths_doppler_num)
-        self.doppler_function = DopplerLine(cwl=self.cwl, wavelengths=self.wavelengths_doppler, atomic_mass=atomic_mass, half_range=5000)
+        self.doppler_function = DopplerLine(cwl=copy(self.cwl), wavelengths=self.wavelengths_doppler, atomic_mass=atomic_mass, half_range=5000)
 
     def __call__(self, theta):
         if self.zeeman:
@@ -292,6 +302,7 @@ class BalmerHydrogenLine(object):
         self.line = self.species+'_'+str(self.cwl)
         self.wavelengths = wavelengths
         self.n_upper = self.plasma.input_dict[self.species][self.cwl]['n_upper']
+        self.n_lower = self.plasma.input_dict[self.species][self.cwl]['n_lower']
         self.atomic_mass = get_atomic_mass(self.species)
         self.los = self.plasma.profile_function.electron_density.x
         self.dl_per_sr = diff(self.los)[0] / (4*pi)
@@ -303,7 +314,7 @@ class BalmerHydrogenLine(object):
         self.exc_pec = self.plasma.hydrogen_pecs[self.line+'_exc']
         self.rec_pec = self.plasma.hydrogen_pecs[self.line+'_rec']
 
-        self.lineshape = HydrogenLineShape(self.cwl, self.reduced_wavelength, self.n_upper, n_lower=2,
+        self.lineshape = HydrogenLineShape(self.cwl, self.reduced_wavelength, self.n_upper, n_lower=self.n_lower,
                                            atomic_mass=self.atomic_mass, zeeman=zeeman)
 
     def __call__(self):
@@ -317,18 +328,12 @@ class BalmerHydrogenLine(object):
 
         rec_pec = np.exp(self.rec_pec(ne, te))
         exc_pec = np.exp(self.exc_pec(ne, te))
-        self.rec_profile = n1*ne*self.dl_per_sr*rec_pec
+        self.rec_profile = n1.clip(1.)*ne*self.dl_per_sr*rec_pec
         self.exc_profile = n0*ne*self.dl_per_sr*nan_to_num(exc_pec)
 
         # set minimum number of photons to be 1
         self.rec_profile.clip(1.)
         self.exc_profile.clip(1.)
-
-        # low_te = 0.2
-        # low_ne = 1e11
-        # indicies = where((te < low_te) | (ne < low_ne))
-        # rec_profile[indicies] = 1
-        # exc_profile[indicies] = 1
 
         rec_sum = self.rec_profile.sum()
         exc_sum = self.exc_profile.sum()

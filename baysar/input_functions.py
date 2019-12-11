@@ -66,6 +66,7 @@ def check_input_dict_input(wavelength_axis, experimental_emission, instrument_fu
     exp_len_check = [len(e)==len(exp_stuff[0]) for e in exp_stuff]
     if not all(exp_len_check):
         raise ValueError("[wavelength_axis, experimental_emission, instrument_function, noise_region, emission_constant] are not all the same length")
+
     # type check
     exp_type_check0 = [type(e) in (list, np.ndarray) for e in exp_stuff]
     if not all(exp_type_check0):
@@ -79,6 +80,14 @@ def check_input_dict_input(wavelength_axis, experimental_emission, instrument_fu
         raise TypeError("Data given in [wavelength_axis, experimental_emission, instrument_function, noise_region] are not all ints or floats")
     if not all([np.isreal(e) for e in emission_constant]):
         raise TypeError("Emission constants type must be in (int, float, np.float64, np.int64)")
+
+    # check that the noise_regions are within the wavelength_axes
+    for region, axis in zip(noise_region, wavelength_axis):
+        if any([within(r, axis) for r in region]):
+            raise ValueError("Noise regions are not in the wavelength axes!")
+        if np.diff(region)<np.diff(axis).min():
+            raise ValueError("Noise regions is subpixel!")
+
 
     # species and ions must be the same lengths and only conatain strings
     if len(species)!=len(ions):

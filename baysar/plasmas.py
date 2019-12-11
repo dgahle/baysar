@@ -5,7 +5,7 @@ import copy, warnings
 
 import collections
 from baysar.lineshapes import MeshLine
-from baysar.spectrometers import within
+from baysar.tools import within
 
 from scipy.interpolate import RegularGridInterpolator, RectBivariateSpline
 from adas import run_adas406, read_adf15
@@ -43,14 +43,94 @@ class arb_obj_single_input(object):
     def __call__(self, theta):
         if type(theta) not in (float, int):
             theta = theta[0]
-        return np.power(10, theta)
+        return theta
+
+
+class arb_obj_single_log_input(object):
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+        if 'power' not in self.__dict__:
+            self.power=1
+
+    def __call__(self, theta):
+        if type(theta) not in (float, int):
+            theta = theta[0]
+        return np.power(self.power, theta)
+
+# tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[-5, 5])
+class default_calwave_function(object):
+    def __init__(self, number_of_variables=2, bounds=[ [0.9999, 1.0001], [-0.6, 0.6] ]):
+        self.number_of_variables=number_of_variables
+        self.bounds=bounds
+
+        self.check_init()
+
+    def check_init(self):
+        if self.number_of_variables!=len(self.bounds):
+            raise ValueError("self.number_of_variables!=len(self.bounds)")
+
+    def __call__(self, *args):
+        return args[0]
+
+    def calibrate(self, x, theta):
+        m, c=theta
+        return m*x+c
+
+    def inverse_calibrate(self, x, theta):
+        m, c=theta
+        return (x-c)/m
+
+
+class default_cal_function(object):
+    def __init__(self, number_of_variables=1, bounds=[ [-5, 20] ]):
+        self.number_of_variables=number_of_variables
+        self.bounds=bounds
+
+        self.check_init()
+
+    def check_init(self):
+        if self.number_of_variables!=len(self.bounds):
+            raise ValueError("self.number_of_variables!=len(self.bounds)")
+
+    def __call__(self, *args):
+        return power10(args[0])
+
+    # def calibrate(self, x, theta):
+    #     m, c=theta
+    #     return m*x+c
+
+    def inverse_calibrate(self, y, theta):
+        m=theta[0]
+        return y/m
+
+
+class default_background_function(object):
+    def __init__(self, number_of_variables=1, bounds=[ [-5, 20] ]):
+        self.number_of_variables=number_of_variables
+        self.bounds=bounds
+
+        self.check_init()
+
+    def check_init(self):
+        if self.number_of_variables!=len(self.bounds):
+            raise ValueError("self.number_of_variables!=len(self.bounds)")
+
+    def __call__(self, *args):
+        return power10(args[0])
+
+    def calculate_background(self, theta):
+        return theta
+
 
 atomic_number={'He':2, 'Li':3, 'Be':4, 'B':5, 'C':6, 'N':7, 'O':8, 'F':9, 'Ne':10}
 def get_number_of_ions(element):
     return atomic_number[element]+1
 
-
-
+def get_meta(element):
+    num=get_number_of_ions(element)
+    meta=np.zeros(num)
+    meta[0]=1
+    return meta
 
 class PlasmaLine():
 
@@ -64,6 +144,8 @@ class PlasmaLine():
     def __init__(self, input_dict, profile_function=None, cal_functions=None, calwave_functions=None, background_functions=None):
 
         'input_dict input has been checked if created with make_input_dict'
+
+        print("Building PlasmaLine object")
 
         self.input_dict = input_dict
         self.num_chords = len(self.input_dict['wavelength_axis'])
@@ -92,7 +174,6 @@ class PlasmaLine():
         self(np.random.rand(self.n_params))
 
     def __call__(self, theta):
-
         return self.update_plasma_state(theta)
 
     def get_impurities(self):
@@ -102,6 +183,29 @@ class PlasmaLine():
             elem = species[:split_index]
             if elem not in self.impurities:
                 self.impurities.append(elem)
+
+    def append_bounds_from_functional(self, bounds, functional):
+        if type(functional.bounds[0])==list:
+            if len(functional.bounds)!=functional.number_of_variables:
+                raise ValueError(type(functional), "len(functional.bounds)!=functional.number_of_variables")
+            [bounds.append(b) for b in functional.bounds]
+        elif np.isreal(functional.bounds[0]):
+            [bounds.append(functional.bounds) for num in np.arange(functional.number_of_variables)]
+        else:
+            raise TypeError("functional.bounds must be a list of len 2 or a list of shape (num_var, 2)")
+
+        if functional.number_of_variables==1 and type(functional.bounds[0]) is not list:
+            check=[functional.bounds]
+        else:
+            check=functional.bounds
+        if check!=bounds[-functional.number_of_variables:]:
+            raise ValueError("functional.bounds!=bounds[-functional.number_of_variables:]",
+                             check!=bounds[-functional.number_of_variables:],
+                             type(functional), type(check), check,
+                             type(bounds[-functional.number_of_variables:]),
+                             bounds[-functional.number_of_variables:])
+
+        return bounds
 
     def build_tags_slices_and_bounds(self):
 
@@ -119,18 +223,19 @@ class PlasmaLine():
             slice_lengths.append(calwave_func.number_of_variables)
             slice_lengths.append(back_func.number_of_variables)
 
-            bounds.append(cal_func.bounds)
-            bounds.append(calwave_func.bounds)
-            bounds.append(back_func.bounds)
+            bounds=self.append_bounds_from_functional(bounds, cal_func)
+            bounds=self.append_bounds_from_functional(bounds, calwave_func)
+            bounds=self.append_bounds_from_functional(bounds, back_func)
 
         self.tags.append('electron_density')
         self.tags.append('electron_temperature')
 
-        slice_lengths.append(self.profile_function.number_of_variables_ne)
-        slice_lengths.append(self.profile_function.number_of_variables_te)
+        slice_lengths.append(self.profile_function.electron_density.number_of_variables)
+        slice_lengths.append(self.profile_function.electron_temperature.number_of_variables)
 
-        [bounds.append(self.profile_function.bounds_ne) for num in np.arange(self.profile_function.number_of_variables_ne)]
-        [bounds.append(self.profile_function.bounds_te) for num in np.arange(self.profile_function.number_of_variables_te)]
+        bounds=self.append_bounds_from_functional(bounds, self.profile_function.electron_density)
+        bounds=self.append_bounds_from_functional(bounds, self.profile_function.electron_temperature)
+
 
         hydrogen_shape_tags = ['b-field', 'viewangle']
         hydrogen_shape_bounds = [[0, 10], [0, 2]]
@@ -142,7 +247,7 @@ class PlasmaLine():
                 bounds.append(b)
 
         impurity_tags = ['_dens', '_Ti', '_tau']
-        impurity_bounds = [[9, 15], [-1, 3], [-6, 3]]
+        impurity_bounds = [[9, 15], [-2, 2], [-6, 2]]
         for tag in impurity_tags:
             for s in self.species:
                 is_h_isotope = any([s[0:2]==h+'_' for h in self.hydrogen_isotopes])
@@ -225,7 +330,7 @@ class PlasmaLine():
             plasma_state.append((p, values))
 
         self.plasma_state = collections.OrderedDict(plasma_state)
-        self.plasma_state['main_ion_density'] = self.plasma_state['electron_density'] - self.calc_total_impurity_electrons(False)
+        self.plasma_state['main_ion_density'] = self.plasma_state['electron_density'] - self.calc_total_impurity_electrons(True)
 
     def get_theta_functions(self, profile_function=None, cal_functions=None, calwave_functions=None, background_functions=None):
 
@@ -240,18 +345,21 @@ class PlasmaLine():
         else:
             self.profile_function = profile_function
 
-        tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[-5, 20])
+        # tmp_func = arb_obj_single_log_input(number_of_variables=1, bounds=[-5, 20], power=10)
+        tmp_func=default_cal_function()
         if cal_functions is None:
             self.cal_functions = [tmp_func for num in np.arange(self.num_chords)]
         else:
             self.cal_functions = cal_functions
 
+        tmp_func=default_background_function()
         if background_functions is None:
             self.background_functions = [tmp_func for num in np.arange(self.num_chords)]
         else:
             self.background_functions = background_functions
 
-        tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[-1e-5, 1e-5])
+        # tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[-5, 5])
+        tmp_func=default_calwave_function()
         if calwave_functions is None:
             self.calwave_functions = [tmp_func for num in np.arange(self.num_chords)]
         else:
@@ -268,9 +376,9 @@ class PlasmaLine():
 
         theta_functions_tuples = []
         function_tags = ['cal', 'back', 'electron_density', 'electron_temperature']
-        function_tags_full = [tag for tag in self.tags if any([check in tag for check in function_tags]) or \
+        function_tags_full = [tag for tag in self.tags if (any([check in tag for check in function_tags]) or \
                                                           any([tag.startswith(s+'_') for s in self.species]) or \
-                                                          'X_' in tag]
+                                                          'X_' in tag)]
 
         self.function_check = [any([check in tag for check in function_tags]) or
                                any([tag.startswith(s+'_') for s in self.species]) or
@@ -285,7 +393,7 @@ class PlasmaLine():
         self.theta_functions = collections.OrderedDict(theta_functions_tuples)
 
     def calc_total_impurity_electrons(self, set_attribute=True):
-        total_impurity_electrons = 0
+        total_impurity_electrons=0
 
         ne = self.plasma_state['electron_density']
         te = self.plasma_state['electron_temperature']
@@ -301,16 +409,15 @@ class PlasmaLine():
             tmp_in = (tau, ne, te)
             average_charge = np.exp(self.impurity_average_charge[species](tmp_in))
 
-            total_impurity_electrons += average_charge * conc
+            total_impurity_electrons+=average_charge*conc
 
         if set_attribute:
             self.total_impurity_electrons = np.nan_to_num(total_impurity_electrons)
-        else:
-            return np.nan_to_num(total_impurity_electrons)
+
+        return np.nan_to_num(total_impurity_electrons)
 
     def build_impurity_average_charge(self):
         interps = []
-
         for species in self.impurity_species:
             interps.append( (species, self.build_impurity_electron_interpolator(species)) )
 
@@ -325,13 +432,16 @@ class PlasmaLine():
         elem, ion = self.species_to_elem_and_ion(species)
         ionp1 = ion + 1
 
-        z_eff = ion*self.impurity_ion_bal[elem][:, :, :, ion] + ionp1*self.impurity_ion_bal[elem][:, :, :, ionp1]
+        z_bal=self.impurity_ion_bal[elem][:, :, :, ion]
+        zp1_bal=self.impurity_ion_bal[elem][:, :, :, ionp1]
+        z_eff=(ion*z_bal+ionp1*zp1_bal) # /(z_bal+zp1_bal)
 
-        return RegularGridInterpolator((tau, ne, te), np.log(z_eff), bounds_error=False)
+        return RegularGridInterpolator((tau, ne, te), np.log(z_eff), bounds_error=False, fill_value=None)
 
     def get_impurity_ion_bal(self):
 
         ion_bals = []
+        rad_power = []
 
         te = self.adas_plasma_inputs['te']
         ne = self.adas_plasma_inputs['ne']
@@ -339,15 +449,21 @@ class PlasmaLine():
 
         for elem in self.impurities:
             num_ions=get_number_of_ions(elem)
-            bal = np.zeros((len(tau), len(ne), len(te), num_ions))
+            shape=(len(tau), len(ne), len(te), num_ions)
+            bal=np.zeros(shape)
+            power=[] # np.zeros(shape)
             for t_counter, t in enumerate(tau):
                 with HiddenPrints():
-                    out, _ = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, all=True)
-                bal[t_counter, :, :, :] = out['ion'].clip(1e-50)
+                    meta=get_meta(elem)
+                    out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
+                bal[t_counter, :, :, :]=out['ion'].clip(1e-50)
+                power.append(pow)
 
             ion_bals.append((elem, bal))
+            rad_power.append((elem, power))
 
         self.impurity_ion_bal = dict(ion_bals)
+        self.impurity_raditive_power=dict(rad_power)
 
     def build_impurity_tec(self, file, exc, rec, elem, ion):
 
@@ -364,9 +480,10 @@ class PlasmaLine():
 
         tec_splines=[]
         for t_counter, t in enumerate(tau):
-            ionbal = self.impurity_ion_bal[elem]
-            rates = big_ne*(pecs_exc.T*ionbal[t_counter, :, :, ion] +
-                                              pecs_rec.T*ionbal[t_counter, :, :, ion+1])
+            # ionbal = self.impurity_ion_bal[elem]
+            z_bal=self.impurity_ion_bal[elem][t_counter, :, :, ion]
+            zp1_bal=self.impurity_ion_bal[elem][t_counter, :, :, ion+1]
+            rates = big_ne*(pecs_exc.T*z_bal+pecs_rec.T*zp1_bal) # /(z_bal+zp1_bal)
             # tec406[t_counter, :, :] = big_ne*(pecs_exc.T*ionbal[t_counter, :, :, ion] +
             #                                   pecs_rec.T*ionbal[t_counter, :, :, ion+1])
             tec_splines.append(RectBivariateSpline(ne, te, np.log(rates.clip(1e-50))).ev)
@@ -380,6 +497,7 @@ class PlasmaLine():
         tecs = []
         for species in self.impurity_species:
             for line in self.input_dict[species].keys():
+                print("Building impurity TEC splines: {} {}".format(species, line, end="\r"))
                 line_str = str(line).replace(', ', '_')
                 for bad_character in ['[', ']', '(', ')']:
                     line_str=line_str.replace(bad_character, '')
@@ -407,6 +525,7 @@ class PlasmaLine():
         pecs = []
         for species in self.hydrogen_species:
             for line in self.input_dict[species].keys():
+                print("Building hydrogen PEC splines: {} {}".format(species, line, end="\r"))
                 line_tag = species+'_'+str(line).replace(', ', '_')
                 file = self.input_dict[species][line]['pec']
                 exc = self.input_dict[species][line]['exc_block']

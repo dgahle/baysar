@@ -224,10 +224,12 @@ class MeshLine(object):
             self.empty_theta=np.zeros(len(x)+2)
             self.empty_theta[0]=zero_bounds
             self.empty_theta[-1]=zero_bounds
+            self.x_points=np.concatenate([np.array([min(bounds)]), x, np.array([max(bounds)])])
         else:
             self.empty_theta = np.zeros(len(x))
             self.slice=slice(0, len(self.empty_theta))
-        self.x_points = np.linspace(min(bounds), max(bounds), len(self.empty_theta))
+            self.x_points=x
+
 
         self.check_init()
 
@@ -236,23 +238,14 @@ class MeshLine(object):
             print('self.x_points', self.x_points)
             print('self.empty_theta', self.empty_theta)
             raise ValueError("len(self.x_points) != len(self.empty_theta)")
-        # if self.zero_bounds is None:
-        #     if len(self.x_points) != len(self.empty_theta):
-        #         print('self.x_points', self.x_points)
-        #         print('self.empty_theta', self.empty_theta)
-        #         raise ValueError("len(self.x_points) != len(self.empty_theta)")
-        # else:
-        #     if len(self.x_points) != len(self.empty_theta)-2:
-        #         print('self.x_points', self.x_points)
-        #         print('self.empty_theta', self.empty_theta)
-        #         raise ValueError("len(self.x_points) != len(self.empty_theta)-2")
-
 
     def __call__(self, theta, *args, **kwargs):
-        get_new_profile = interp1d(self.x_points, self.empty_theta, self.kind, bounds_error=False, fill_value='extrapolate')
+        self.empty_theta[self.slice]=theta
         if self.log:
-            return np.power(10, get_new_profile(self.x))
+            get_new_profile = interp1d(self.x_points, np.power(10, self.empty_theta), self.kind, bounds_error=False, fill_value='extrapolate')
+            return get_new_profile(self.x)
         else:
+            get_new_profile = interp1d(self.x_points, self.empty_theta, self.kind, bounds_error=False, fill_value='extrapolate')
             return get_new_profile(self.x)
 
 
@@ -281,18 +274,104 @@ class PlasmaMeshLine(object):
 
         return self.meshprofile(theta)
 
+def bowman_tee_distribution(x, theta):
+    A, x0, sigma0, q, nu, k, f, b = theta
+
+    p0=f*np.tanh(k*(x-x0))
+    sigma=sigma0*np.exp(p0)
+    z=(x-x0)/sigma
+    z=np.power(abs(z), q)
+    p1=np.power((1+z)/nu, -nu)
+
+    return A*p1+b
+
+def bowman_tee_distribution_centred(x, theta):
+    A, sigma0, q, nu, k, f, b = theta
+    return bowman_tee_distribution(x, [A, 0, sigma0, q, nu, k, f, b])
+
+from copy import copy
+
+class BowmanTeeNe(object):
+    def __init__(self, x):
+        self.x=x
+
+    def __call__(self, theta):
+        theta=copy(theta)
+        for i in [0, -1]:
+            theta[i]=np.power(10, theta[i])
+        return bowman_tee_distribution(self.x, theta)
+
+class BowmanTeeTe(object):
+    def __init__(self, x):
+        self.x=x
+
+    def __call__(self, theta):
+        theta=copy(theta)
+        for i in [0, -1]:
+            theta[i]=np.power(10, theta[i])
+        return bowman_tee_distribution_centred(self.x, theta)
+
+from itertools import product
+
+class BowmanTeePlasma(object):
+    def __init__(self, x=None, bounds=None, dr_bounds=[-2, 2], bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        if x is None:
+            self.x=np.linspace(-15, 25, 500)
+        else:
+            self.x=x
+
+        if bounds is None:
+            self.bounds=[[1e-3, 10], [0.1, 10], [1, 2],
+                         [1, 10],  [0.5, 3]]
+        else:
+            self.bounds=bounds
+
+        self.electron_density=BowmanTeeNe(self.x)
+        self.electron_temperature=BowmanTeeTe(self.x)
+
+        self.electron_density.number_of_variables=8
+        self.electron_temperature.number_of_variables=7
+
+        self.construct_bounds(dr_bounds, bounds_ne, bounds_te)
+
+    def construct_bounds(self, dr_bounds,bounds_ne, bounds_te):
+        """
+        A > 0
+        sigma0 > 0
+        0.5 < q < 20
+        nu > 1
+        1 < k < 50
+        1 < f < 10
+        0 < b
+        """
+
+        self.bounds_ne=[bounds_ne, dr_bounds]
+        self.bounds_te=[bounds_te]
+
+        for param, bound in product([self.bounds_ne, self.bounds_te], self.bounds):
+            param.append(bound)
+
+        for param, bound in zip([self.bounds_ne, self.bounds_te], [bounds_ne, bounds_te]):
+            param.append(bound)
+
+        self.electron_density.bounds=self.bounds_ne
+        self.electron_temperature.bounds=self.bounds_te
 
 if __name__=='__main__':
 
-    from tulasa.general import plot
+    from tulasa.general import plot, close_plots
     import time as clock
 
-    # gaussian check
-    x = np.linspace(400, 402, 500)
-    cwl = [401, 401.5]
-    fwhm = 0.2
-    intensity = 1
+    profile_function=BowmanTeePlasma()
 
-    peak = Gaussian(x=x, cwl=cwl, fwhm=fwhm, fractions=None, normalise=True)
+    theta0=np.ones(7)+1
+    theta0[1]=5
+    peaks=[]
+    for i in np.linspace(0., 20, 5): # .5*(np.arange(5)+1):
+        theta0[1]=5
+        theta0[2]=i
+        # theta0[-2]=i
+        print(i, ': ', *theta0)
+        peaks.append(profile_function.electron_temperature(theta0))
 
-    plot(peak(1), x=x)
+    plot(peaks, x=[profile_function.electron_temperature.x for p in peaks], multi='fake') #, log=True)

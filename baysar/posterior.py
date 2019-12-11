@@ -6,7 +6,8 @@ from scipy.optimize import fmin_l_bfgs_b
 
 from baysar.priors import CurvatureCost
 from baysar.plasmas import PlasmaLine
-from baysar.spectrometers import SpectrometerChord, within, progressbar, clip_data
+from baysar.spectrometers import SpectrometerChord
+from baysar.tools import within, progressbar, clip_data
 from baysar.linemodels import XLine
 
 '''
@@ -65,15 +66,7 @@ class BaysarPosterior(object):
         self.positive_thetas = []
         self.runtimes = []
 
-        start=self.random_start()
-        run_check=self(start)
-        if not (np.isreal(run_check) and -1e50 < run_check and run_check < 0):
-            if skip_test:
-                ValueError("Posterior is not evalauating correctly. logP =", run_check, 'from input=', start)
-            else:
-                raise ValueError("Posterior is not evalauating correctly. logP =", run_check, 'from input=', start)
-
-        print("Posterior successfully created!") #instantiated
+        self.init_test(skip_test)
 
     def check_inputs(self, priors, check_bounds, temper, curvature, print_errors):
         if len(priors)>0:
@@ -97,13 +90,28 @@ class BaysarPosterior(object):
         if type(print_errors) is not bool:
             raise TypeError("print_errors must be True or False and is False by default")
 
-    def __call__(self, theta, skip_error=True):
+    def init_test(self, skip_test):
+        start=self.random_start()
+        run_check=self(start, True)
+        if not (np.isreal(run_check) and -1e50 < run_check and run_check < 0):
+            if skip_test:
+                ValueError("Posterior is not evalauating correctly. logP =", run_check, 'from input=', start)
+            else:
+                raise ValueError("Posterior is not evalauating correctly. logP =", run_check, 'from input=', start)
+        print("Posterior successfully created!") #instantiated
+
+    def __call__(self, theta, skip_error=False):
         theta=list(theta)
         self.last_proposal=theta
+        # print('saved last theta')
         # updating plasma state
         self.plasma(theta)
+        # print('updated plasma')
         prob = sum( p() for p in self.posterior_components )
-        self.check_output(prob)
+        # print('prob calculated')
+        if not skip_error:
+            self.check_output(prob)
+        # print(prob)
         return prob/self.temper # temper default is 1
 
     def check_output(self, prob):
@@ -139,7 +147,8 @@ class BaysarPosterior(object):
         half_width_range=np.array([-half_width_range, half_width_range])
         for chord in chords:
             mean=np.log10(np.mean(chord.y_data_continuum)) # std=np.std(chord.y_data_continuum)/10
-            start[self.plasma.slices['background'+str(chord.chord_number)].start]=np.random.uniform(*(mean+half_width_range))
+            prandom_background=np.random.uniform(*(mean+half_width_range))
+            start[self.plasma.slices['background'+str(chord.chord_number)].start]=prandom_background
             # improved start for mystery_lines
             for xline in [line for line in chord.lines if type(line)==XLine]:
                 estemate_ems=0
@@ -153,21 +162,45 @@ class BaysarPosterior(object):
 
     def random_sample(self, number=1, order=1, flat=False):
         sample=[]
-        for rstart in progressbar(np.arange(number), 'Building random sample: ', 30):
-            sample.append(self.random_start(order, flat))
-        # sample_and_prob=[]
-        # for s in progressbar(sample, 'Sorting from high to low probability: ', 30):
-        #     sample_and_prob.append((self.cost(s), s))
-        print('Sorting random sample from high to low probability')
-        return sorted(sample, key=lambda x:self.cost(x))
+        for _ in progressbar(np.arange(number), 'Building random sample: ', 30):
+            rstart=self.random_start(order, flat)
+            sample.append((self(rstart), rstart))
+        if not all(np.isreal([s[0] for s in sample])):
+            raise ValueError("Blah")
+
+        sample=sorted(sample, key=lambda x:-x[0])
+        return [s[1] for s in sample]
 
     def sample_start(self, number, scale=1, order=1, flat=False):
         sample=[]
-        random_sample=self.random_sample(number*scale, order, flat)[:number]
+        num_failed_grad_opt=0
+        random_sample=self.random_sample(scale, order, flat)[:number]
         for rstart in progressbar(random_sample, 'Building starting sample: ', 30):
-            start, logp, info=fmin_l_bfgs_b(self.cost, rstart, approx_grad=True, bounds=self.plasma.theta_bounds.tolist())
-            sample.append((start, logp))
-        return [s[0].tolist() for s in sorted(sample, key=lambda x:x[1])]
+            # this try loop is not ideal
+            # but is needed as parameters out of the bounds are sometimes being sampled and breaking the code
+            # (its the taus)
+            try:
+                start, logp, info=fmin_l_bfgs_b(self.cost, rstart, approx_grad=True, bounds=self.plasma.theta_bounds.tolist())
+                sample.append((-logp, start))
+            except:
+                num_failed_grad_opt+=1
+                if num_failed_grad_opt==1:
+                    self.broke_grad_opt=[self.last_proposal]
+                else:
+                    self.broke_grad_opt.append(self.last_proposal)
+
+        if num_failed_grad_opt==number:
+            raise ValueError("{} % of the gradient optimisation failed!".format(np.round(100.0, 1)))
+        elif num_failed_grad_opt>0:
+            pc=np.round(100*(1-num_failed_grad_opt/number), 2)
+            self.grad_opt_performance='{} out of {} failed the gradient optimisation ({} % succeeded)'.format(num_failed_grad_opt, number, pc)
+            print(self.grad_opt_performance)
+        else:
+            self.grad_opt_performance='{} % of the gradient optimisation succeeded!'.format(np.round(100.0, 1))
+
+        sample=sorted(sample, key=lambda x:-x[0])
+        return [s[1] for s in sample]
+
 
 
 from copy import copy
