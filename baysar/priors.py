@@ -39,6 +39,23 @@ class FlatnessPriorBasic(object):
     def __call__(self):
         return flatness_prior(self.plasma.plasma_state.get(self.tag), self.scale)
 
+class PlasmaGradientPrior:
+    def __init__(self, plasma, te_scale, ne_scale):
+        self.te_scale=te_scale
+        self.ne_scale=ne_scale
+        self.plasma=plasma
+
+        self.tags=['electron_density', 'electron_temperature']
+        self.scales=[self.ne_scale, self.te_scale]
+
+    def __call__(self):
+        cost=0
+        for t, s in zip(self.tags, self.scales):
+            cost+=flatness_prior(np.array(self.plasma.plasma_theta.get(t)), s)
+
+        return cost
+
+
 class FlatnessPrior(object):
     def __init__(self, scale, tag, plasma):
         if tag not in ('electron_density', 'electron_temperature'):
@@ -70,15 +87,18 @@ class FlatnessPrior(object):
         return flatness_prior(self.empty_array, self.scale)
 
 class SeparatrixTePrior(object):
-    def __init__(self, scale, plasma, index):
-        self.scale=power(10, scale)
+    def __init__(self, scale, plasma, index, ne_scale=0):
+        self.scale=scale
+        self.ne_scale=ne_scale
         self.plasma=plasma
         self.separatrix_position=index
 
     def __call__(self):
         te=self.plasma.plasma_theta['electron_temperature']
+        ne=self.plasma.plasma_theta['electron_density']
         te_check=te-max(te)
-        return self.scale*te_check[self.separatrix_position]
+        ne_check=ne-max(ne)        
+        return self.scale*te_check[self.separatrix_position] + self.ne_scale*ne_check[self.separatrix_position]
 
 class WallConditionsPrior:
     def __init__(self, scale, plasma, ne=None):

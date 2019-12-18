@@ -214,8 +214,10 @@ class SuperGaussian(object):
 
 
 class MeshLine(object):
-    def __init__(self, x, bounds=[-10, 10], zero_bounds=None, resolution=0.1, log=False, kind='linear'):
-        self.x = np.arange(min(bounds), max(bounds), resolution)
+    def __init__(self, x, x_ends=[-10, 10], zero_bounds=None, resolution=0.1,
+                       log=False, kind='linear', **kwargs):
+        self.__dict__.update(kwargs)
+        self.x = np.arange(min(x_ends), max(x_ends), resolution)
         self.log = log
         self.kind = kind
         self.zero_bounds = zero_bounds
@@ -224,7 +226,7 @@ class MeshLine(object):
             self.empty_theta=np.zeros(len(x)+2)
             self.empty_theta[0]=zero_bounds
             self.empty_theta[-1]=zero_bounds
-            self.x_points=np.concatenate([np.array([min(bounds)]), x, np.array([max(bounds)])])
+            self.x_points=np.concatenate([np.array([min(x_ends)]), x, np.array([max(x_ends)])])
         else:
             self.empty_theta = np.zeros(len(x))
             self.slice=slice(0, len(self.empty_theta))
@@ -249,30 +251,10 @@ class MeshLine(object):
             return get_new_profile(self.x)
 
 
-class PlasmaMeshLine(object):
-
-    def __init__(self, x, separatix_index, bounds=[-10, 10], zero_bounds=False, resolution=0.1, kind='quadratic'):
-
-        self.meshprofile = MeshLine(x, bounds, zero_bounds, resolution, kind)
-
-        self.separatix_index = separatix_index
-
-    def electron_temperature(self, theta):
-
-        meshin = np.zeros(len(theta)) + theta[self.separatix_index]
-
-        theta[self.separatix_index] = 1
-
-        if type(theta) == list:
-            theta = np.array(theta)
-
-        meshin = theta * meshin
-
-        return self.meshprofile(meshin)
-
-    def electron_density(self, theta):
-
-        return self.meshprofile(theta)
+class MeshPlasma(object):
+    def __init__(self, x=None, bounds=None, bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        self.electron_density=MeshLine(x=x, zero_bounds=11, x_ends=bounds, log=True, number_of_variables=len(x), bounds=[bounds_ne for n in np.arange(len(x))])
+        self.electron_temperature=MeshLine(x=x, zero_bounds=-2, x_ends=bounds, log=True, number_of_variables=len(x), bounds=[bounds_te for n in np.arange(len(x))])
 
 def bowman_tee_distribution(x, theta):
     A, x0, sigma0, q, nu, k, f, b = theta
@@ -322,7 +304,7 @@ class BowmanTeePlasma(object):
 
         if bounds is None:
             self.bounds=[[1e-3, 10], [0.1, 10], [1, 2],
-                         [1, 10],  [0.5, 3]]
+                         [1, 10],  [0.01, 2]]
         else:
             self.bounds=bounds
 
@@ -341,7 +323,7 @@ class BowmanTeePlasma(object):
         0.5 < q < 20
         nu > 1
         1 < k < 50
-        1 < f < 10
+        0 < f < 2
         0 < b
         """
 
@@ -357,6 +339,8 @@ class BowmanTeePlasma(object):
         self.electron_density.bounds=self.bounds_ne
         self.electron_temperature.bounds=self.bounds_te
 
+
+
 if __name__=='__main__':
 
     from tulasa.general import plot, close_plots
@@ -367,10 +351,10 @@ if __name__=='__main__':
     theta0=np.ones(7)+1
     theta0[1]=5
     peaks=[]
-    for i in np.linspace(0., 20, 5): # .5*(np.arange(5)+1):
+    for i in np.linspace(0, 2, 5): # .5*(np.arange(5)+1):
         theta0[1]=5
-        theta0[2]=i
-        # theta0[-2]=i
+        # theta0[2]=i
+        theta0[-2]=i
         print(i, ': ', *theta0)
         peaks.append(profile_function.electron_temperature(theta0))
 

@@ -44,8 +44,8 @@ def plot_fit(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
         alpha = 0.02
 
     fig = plt.figure()
-    ax_fit = fig.add_axes([.15, .57, .32, .39]) # [x0, y0, width, height]
-    ax_res = fig.add_axes([.15, .125, .32, .39]) # [x0, y0, width, height]
+    ax_fit = fig.add_axes([.15, .37, .32, .59]) # [x0, y0, width, height]
+    ax_res = fig.add_axes([.15, .125, .32, .19]) # [x0, y0, width, height]
     ax_plasma = fig.add_axes([.6, .125, .32, .825]) # [x0, y0, width, height]
     # ax_plasma = fig.add_axes([.6, .37, .32, .59]) # [x0, y0, width, height]
     # ax_plasma2 = fig.add_axes([.6, .125, .32, .19]) # [x0, y0, width, height]
@@ -82,10 +82,10 @@ def plot_fit(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
     ax_res.plot(waves, spectra/max(spectra))
     ax_res.plot(np.zeros(10), 'bx')
 
-    error_lims = [1e-3, 1e-2, 1e-1, 2e-1, 5e-1, 1e0]
-    for el in error_lims:
-        ax_res.fill_between(waves, np.zeros(len(waves)), np.zeros(len(waves))+el,
-                            color='k', alpha=0.1)
+    # error_lims = [1e-3, 1e-2, 1e-1, 2e-1, 5e-1, 1e0]
+    # for el in error_lims:
+    #     ax_res.fill_between(waves, np.zeros(len(waves)), np.zeros(len(waves))+el,
+    #                         color='k', alpha=0.1)
 
     # ax_plasma.set_ylim(bottom=0)
     # ax_te.set_ylim(bottom=0)

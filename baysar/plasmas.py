@@ -59,7 +59,7 @@ class arb_obj_single_log_input(object):
 
 # tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[-5, 5])
 class default_calwave_function(object):
-    def __init__(self, number_of_variables=2, bounds=[ [0.9999, 1.0001], [-0.6, 0.6] ]):
+    def __init__(self, number_of_variables=2, bounds=[ [1e2, 1e5], [0.01, 1.] ]):
         self.number_of_variables=number_of_variables
         self.bounds=bounds
 
@@ -73,13 +73,10 @@ class default_calwave_function(object):
         return args[0]
 
     def calibrate(self, x, theta):
-        m, c=theta
-        return m*x+c
-
-    def inverse_calibrate(self, x, theta):
-        m, c=theta
-        return (x-c)/m
-
+        cwl, dispersion=theta
+        num=len(x)
+        cwl-=(num*dispersion)/2
+        return cwl+np.arange(num)*dispersion
 
 class default_cal_function(object):
     def __init__(self, number_of_variables=1, bounds=[ [-5, 20] ]):

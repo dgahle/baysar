@@ -64,7 +64,9 @@ adas_line_data['H'] = {'atomic_mass': 1, 'atomic_charge': 1,
 
 adas_line_data['H']['0'] = {'default_pecs': adas_root+'adf15/pec12#h/pec12#h_balmer#h0.dat'}
 
-wavelenghts = [3835.40, 3889.06, 3970.01, 4101.73, 4340.47]
+wavelenghts = [1215.2, 1025.3, 972.1, 949.3, 937.4,
+               930.4, 925.8, 922.8, 920.6, 919.0, 917.7,
+               3835.40, 3889.06, 3970.01, 4101.73, 4340.47]
 
 adas_line_data['H']['0'] = add_ion_info(adas_line_data['H']['0'], wavelenghts, jj_fraction,
                                         pecs, exc_block, rec_block, n_upper=n_upper, n_lower=n_lower)
@@ -88,7 +90,7 @@ adas_line_data['N'] = {'atomic_mass': 14, 'atomic_charge': 7,
                        'ionisation_balance_year': 96,
                        'ions': [str(n) for n in arange(7)]}
 
-adas_line_data['N']['0'] = {'default_pecs': adas_root+'adf15/pec96#n/pec96#n_vsu#n1.dat'}
+adas_line_data['N']['0'] = {'default_pecs': adas_root+'adf15/pec96#n/pec96#n_pju#n1.dat'}
 
 wavelenghts = [1200.00, 1160.20, 1134.70, 964.40, 959.70]
 jj_fraction = [[1], [1], [1], [1], [1]]
@@ -99,7 +101,7 @@ rec_block = [51, 52, 53, 54, 55]
 adas_line_data['N']['0'] = add_ion_info(adas_line_data['N']['0'], wavelenghts, jj_fraction,
                                         pecs, exc_block, rec_block)
 
-adas_line_data['N']['1'] = {'default_pecs': adas_root+'adf15/pec96#n/pec96#n_vsu#n1.dat'}
+adas_line_data['N']['1'] = {'default_pecs': adas_root+'adf15/pec96#n/pec96#n_pju#n1.dat'}
 
 my_n_ii_file = '/home/dgahle/adas/idl_spectra/use_adas208/n_ii_3900_4900_te_1_100.pass'
 
@@ -117,7 +119,7 @@ rec_block = [61, 62, 63, 64, 65, 53, 56, 57, 92]
 adas_line_data['N']['1'] = add_ion_info(adas_line_data['N']['1'], wavelenghts, jj_fraction,
                                         pecs, exc_block, rec_block)
 
-adas_line_data['N']['2'] = {'default_pecs': adas_root+'adf15/pec96#n/pec96#n_vsu#n2.dat'}
+adas_line_data['N']['2'] = {'default_pecs': adas_root+'adf15/pec96#n/pec96#n_pju#n2.dat'}
 
 my_n_iii_file = '/home/dgahle/adas/idl_spectra/use_adas208/n_iii_3900_4900_te_1_100.pass'
 

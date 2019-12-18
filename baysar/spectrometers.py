@@ -9,10 +9,12 @@ import time as clock
 
 import os, sys, io, warnings
 
-
 from baysar.linemodels import XLine, ADAS406Lines, BalmerHydrogenLine
 from baysar.lineshapes import Gaussian
 from baysar.tools import clip_data, progressbar, centre_peak
+
+from adas import continuo
+
 
 class SpectrometerChord(object):
 
@@ -28,6 +30,9 @@ class SpectrometerChord(object):
         self.chord_number = chord_number
         self.plasma = plasma
         self.input_dict = self.plasma.input_dict
+        if "continuo" in self.input_dict:
+            self.continuo=self.input_dict["continuo"]
+
         self.refine = refine
         self.y_data = self.input_dict['experimental_emission'][self.chord_number]
         self.x_data = self.input_dict['wavelength_axis'][self.chord_number]
@@ -44,8 +49,10 @@ class SpectrometerChord(object):
         self.dispersion_ratios=self.dispersion_fm/self.dispersion
         self.instrument_function=centre_peak(self.input_dict['instrument_function'][self.chord_number])
         self.instrument_function=np.true_divide(self.instrument_function, self.instrument_function.sum())
+
         self.noise_region=self.input_dict['noise_region'][self.chord_number]
         self.a_cal=self.input_dict['emission_constant'][self.chord_number]
+        self.anomalous_error=0.
         self.wavelength_calibrator=self.plasma.calwave_functions[self.chord_number]
         self.radiance_calibrator=self.plasma.cal_functions[self.chord_number]
         self.background_function=self.plasma.background_functions[self.chord_number]
@@ -64,7 +71,8 @@ class SpectrometerChord(object):
     def get_error(self, fake_cal=False):
         self.get_noise_spectra()
         self.error = sqrt(square(mean(self.y_data_continuum)) +  # noise
-                                  self.y_data * self.a_cal) # poisson
+                                  self.y_data * self.a_cal + # poisson
+                                  self.anomalous_error*self.y_data) # annomolus
 
     def likelihood(self, cauchy=True):
         fm = self.forward_model() # * calibration_fractor
@@ -81,23 +89,40 @@ class SpectrometerChord(object):
         return likeli
 
     def forward_model(self):
-        self.wavelength_scaling()
+        # self.wavelength_scaling()
         spectra = sum([l().flatten() for l in self.lines]) # TODO: This is what takes all the time?
-        self.wavelength_scaling(inverse=True)
+        # self.wavelength_scaling(inverse=True)
 
         background_theta=self.plasma.plasma_state['background'+str(self.chord_number)]
-        continuum=self.background_function.calculate_background(background_theta)
+        background=self.background_function.calculate_background(background_theta)
 
         ems_cal_theta=self.plasma.plasma_state['cal'+str(self.chord_number)]
-        spectra0=self.radiance_calibrator.inverse_calibrate(spectra, ems_cal_theta)
+        spectra=self.radiance_calibrator.inverse_calibrate(spectra, ems_cal_theta)
+
+        if "continuo" in dir(self):
+            if self.continuo:
+                te=self.plasma.plasma_state['electron_temperature']
+                ne=self.plasma.plasma_state['electron_density']
+                n1=self.plasma.plasma_state['main_ion_density'].clip(1)
+                dl=np.diff(self.plasma.los).sum()
+                # shape wave, te
+                ff_rates, total_rates=continuo(iz0=1, iz1=1, tev=te, wave=self.x_data)
+                continuum=dl*total_rates*ne*n1
+                spectra+=continuum.sum(1)/(4*np.pi)
 
         # TODO - BIG SAVINGS BOGOF
         # TODO - centre of mass check?
-        return self.instrument_function_matrix.dot(spectra)+continuum
+        # spectra=self.instrument_function_matrix.dot(spectra)
+        # background=fftconvolve(background, self.instrument_function, mode='same')
+        spectra=spectra+background
+        spectra=fftconvolve(spectra, self.instrument_function_fm, mode='same')
+        spectra*=self.dispersion_ratios
 
-        # spectra=fftconvolve(spectra0, self.instrument_function_fm, mode='same') # needs to be the interpolated int_func ?
-        # sinterp=interp1d(self.x_data_fm, spectra)
-        # return sinterp(self.x_data)
+        # wave calibration
+        wavecal_interp=interp1d(self.x_data_fm, spectra, bounds_error=False, fill_value="extrapolate")
+        cal_theta=self.plasma.plasma_state['calwave'+str(self.chord_number)]
+        cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
+        return wavecal_interp(cal_wave)
 
     def wavelength_scaling(self, inverse=False):
         cal_theta=self.plasma.plasma_state['calwave'+str(self.chord_number)]
