@@ -6,7 +6,10 @@ baysar/linemodels.py
 baysar/lineshapes.py
 baysar/plasmas.py
 baysar/posterior.py
+baysar/priors.py
 baysar/spectrometers.py
+baysar/test_lineshapes.py
+baysar/test_spectrometers.py
 baysar.egg-info/PKG-INFO
 baysar.egg-info/SOURCES.txt
 baysar.egg-info/dependency_links.txt

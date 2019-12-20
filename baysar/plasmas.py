@@ -304,7 +304,7 @@ class PlasmaLine():
         self.n_params = slices[-1][1].stop
         self.slices = collections.OrderedDict(slices)
         self.theta_bounds = np.array([np.array(b) for n, b in enumerate(bounds) if keep_theta_bound[n]], dtype=float)
-        self.bounds = bounds
+        # self.bounds = bounds
 
         assert self.n_params==len(self.theta_bounds), 'self,n_params!=len(self.theta_bounds)'
         self.assign_theta_functions()
@@ -572,7 +572,7 @@ if __name__ == '__main__':
     #
     # k = 'main_ion_density'
     # print(k, plasma.plasma_state[k])
-    # print(plasma.bounds)
+    # print(plasma.theta_bounds)
     # print(plasma.is_theta_within_bounds(rand_theta))
 
 

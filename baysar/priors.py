@@ -94,10 +94,10 @@ class SeparatrixTePrior(object):
         self.separatrix_position=index
 
     def __call__(self):
-        te=self.plasma.plasma_theta['electron_temperature']
-        ne=self.plasma.plasma_theta['electron_density']
-        te_check=te-max(te)
-        ne_check=ne-max(ne)        
+        te=np.array(self.plasma.plasma_theta['electron_temperature'])
+        ne=np.array(self.plasma.plasma_theta['electron_density'])
+        te_check=te-te.max()
+        ne_check=ne-ne.max()
         return self.scale*te_check[self.separatrix_position] + self.ne_scale*ne_check[self.separatrix_position]
 
 class WallConditionsPrior:
