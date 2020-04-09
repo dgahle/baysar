@@ -1,4 +1,4 @@
-from numpy import square, sqrt, mean, linspace, nan, log, diff, arange, zeros, concatenate, where
+from numpy import square, sqrt, mean, std, linspace, nan, log, diff, arange, zeros, concatenate, where
 
 from scipy.ndimage.measurements import center_of_mass
 from scipy.interpolate import interp1d
@@ -11,10 +11,11 @@ import os, sys, io, warnings
 
 from baysar.linemodels import XLine, ADAS406Lines, BalmerHydrogenLine
 from baysar.lineshapes import Gaussian
-from baysar.tools import clip_data, progressbar, centre_peak
+from baysar.tools import clip_data, progressbar, centre_peak, within
 
 from adas import continuo
 
+type_checking={'is_nan'} #
 
 class SpectrometerChord(object):
 
@@ -66,37 +67,54 @@ class SpectrometerChord(object):
         return self.likelihood()
 
     def get_noise_spectra(self):
-        self.x_data_continuum, self.y_data_continuum = clip_data(self.x_data, self.y_data, self.noise_region)
+        self.x_data_continuum, self.y_data_continuum=clip_data(self.x_data, self.y_data, self.noise_region)
 
     def get_error(self, fake_cal=False):
         self.get_noise_spectra()
-        self.error = sqrt(square(mean(self.y_data_continuum)) +  # noise
-                                  self.y_data * self.a_cal + # poisson
-                                  self.anomalous_error*self.y_data) # annomolus
+        self.error = sqrt(   square(std(self.y_data_continuum)) +  # noise
+                                        self.y_data * self.a_cal +  # poisson
+                              self.anomalous_error*self.y_data    ) # annomolus
 
     def likelihood(self, cauchy=True):
         fm = self.forward_model() # * calibration_fractor
-        assert len(fm) == len(self.y_data), 'len(fm) != len(self.y_data)'
+        if len(fm) != len(self.y_data):
+            raise ValueError('len(fm) != len(self.y_data)')
+
+        self.chi_squared=( (self.y_data-fm)**2/self.y_data ).sum()
+        self.square_normalised_residuals=( (self.y_data-fm)/self.error )**2
+        if any([sn_res<0 for sn_res in self.square_normalised_residuals]):
+            raise ValueError('Some points of square_normalised_residuals are negative')
+
+        if any([sn_res==0 for sn_res in self.square_normalised_residuals]):
+            raise ValueError('Some points of square_normalised_residuals are zero')
+
+        if any(np.isinf(self.square_normalised_residuals)):
+            for func in self.plasma.theta_functions:
+                print(func, self.plasma.theta_functions[func])
+            raise ValueError('Some points of square_normalised_residuals are inf')
+
+        if any(np.isnan(self.square_normalised_residuals)):
+            print('nan indicies', np.where(np.isnan(self.square_normalised_residuals)))
+            raise ValueError('Some points of square_normalised_residuals are nan')
 
         if cauchy:
-            likeli_in = 1 + ( (self.y_data - fm) / self.error ) ** 2
-            likeli_in = 1 / likeli_in
-            likeli = sum( log(likeli_in) )
+            likeli = - log( (1 + self.square_normalised_residuals) ).sum( )
         else:
-            likeli=-0.5*sum(((self.y_data-fm)/self.error)**2)
-        assert likeli != nan, 'likeli == nan'
+            likeli=-0.5*self.square_normalised_residuals.sum()
+        if likeli==nan:
+            raise ValueError('likeli == nan')
+        if any(np.isinf(self.square_normalised_residuals)):
+            raise ValueError('Some points of abs prob are inf')
 
         return likeli
 
     def forward_model(self):
-        # self.wavelength_scaling()
         spectra = sum([l().flatten() for l in self.lines]) # TODO: This is what takes all the time?
-        # self.wavelength_scaling(inverse=True)
 
-        background_theta=self.plasma.plasma_state['background'+str(self.chord_number)]
+        background_theta=self.plasma.plasma_state['background_'+str(self.chord_number)]
         background=self.background_function.calculate_background(background_theta)
 
-        ems_cal_theta=self.plasma.plasma_state['cal'+str(self.chord_number)]
+        ems_cal_theta=self.plasma.plasma_state['cal_'+str(self.chord_number)]
         spectra=self.radiance_calibrator.inverse_calibrate(spectra, ems_cal_theta)
 
         if "continuo" in dir(self):
@@ -116,16 +134,20 @@ class SpectrometerChord(object):
         # background=fftconvolve(background, self.instrument_function, mode='same')
         spectra=spectra+background
         spectra=fftconvolve(spectra, self.instrument_function_fm, mode='same')
+        spectra=spectra.clip(.1)
         spectra*=self.dispersion_ratios
+
+        if len(self.x_data_fm)!=len(spectra):
+            raise ValueError("len(self.x_data_fm)!=len(spectra). Lengths are {} and {}".format(len(self.x_data_fm), len(spectra)))
 
         # wave calibration
         wavecal_interp=interp1d(self.x_data_fm, spectra, bounds_error=False, fill_value="extrapolate")
-        cal_theta=self.plasma.plasma_state['calwave'+str(self.chord_number)]
-        cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
-        return wavecal_interp(cal_wave)
+        cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
+        self.cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
+        return wavecal_interp(self.cal_wave)
 
     def wavelength_scaling(self, inverse=False):
-        cal_theta=self.plasma.plasma_state['calwave'+str(self.chord_number)]
+        cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
         if inverse:
             calibrate=self.wavelength_calibrator.inverse_calibrate
         else:
@@ -146,26 +168,30 @@ class SpectrometerChord(object):
             index=np.where([s=='_' for s in species])[0][0]
             elem=species[:index]
             for l in self.input_dict[species]:
-                # sys.stdout.write("%s[%s%s] %i/%i\r" % (prefix, "#"*x, "."*(size-x), j, count))
-                sys.stdout.write("Getting line objects: {0} {1}".format(species, l, end="\r"))
-                sys.stdout.flush()
-                sys.stdout.write("\n")
-                sys.stdout.flush()
-                if any([elem==h for h in self.plasma.hydrogen_isotopes]):
-                    line = BalmerHydrogenLine(self.plasma, species, l, self.x_data_fm)
-                else:
-                    line = ADAS406Lines(self.plasma, species, l, self.x_data_fm)
-                self.lines.append(line)
+                # check if the line is in the wavelength region
+                if within(l, [self.x_data]):
+                    # sys.stdout.write("%s[%s%s] %i/%i\r" % (prefix, "#"*x, "."*(size-x), j, count))
+                    sys.stdout.write("Getting line objects: {0} {1}".format(species, l, end="\r"))
+                    sys.stdout.flush()
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+                    if any([elem==h for h in self.plasma.hydrogen_isotopes]):
+                        line = BalmerHydrogenLine(self.plasma, species, l, self.x_data_fm)
+                    else:
+                        line = ADAS406Lines(self.plasma, species, l, self.x_data_fm)
+                    self.lines.append(line)
 
         if 'X_lines' in self.input_dict:
             for l, f in zip(self.input_dict['X_lines'], self.input_dict['X_fractions']):
-                sys.stdout.write("Getting XLine objects: {0}".format(l, end="\r"))
-                sys.stdout.flush()
-                sys.stdout.write("\n")
-                sys.stdout.flush()
-                line = XLine(plasma=self.plasma, species='X', cwl=l, fwhm=diff(self.x_data)[0],
-                             wavelengths=self.x_data_fm, fractions=f)
-                self.lines.append(line)
+                # check if the line is in the wavelength region
+                if within(l, [self.x_data]):
+                    sys.stdout.write("Getting XLine objects: {0}".format(l, end="\r"))
+                    sys.stdout.flush()
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+                    line = XLine(plasma=self.plasma, species='X', cwl=l, fwhm=diff(self.x_data)[0],
+                                 wavelengths=self.x_data_fm, fractions=f)
+                    self.lines.append(line)
 
     def int_func_sparce_matrix(self):
         # self.centre_instrument_function()
@@ -185,7 +211,7 @@ class SpectrometerChord(object):
         self.instrument_function_x_fm=arange(self.instrument_function_x.min(),
                                             self.instrument_function_x.max(), if_x_fm_res)
         self.instrument_function_fm=int_func_interp(self.instrument_function_x_fm)
-        self.instrument_function_fm/=self.instrument_function_fm.sum() # /self.refine)
+        self.instrument_function_fm/=np.trapz(self.instrument_function_fm, self.instrument_function_x_fm)
 
         fine_axis = linspace(0, len(self.x_data), len(self.x_data_fm))
         shape = (len(self.x_data), len(self.x_data_fm))

@@ -1,5 +1,22 @@
 import numpy as np
 
+def gaussian_high_pass_cost(tmp, threshold, error):
+    return -0.5*(max([0, threshold-tmp])/error)**2
+
+def gaussian_low_pass_cost(tmp, threshold, error):
+    return -0.5*(max([0, tmp-threshold])/error)**2
+
+class AntiprotonCost:
+    def __init__(self, plasma, sigma=1e11):
+        self.plasma=plasma
+        self.anti_profile_varience=sigma
+    def __call__(self):
+        if any(self.plasma.plasma_state['main_ion_density'] < 0):
+            anti_profile=self.plasma.plasma_state['main_ion_density'].clip(max=0)
+            return -0.5*np.square(anti_profile/self.anti_profile_varience).sum()
+        else:
+            return 0.
+
 def curvature(profile):
     grad1 = np.gradient(profile / max(profile))
     grad2 = np.gradient(grad1)
@@ -24,9 +41,14 @@ class CurvatureCost(object):
             curves+=curvature(self.empty_array)
         return curves*self.scale
 
-from numpy import diff, power, ones
-def flatness_prior(profile, scale):
-    return -abs(scale/profile.max())*abs(diff(profile)).sum()
+from numpy import diff, power, ones, gradient
+def flatness_prior(profile, scale=1, x=None):
+    if x is not None:
+        d=gradient(profile, x)
+    else:
+        d=gradient(profile)
+    # return -abs(scale/profile.max())*abs(diff(profile)).sum()
+    return -scale*abs(d).sum()
 
 assert flatness_prior(ones(10), 1)==0, 'Error in flatness_prior'
 
@@ -45,13 +67,18 @@ class PlasmaGradientPrior:
         self.ne_scale=ne_scale
         self.plasma=plasma
 
+        self.functions=[self.plasma.profile_function.electron_density, self.plasma.profile_function.electron_temperature]
         self.tags=['electron_density', 'electron_temperature']
         self.scales=[self.ne_scale, self.te_scale]
 
     def __call__(self):
+        ne_x=self.plasma.profile_function.electron_density.x_points
+        te_x=self.plasma.profile_function.electron_temperature.x_points
+        self.xs=[ne_x, te_x]
+
         cost=0
-        for t, s in zip(self.tags, self.scales):
-            cost+=flatness_prior(np.array(self.plasma.plasma_theta.get(t)), s)
+        for f, s, x in zip(self.functions, self.scales, self.xs):
+            cost+=flatness_prior(f.empty_theta, s, x=x)
 
         return cost
 
@@ -96,23 +123,112 @@ class SeparatrixTePrior(object):
     def __call__(self):
         te=np.array(self.plasma.plasma_theta['electron_temperature'])
         ne=np.array(self.plasma.plasma_theta['electron_density'])
+        te_x=self.plasma.profile_function.electron_temperature.x
+        ne_x=self.plasma.profile_function.electron_density.x
+
         te_check=te-te.max()
         ne_check=ne-ne.max()
-        return self.scale*te_check[self.separatrix_position] + self.ne_scale*ne_check[self.separatrix_position]
+        # return self.scale*te_check[self.separatrix_position] + self.ne_scale*ne_check[self.separatrix_position]
 
-class WallConditionsPrior:
-    def __init__(self, scale, plasma, ne=None):
-        self.scale=scale # power(10, scale)
+        te_cost=self.scale*abs(te_x[np.where(te==te.max())]).max()*te_check[self.separatrix_position]
+        ne_cost=self.ne_scale*abs(ne_x[np.where(ne==ne.max())]).max()*ne_check[self.separatrix_position]
+        return te_cost+ne_cost
+
+
+
+class PeakTePrior:
+    def __init__(self, plasma, te_min=1, te_err=1):
         self.plasma=plasma
-        self.ne_scale=ne
+        self.te_min=te_min
+        self.te_err=te_err
 
     def __call__(self):
         te=self.plasma.plasma_state['electron_temperature']
-        cost=self.scale*(te[0]+te[-1])
-        if self.ne_scale is not None:
-            ne=np.log10( self.plasma.plasma_state['electron_density'] )
-            cost+=self.ne_scale*abs(ne[0]+ne[1])
-        return -cost
+        cost=gaussian_low_pass_cost(te.max(), self.te_min, self.te_err)
+
+        return cost
+
+def get_impurity_species(plasma):
+    impurity_species=[]
+    tmp={}
+    for impurity in plasma.impurities:
+        tmp[impurity]=[]
+        tmp_ions=[ion for ion in plasma.species if impurity+'_' in ion]
+
+        for ion in tmp_ions:
+            impurity_species.append(ion)
+            _, charge=plasma.species_to_elem_and_ion(ion)
+            tmp[impurity].append(charge)
+
+    return tmp
+
+def tau_difference(plasma, show_taus=False):
+    imp_dict=get_impurity_species(plasma)
+
+    taus=[]
+    diff_taus=[]
+    for imp in imp_dict:
+        for ion in imp_dict[imp]:
+            tmp_tau_key=imp+'_'+str(ion)+'_tau'
+            taus.append(plasma.plasma_state[tmp_tau_key][0])
+        for dtau in -np.diff( np.log10(taus[-len(imp_dict[imp]):]) ):
+            diff_taus.append(dtau)
+
+    if show_taus:
+        print(taus)
+
+    return diff_taus
+
+class TauPrior:
+    def __init__(self, plasma, tau_error=1):
+        self.plasma=plasma
+        self.tau_error=tau_error
+
+    def __call__(self):
+        diff_log_taus=tau_difference(self.plasma)
+        logp=np.array([gaussian_low_pass_cost(-dlt, threshold=0, error=self.tau_error) for dlt in diff_log_taus])
+        return logp.sum()
+
+class WallConditionsPrior:
+    def __init__(self, plasma, te_min=0.5, ne_min=2e12, te_err=None, ne_err=None):
+        self.plasma=plasma
+        self.te_min=te_min
+        self.ne_min=ne_min
+        self.te_err=te_err
+        self.ne_err=ne_err
+
+        default_error=.5
+        if self.te_err is None:
+            self.te_err=default_error*self.te_min
+        if self.ne_err is None:
+            self.ne_err=default_error*self.ne_min
+
+    def __call__(self):
+        te=self.plasma.plasma_state['electron_temperature']
+        ne=self.plasma.plasma_state['electron_density']
+
+        cost=0
+        for t in [te[0], te[-1]]:
+            cost+=gaussian_low_pass_cost(t, self.te_min, self.te_err)
+        for n in [ne[0], ne[-1]]:
+            cost+=gaussian_low_pass_cost(n, self.ne_min, self.ne_err)
+
+        return cost
+
+class BowmanTeePrior:
+    def __init__(self, plasma, sigma_err=0.2, nu_err=0.2):
+        self.plasma=plasma
+        self.sigma_err=sigma_err
+        self.nu_err=nu_err
+        # self.sigma_indicies=[plasma.slices['electron_density'].start+2, plasma.slices['electron_temperature'].start+1]
+
+    def __call__(self):
+        cost=0.
+        sigma_diff=self.plasma.plasma_theta['electron_temperature'][1]-self.plasma.plasma_theta['electron_density'][2]
+        nu_diff=self.plasma.plasma_theta['electron_density'][4]-self.plasma.plasma_theta['electron_temperature'][3]
+        cost+=gaussian_low_pass_cost(sigma_diff, 0., self.sigma_err)
+        # cost+=gaussian_low_pass_cost(nu_diff, 0., self.nu_err)
+        return cost
 
 from numpy import zeros, diag, eye, log, exp, subtract
 from scipy.linalg import solve_banded, solve_triangular, ldl

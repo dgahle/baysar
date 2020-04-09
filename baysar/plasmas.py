@@ -90,7 +90,7 @@ class default_cal_function(object):
             raise ValueError("self.number_of_variables!=len(self.bounds)")
 
     def __call__(self, *args):
-        return power10(args[0])
+        return np.power(10, args[0])
 
     # def calibrate(self, x, theta):
     #     m, c=theta
@@ -113,7 +113,7 @@ class default_background_function(object):
             raise ValueError("self.number_of_variables!=len(self.bounds)")
 
     def __call__(self, *args):
-        return power10(args[0])
+        return np.power(10, args[0])
 
     def calculate_background(self, theta):
         return theta
@@ -205,24 +205,16 @@ class PlasmaLine():
         return bounds
 
     def build_tags_slices_and_bounds(self):
-
         self.tags = []
         bounds = []
         slice_lengths = []
-
-        for chord, cal_func, calwave_func, back_func in zip(np.arange(self.num_chords), self.cal_functions, self.calwave_functions, self.background_functions):
-
-            self.tags.append('cal'+str(chord))
-            self.tags.append('calwave'+str(chord))
-            self.tags.append('background'+str(chord))
-
-            slice_lengths.append(cal_func.number_of_variables)
-            slice_lengths.append(calwave_func.number_of_variables)
-            slice_lengths.append(back_func.number_of_variables)
-
-            bounds=self.append_bounds_from_functional(bounds, cal_func)
-            bounds=self.append_bounds_from_functional(bounds, calwave_func)
-            bounds=self.append_bounds_from_functional(bounds, back_func)
+        calibration_functions=[self.cal_functions, self.calwave_functions, self.background_functions]
+        calibration_tags=['cal', 'calwave', 'background']
+        for calibration_tag, calibration_function in zip(calibration_tags, calibration_functions):
+            for chord, chord_calibration_function in enumerate(calibration_function):
+                self.tags.append(calibration_tag+'_'+str(chord))
+                slice_lengths.append(chord_calibration_function.number_of_variables)
+                bounds=self.append_bounds_from_functional(bounds, chord_calibration_function)
 
         self.tags.append('electron_density')
         self.tags.append('electron_temperature')
@@ -232,7 +224,6 @@ class PlasmaLine():
 
         bounds=self.append_bounds_from_functional(bounds, self.profile_function.electron_density)
         bounds=self.append_bounds_from_functional(bounds, self.profile_function.electron_temperature)
-
 
         hydrogen_shape_tags = ['b-field', 'viewangle']
         hydrogen_shape_bounds = [[0, 10], [0, 2]]
@@ -244,7 +235,7 @@ class PlasmaLine():
                 bounds.append(b)
 
         impurity_tags = ['_dens', '_Ti', '_tau']
-        impurity_bounds = [[9, 15], [-2, 2], [-6, 2]]
+        impurity_bounds = [[10, 15], [-2, 2], [-5, 2]]
         for tag in impurity_tags:
             for s in self.species:
                 is_h_isotope = any([s[0:2]==h+'_' for h in self.hydrogen_isotopes])
@@ -303,14 +294,17 @@ class PlasmaLine():
 
         self.n_params = slices[-1][1].stop
         self.slices = collections.OrderedDict(slices)
-        self.theta_bounds = np.array([np.array(b) for n, b in enumerate(bounds) if keep_theta_bound[n]], dtype=float)
+        theta_bounds = np.array([np.array(b) for n, b in enumerate(bounds) if keep_theta_bound[n]], dtype=float)
+        self.theta_bounds=np.array([theta_bounds.min(1), theta_bounds.max(1)]).T
         # self.bounds = bounds
 
-        assert self.n_params==len(self.theta_bounds), 'self,n_params!=len(self.theta_bounds)'
+        if self.n_params!=len(self.theta_bounds):
+            raise ValueError('self.n_params!=len(self.theta_bounds)')
+
         self.assign_theta_functions()
 
     def update_plasma_theta(self, theta):
-        plasma_theta = []
+        plasma_theta=[]
         for p in self.slices.keys():
             plasma_theta.append((p, theta[self.slices[p]]))
         self.plasma_theta = collections.OrderedDict(plasma_theta)
@@ -327,7 +321,7 @@ class PlasmaLine():
             plasma_state.append((p, values))
 
         self.plasma_state = collections.OrderedDict(plasma_state)
-        self.plasma_state['main_ion_density'] = self.plasma_state['electron_density'] - self.calc_total_impurity_electrons(True)
+        self.plasma_state['main_ion_density']=self.plasma_state['electron_density']-self.calc_total_impurity_electrons(True)
 
     def get_theta_functions(self, profile_function=None, cal_functions=None, calwave_functions=None, background_functions=None):
 
@@ -382,7 +376,10 @@ class PlasmaLine():
                                ('X_' in tag) for tag in self.tags]
         # self.function_check = [any([check in tag for check in function_tags]) for tag in plasma.tags]
 
-        assert len(function_tags_full)==len(theta_functions), 'len(function_tags_full)!=len(theta_functions)'
+        if len(function_tags_full)!=len(theta_functions):
+            print(theta_functions)
+            print(function_tags_full)
+            raise ValueError('len(function_tags_full)!=len(theta_functions) ({}!={})'.format(len(function_tags_full), len(theta_functions)))
 
         for tag, func in zip(function_tags_full, theta_functions):
             theta_functions_tuples.append((tag, func))
@@ -404,7 +401,8 @@ class PlasmaLine():
             tau = np.zeros(len(ne)) + tau
 
             tmp_in = (tau, ne, te)
-            average_charge = np.exp(self.impurity_average_charge[species](tmp_in))
+            # average_charge = np.exp(self.impurity_average_charge[species](tmp_in))
+            average_charge = self.impurity_average_charge[species](tmp_in).clip(min=0)
 
             total_impurity_electrons+=average_charge*conc
 
@@ -433,7 +431,8 @@ class PlasmaLine():
         zp1_bal=self.impurity_ion_bal[elem][:, :, :, ionp1]
         z_eff=(ion*z_bal+ionp1*zp1_bal) # /(z_bal+zp1_bal)
 
-        return RegularGridInterpolator((tau, ne, te), np.log(z_eff), bounds_error=False, fill_value=None)
+        # return RegularGridInterpolator((tau, ne, te), np.log(z_eff), bounds_error=False, fill_value=None)
+        return RegularGridInterpolator((tau, ne, te), z_eff, bounds_error=False, fill_value=None)
 
     def get_impurity_ion_bal(self):
 
@@ -453,7 +452,7 @@ class PlasmaLine():
                 with HiddenPrints():
                     meta=get_meta(elem)
                     out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
-                bal[t_counter, :, :, :]=out['ion'].clip(1e-50)
+                bal[t_counter, :, :, :]=out['ion'].clip(1e-30)
                 power.append(pow)
 
             ion_bals.append((elem, bal))
@@ -536,8 +535,17 @@ class PlasmaLine():
         self.hydrogen_pecs = dict(pecs)
 
     def is_theta_within_bounds(self, theta):
-        return [(b.min()<r) and (r<b.max()) for b, r in zip(self.theta_bounds, theta)]
+        if not check_bounds_order(self.theta_bounds):
+            print('Not all bounds are correctly ordered. Reordering bounds. Please check bounds!')
+            self.theta_bounds=np.array([self.theta_bounds.min(1), self.theta_bounds.max(1)]).T
+            if not check_bounds_order(self.theta_bounds):
+                raise ValueError('Bounds could not be reordered!')
+        return [((bound[0]<r) and (r<bound[1])) or any([b==r for b in bound]) for bound, r in zip(self.theta_bounds, theta)]
 
+
+def check_bounds_order(bounds):
+    check=[b[0]<b[1] for b in bounds]
+    return all(check)
 
 if __name__ == '__main__':
 

@@ -217,21 +217,21 @@ class MeshLine(object):
     def __init__(self, x, x_ends=[-10, 10], zero_bounds=None, resolution=0.1,
                        log=False, kind='linear', **kwargs):
         self.__dict__.update(kwargs)
-        self.x = np.arange(min(x_ends), max(x_ends), resolution)
         self.log = log
         self.kind = kind
         self.zero_bounds = zero_bounds
-        if self.zero_bounds is not None:
+        if self.zero_bounds is None:
+            self.empty_theta = np.zeros(len(x))
+            self.slice=slice(0, len(self.empty_theta))
+            self.x_points=x
+        else:
             self.slice=slice(1, -1)
             self.empty_theta=np.zeros(len(x)+2)
             self.empty_theta[0]=zero_bounds
             self.empty_theta[-1]=zero_bounds
             self.x_points=np.concatenate([np.array([min(x_ends)]), x, np.array([max(x_ends)])])
-        else:
-            self.empty_theta = np.zeros(len(x))
-            self.slice=slice(0, len(self.empty_theta))
-            self.x_points=x
-
+        self.x_points=self.x_points.astype(float)
+        self.x = np.arange(min(x_ends), max(x_ends), resolution)
 
         self.check_init()
 
@@ -240,6 +240,8 @@ class MeshLine(object):
             print('self.x_points', self.x_points)
             print('self.empty_theta', self.empty_theta)
             raise ValueError("len(self.x_points) != len(self.empty_theta)")
+        if any([t==0 for t in np.diff(self.x_points)]):
+            raise ValueError("Some of self.x_points are the same. Zero bounds = {}".format(self.zero_bounds))
 
     def __call__(self, theta, *args, **kwargs):
         self.empty_theta[self.slice]=theta
@@ -252,9 +254,9 @@ class MeshLine(object):
 
 
 class MeshPlasma(object):
-    def __init__(self, x=None, bounds=None, bounds_ne=[11, 16], bounds_te=[-1, 2]):
-        self.electron_density=MeshLine(x=x, zero_bounds=11, x_ends=bounds, log=True, number_of_variables=len(x), bounds=[bounds_ne for n in np.arange(len(x))])
-        self.electron_temperature=MeshLine(x=x, zero_bounds=-2, x_ends=bounds, log=True, number_of_variables=len(x), bounds=[bounds_te for n in np.arange(len(x))])
+    def __init__(self, x=None, bounds=None, zero_bounds_ne=11, zero_bounds_te=-2, bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        self.electron_density=MeshLine(x=x, zero_bounds=zero_bounds_ne, x_ends=bounds, log=True, number_of_variables=len(x), bounds=[bounds_ne for n in np.arange(len(x))])
+        self.electron_temperature=MeshLine(x=x, zero_bounds=zero_bounds_te, x_ends=bounds, log=True, number_of_variables=len(x), bounds=[bounds_te for n in np.arange(len(x))])
 
 def bowman_tee_distribution(x, theta):
     A, x0, sigma0, q, nu, k, f, b = theta
@@ -263,7 +265,7 @@ def bowman_tee_distribution(x, theta):
     sigma=sigma0*np.exp(p0)
     z=(x-x0)/sigma
     z=np.power(abs(z), q)
-    p1=np.power((1+z)/nu, -nu)
+    p1=np.power(1+z/nu, -(nu+1)*0.5)
 
     return A*p1+b
 
@@ -273,46 +275,54 @@ def bowman_tee_distribution_centred(x, theta):
 
 from copy import copy
 
-class BowmanTeeNe(object):
-    def __init__(self, x):
+class BowmanTeeNe:
+    def __init__(self, x, background=True):
         self.x=x
+        self.background=background
 
     def __call__(self, theta):
         theta=copy(theta)
-        for i in [0, -1]:
-            theta[i]=np.power(10, theta[i])
+        if self.background:
+            for i in [0, -1]:
+                theta[i]=np.power(10, theta[i])
+        else:
+            theta[0]=np.power(10, theta[0])
+            theta=np.concatenate((theta, np.zeros(1)))
+        return self.profile(theta)
+
+    def profile(self, theta):
         return bowman_tee_distribution(self.x, theta)
 
-class BowmanTeeTe(object):
-    def __init__(self, x):
-        self.x=x
-
-    def __call__(self, theta):
-        theta=copy(theta)
-        for i in [0, -1]:
-            theta[i]=np.power(10, theta[i])
+class BowmanTeeTe(BowmanTeeNe):
+    def profile(self, theta):
         return bowman_tee_distribution_centred(self.x, theta)
 
 from itertools import product
 
 class BowmanTeePlasma(object):
-    def __init__(self, x=None, bounds=None, dr_bounds=[-2, 2], bounds_ne=[11, 16], bounds_te=[-1, 2]):
+    def __init__(self, x=None, bounds=None, dr_bounds=[-2, 2], bounds_ne=[11, 16], bounds_te=[-1, 2], background=False):
         if x is None:
             self.x=np.linspace(-15, 25, 500)
         else:
             self.x=x
 
         if bounds is None:
-            self.bounds=[[1e-3, 10], [0.1, 10], [1, 2],
-                         [1, 10],  [0.01, 2]]
+            self.bounds=[[1e-1, 10], [1.2, 3], [1, 5],
+                         [1, 50],  [0, 2]]
         else:
             self.bounds=bounds
 
-        self.electron_density=BowmanTeeNe(self.x)
-        self.electron_temperature=BowmanTeeTe(self.x)
+        self.background=background
 
-        self.electron_density.number_of_variables=8
-        self.electron_temperature.number_of_variables=7
+        self.electron_density=BowmanTeeNe(self.x, background=self.background)
+        self.electron_temperature=BowmanTeeTe(self.x, background=self.background)
+
+        self.electron_density.number_of_variables=7
+        self.electron_temperature.number_of_variables=6
+
+        if self.background:
+            self.electron_density.number_of_variables+=1
+            self.electron_temperature.number_of_variables+=1
 
         self.construct_bounds(dr_bounds, bounds_ne, bounds_te)
 
@@ -320,7 +330,7 @@ class BowmanTeePlasma(object):
         """
         A > 0
         sigma0 > 0
-        0.5 < q < 20
+        1.2 < q < 3
         nu > 1
         1 < k < 50
         0 < f < 2
@@ -333,8 +343,9 @@ class BowmanTeePlasma(object):
         for param, bound in product([self.bounds_ne, self.bounds_te], self.bounds):
             param.append(bound)
 
-        for param, bound in zip([self.bounds_ne, self.bounds_te], [bounds_ne, bounds_te]):
-            param.append(bound)
+        if self.background:
+            for param, bound in zip([self.bounds_ne, self.bounds_te], [[bounds_ne[0], 13.], [bounds_te[0], 0]]):
+                param.append(bound)
 
         self.electron_density.bounds=self.bounds_ne
         self.electron_temperature.bounds=self.bounds_te
@@ -348,13 +359,10 @@ if __name__=='__main__':
 
     profile_function=BowmanTeePlasma()
 
-    theta0=np.ones(7)+1
-    theta0[1]=5
+    theta0=np.ones(7)
     peaks=[]
-    for i in np.linspace(0, 2, 5): # .5*(np.arange(5)+1):
-        theta0[1]=5
-        # theta0[2]=i
-        theta0[-2]=i
+    for i in np.linspace(1, 10, 5): # .5*(np.arange(5)+1):
+        theta0[2]=i
         print(i, ': ', *theta0)
         peaks.append(profile_function.electron_temperature(theta0))
 

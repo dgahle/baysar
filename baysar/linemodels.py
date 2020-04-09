@@ -270,8 +270,8 @@ class HydrogenLineShape(object):
 
         # TODO - why?
         wavelengths_doppler_num = len(self.wavelengths) # todo make a power of 2
-        # if wavelengths_doppler_num % 2 != 0:
-        #     wavelengths_doppler_num += 1
+        if wavelengths_doppler_num % 2 == 0:
+            wavelengths_doppler_num += 1
 
         self.wavelengths_doppler = linspace(self.cwl-10, self.cwl+10, wavelengths_doppler_num)
         self.doppler_function = DopplerLine(cwl=copy(self.cwl), wavelengths=self.wavelengths_doppler, atomic_mass=atomic_mass, half_range=5000)
