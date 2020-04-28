@@ -16,7 +16,15 @@ from itertools import chain
 from copy import copy
 from time import time
 
+from numpy import square, sqrt, mean, linspace, nan, log, diff, arange, zeros, concatenate, where
 
+from scipy.interpolate import interp1d
+from scipy.signal import fftconvolve
+from scipy import sparse
+import numpy as np
+import time as clock
+
+import os, sys, io, warnings
 
 
 class LogWrapper(object):
@@ -548,6 +556,193 @@ def optimise(posterior, initial_population, pop_size=12, num_eras=3, generations
         big_out.append(out)
 
     if filename is not None:
-        savez(filename, *out)
+        savez(filename, **out)
+
+    print()
 
     return out, big_out
+
+def gradient_optimisation(function, start, max_iterations=10, stepsize=None, k_step=2, tolerence=0.1,
+                          line_tolerence=1., res=10, epsilon=1e-4, callback=False, line_callback=False):
+    answers=[start]
+    meta_data=['stating postion. no meta data']
+    # begin d_prob=inf to initate while loop
+    d_prob=inf
+    # record number of gradient line searches
+    iter=0
+    # iterate gradient line optimisation until a threshold/tolerence is reached
+    while abs(d_prob)>tolerence:
+        if iter>1:
+            stepsize=meta_data[-1]['distance'][argmax(meta_data[-1]['probs'])]*0.3
+        # run gradient_line_search
+        ans, meta=gradient_line_search(function, start, stepsize=stepsize, k_step=k_step, tolerence=line_tolerence,
+                                       res=res, epsilon=epsilon, callback=line_callback)
+        # record solution of gradient_line_search
+        meta_data.append(meta)
+        answers.append(ans)
+        # record improvement in solution
+        d_prob=function(start)-meta_data[-1]['probs'][-1]
+        # update stating position
+        start=ans
+        # update number of iterations
+        iter+=1
+        # print progress
+        if callback:
+            print('Line search iterations {}'.format(iter))
+            print(ans, meta)
+        # exit if the number of max iterations has been reached
+        if iter > max_iterations:
+            print(UserWarning('Reached max number of iteration in binary search ({})'.format(max_iterations)))
+            break
+
+        # exit if the solution has converged
+        if (iter>3) and all(ans==answers[-3]):
+            break
+
+    return ans, answers, meta_data
+
+def check_start_type(start):
+    # check that theta doesn'contain NaNs
+    if any(np.isnan(start)):
+        raise TypeError("Start contains NaNs")
+    # check that theta doesn't contain infs
+    if any(np.isinf(start)):
+        raise TypeError("Start contains infinities")
+    # check that theta doesn't contain 0s
+    if any([s==0 for s in start]):
+        raise TypeError("Start contains 0s. This with break the finite difference calcualtion!")
+
+def gradient_line_search(function, start, stepsize=None, k_step=2, tolerence=1.,
+                         res=10, epsilon=0.01, max_iter=4, callback=False):
+    # make sure the start is a numpy array
+    start=array([start]).flatten()
+    # check that start doesn't conatain NaNs, inf or 0s
+    check_start_type(start)
+    # record prob of starting position
+    origin=start.copy()
+    probs=[function(start)]
+    # estimate gradient
+    grad=approx_fprime(start, function, start*epsilon)
+    # check that the gradient does not contain NaNs
+    if any(np.isnan(grad)):
+        print("grad={}, epsilon={}, start={}".format(grad, epsilon, start))
+        raise TypeError("k_grad contains NaNs")
+    # normalise to make a unit vector
+    k_grad=normalise(grad)
+    grad/=k_grad
+    # recod the stepsizes
+    distance=[0] # stepsize]
+    if stepsize is None:
+        stepsize=.1*k_grad
+    # find the peak
+    d_prob=1
+    iter=1
+    while d_prob > 0:
+        print('Iteration {} (Last logP = {})'.format(iter, probs[-1]))
+        # take step along the line
+        start=start+grad*stepsize
+        # record prob of new postion
+        probs.append(function(start))
+        # upadte d_prob
+        d_prob=probs[-1]-probs[-2]
+        # recod the stepsizes
+        distance.append(distance[-1]+stepsize)
+        # # what is going on?!
+        # print(probs[-1], distance[-1], stepsize, d_prob)
+        # print(probs)
+        # update stepsize
+        stepsize*=k_step
+        # print progress
+        if callback:
+            print('Line search step {}: {}'.format(iter, probs[-1]), flush=True)
+        # record the number of iterations
+        iter+=1
+        tmp_max_iter=50
+        if len(probs)>tmp_max_iter:
+            raise ValueError('gradient_line_search never found a peak | max iter = {}'.format(tmp_max_iter))
+
+        # print('Iteration {} (Last logP = {})'.format(iter, probs[-1]))
+
+    # if the probility drops immediately then search within intervul unitil
+    # the maxima is not at the edges (0 or len(probs))
+    if len(distance)==2:
+        # resort distances and probs
+        indices=argsort(distance)
+        distance=array(distance)[indices].tolist()
+        probs=array(probs)[indices].tolist()
+        # check that the maxima is not at the edges (0 or len(probs))
+        while probs[0]>probs[1]:
+            print('Iteration {} (Last logP = {})'.format(iter, probs[-1]))
+        # while argmax(probs)==0 or argmax(probs)==len(probs):
+            # calculate new point
+            d=distance[0]+(distance[1]-distance[0])*.5
+            # take step along the line
+            start=origin+grad*d
+            # record prob of new postion
+            probs.append(function(start))
+            # recod the stepsizes
+            distance.append(d)
+            # resort distances and probs
+            indices=argsort(distance)
+            distance=array(distance)[indices].tolist()
+            probs=array(probs)[indices].tolist()
+            # escape if runs for too ave_long
+            tmp_max_iter=50
+            if len(probs)>tmp_max_iter:
+                # print('gradient_line_search never found a peak | max iter = {}'.format(tmp_max_iter))
+                # break
+                print(probs, distance)
+                raise ValueError('gradient_line_search never found a peak | max iter = {}'.format(tmp_max_iter))
+                # print( ValueError('gradient_line_search never found a peak | max iter = {}'.format(tmp_max_iter)) )
+                # print("returning (probs, distance)")
+                # return (probs, distance)
+
+
+
+    # the maxima location is in the last three step_sizes
+    # need to initiate a binary search of the space
+    #
+    # record number of binary searchs done
+    iter_binary=1
+    # binary search needs to be repeated until optimised to the threshold/tolerence
+    # limit the total number of iterations to 10
+    for i in range(max_iter):
+    # while abs(d_prob)>tolerence:
+        print('Iteration {} (Last logP = {})'.format(iter+i+1, probs[-1]))
+        # get the indices of the most likely three points
+        maxima_indicies=argmax(probs)
+        # get the distances of the last three points
+        last_three_distacnces=distance[maxima_indicies-1:maxima_indicies+2].copy()
+        # first calculate the two mid points of the last three points
+        diff_last_three_distacnces=diff(last_three_distacnces)/2
+        points=[]
+        for p, dp in zip(last_three_distacnces[:-1], diff_last_three_distacnces):
+            points.append(p+dp)
+        # print(points)
+        # evaluate function at points
+        for d in points:
+            # take step along the line
+            start=origin+grad*d
+            # record prob of new postion
+            probs.append(function(start))
+            # upadte d_prob
+            d_prob=probs[-1]-probs[-2]
+            # recod the stepsizes
+            distance.append(d)
+            # print progress
+            if callback:
+                print('Binary search step {}: {}'.format(iter_binary, probs[-1]), flush=True)
+            # if the solution is oscilating then break
+        if len(probs)>3 and probs[-1]==probs[-3]:
+            print(UserWarning('Solution is oscilating so aborting binary search!'))
+            break
+
+        # record the number of iterations
+        iter_binary+=1
+        # resort distances and probs
+        indices=argsort(distance)
+        distance=array(distance)[indices].tolist()
+        probs=array(probs)[indices].tolist()
+
+    # return optimisation estimate and search history
+    return start, {'probs':array(probs).flatten(), 'distance':array(distance)}

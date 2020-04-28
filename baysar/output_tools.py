@@ -355,8 +355,164 @@ def plot_fit_demo(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
     if filename is None:
         fig.show()
     else:
-        plt.tight_layout() # breaks the code
+        # plt.tight_layout() # breaks the code
         plt.savefig(filename)
         plt.close()
 
     # return te_all, ne_all
+import numpy as np
+from scipy.interpolate import interp1d
+
+import matplotlib.pyplot as plt
+plt.ion()
+
+from adas import read_adf11, run_adas406
+
+from baysar.plasmas import get_meta
+
+def reaction_rate(posterior, sample, neutral='D_ADAS', reaction='scd'):
+    if reaction=='scd':
+        file='/home/adas/adas/adf11/scd12/scd12_h.dat'
+    elif reaction=='acd':
+        file='/home/adas/adas/adf11/acd12/acd12_h.dat'
+    else:
+        raise ValueError('reaction must be scd (ionisation) or acd (recombination)')
+
+    rates=[]
+    for s in sample:
+        posterior(s)
+
+        te=posterior.plasma.plasma_state['electron_temperature']
+        ne=posterior.plasma.plasma_state['electron_density']
+        if reaction=='scd':
+            reactant=float(posterior.plasma.plasma_state['D_ADAS_0_dens'])
+        else:
+            reactant=posterior.plasma.plasma_state['main_ion_density']
+
+        rate=read_adf11(te=te, dens=ne, adf11type=reaction, file=file, is1=1)
+
+        rates.append(reactant*ne*rate)
+
+    return rates
+
+def plot_sources_and_sinks(posterior, sample, log=False, data=None, chord=None, neutral='D_ADAS'):
+    los=posterior.plasma.los
+    plt.figure()
+
+    rates=['acd', 'scd']
+    labels=[r'$n_{i}n_{e}ACD$', r'$n_{0}n_{e}SCD$']
+    colours=['blue', 'red']
+    for rate, label, colour in zip(rates, labels, colours):
+        rate=np.array( reaction_rate(posterior, sample, neutral, reaction=rate) )
+        plt.fill_between(los, rate.min(0), rate.max(0), label=label, color=colour, alpha=0.5)
+        plt.plot(los, rate.mean(0), color=colour)
+
+    plt.xlim(los.min(), los.max())
+
+    if log:
+        plt.yscale('log')
+        plt.ylim(1e12)
+
+    plt.ylabel(r'$rate \ / \ cm^{-3}s^{-1}$')
+    plt.xlabel(r'$LOS \ / \ cm$')
+
+    leg=plt.legend()
+    leg.draggable()
+
+    plt.show()
+
+def plot_impurtity_profiles_dense(posterior, sample, data, chord, alpha=0.3):
+
+    elem='N'
+    meta=get_meta(elem)
+    ions=[1, 2, 3]
+    species=['N_1', 'N_2', 'N_3']
+
+    fig, ax = plt.subplots(1, 2, sharey=True)
+
+    ax_profile, ax_balance = ax
+
+    ax_profile.set_title(r'$Line \ of \ Sight \ Profiles$')
+    ax_balance.set_title(r'$Ionisation \ Balance$')
+
+    # reference SOLPS things
+    solps_los=data.get('d_los')[::-1, chord]*100
+    solps_los-=solps_los[np.argmax(data.get('Te_los')[:, chord])]
+    solps_te=data.get('Te_los')[:, chord]
+    for charge, az in enumerate(data.get('nz_los')[:, chord, :].T*1e-6):
+        if (charge in ions): #  or (charge==max(ions)+1):
+            ax_profile.plot(solps_los, az, 'x--', color='C'+str(charge))
+            label='N'+str(charge)+r'$+ \ (SOLPS)$'
+            ax_balance.plot(solps_te, az, 'x--', label=label, color='C'+str(charge))
+
+    # formatting
+    ax_profile.set_yscale('log')
+    ax_profile.set_ylim(1e10, 1e13)
+
+    ax_profile.set_ylabel(r'$n \ / \ cm^{-3}$')
+    ax_profile.set_xlabel(r'$LOS \ / \ cm$')
+
+    ax_balance.set_xlim(0, solps_te.max()+1)
+
+    ax_balance.set_xlabel(r'$T_{e} \ / \ eV$')
+
+    # inference stuff
+    densities={}
+    for i, s in zip(ions, species):
+        densities[s]={i:[], i+1:[]}
+
+    te_profiles=[]
+    los_baysar=posterior.plasma.los
+    for s in sample:
+        posterior(s)
+        tmp_te=posterior.plasma.plasma_state['electron_temperature']
+        tmp_ne=posterior.plasma.plasma_state['electron_density']
+        te_profiles.append(tmp_te)
+        for i, s in zip(ions, species):
+            tmp_tau=float(posterior.plasma.plasma_state[s+'_tau'])
+            a_out, pow = run_adas406(year=96, elem=elem, te=tmp_te, dens=tmp_ne, tint=tmp_tau, meta=meta)
+            # densities[s]
+            tmp_dens=float(posterior.plasma.plasma_state[s+'_dens'])
+            tmp_bal=a_out['ion']*tmp_dens
+            for charge in [i, i+1]:
+                tmp_indicies=np.argsort(tmp_te)
+                # ax_balance.plot(tmp_te[tmp_indicies], tmp_bal[tmp_indicies, i], 'C'+str(i) , alpha=alpha)
+                # ax_balance.plot(tmp_te, tmp_bal[:, i+1], 'C'+str(i+1), alpha=alpha)
+                # ax_profile.plot(los_baysar, tmp_bal[:, i], 'C'+str(i))
+                densities[s][charge].append(tmp_bal[:, charge])
+
+
+    los=posterior.plasma.los
+    te_profiles=np.array(te_profiles)
+    te_grid=np.linspace(1., te_profiles.max(), 20)
+    for i, s in zip(ions, species):
+        # for charge, reaction in zip([i, i+1], [r'$N_{exc}$', r'$N_{rec}$']):
+        for charge, reaction in zip([i], [r'$N_{exc}$']):
+            colour='C'+str(charge)
+            profiles=np.array( densities[s][charge] )
+
+            if charge in (i, max(ions)+1):
+                label=r'$N$'+str(charge)+r'$+ \ (BaySAR)$'
+            else:
+                label=None
+
+            ax_profile.fill_between(los, profiles.min(0), profiles.max(0),
+                             color=colour, alpha=alpha)
+            ax_profile.plot(los, profiles.mean(0), label=label, color=colour)
+
+            grided_profiles=[]
+            for te, prof in zip(te_profiles, profiles):
+                tmp_interp=interp1d(te, prof, bounds_error=False, fill_value='extrapolate')
+                grided_profiles.append( tmp_interp(te_grid) )
+
+            # ax_balance.fill_between(te_grid, np.array(grided_profiles).min(0), np.array(grided_profiles).max(0), 'C'+str(i), alpha=alpha)
+            ax_balance.fill_between(te_grid, np.array(grided_profiles).min(0), np.array(grided_profiles).max(0), color='C'+str(charge), alpha=alpha)
+            ax_balance.plot(te_grid, np.array(grided_profiles).mean(0), 'C'+str(charge))
+
+    leg_bal=ax_balance.legend()
+    leg_bal.draggable()
+    leg_prof=ax_profile.legend()
+    leg_prof.draggable()
+    ax_profile.set_xlim(los.min(), los.max())
+
+    fig.show()

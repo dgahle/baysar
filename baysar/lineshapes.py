@@ -56,31 +56,22 @@ def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False, power
     lower_cwl = cwl - half_range
 
     if upper_cwl > max(wavelengths):
-        upper_index = len(wavelengths) - 1
+        upper_index = len(wavelengths)
     else:
         tmp_wave = abs(wavelengths - upper_cwl)
-        upper_index = np.where(tmp_wave == min(tmp_wave))[0][0]
+        upper_index = np.where(tmp_wave == min(tmp_wave))[0][0]+1
 
-    if lower_cwl < max(wavelengths):
+    if lower_cwl < min(wavelengths):
         lower_index = 0
     else:
         tmp_wave = abs(wavelengths - lower_cwl)
         lower_index = np.where(tmp_wave == min(tmp_wave))[0][0]
 
-    new_waves=wavelengths[lower_index:upper_index+1]
-    if power2:
-        new_len=2**int(np.log2(len(new_waves))//1)
-        diff_len=len(new_waves)-new_len
-        lower_index += diff_len // 2
-        upper_index -= diff_len // 2
-        if diff_len % 2 == 1:
-            upper_index-=1
-        new_waves=wavelengths[lower_index:upper_index+1]
-
-        print(len(new_waves))
+    new_waves_slice=slice(lower_index, upper_index)
+    new_waves=wavelengths[new_waves_slice]
 
     if return_indicies:
-        return new_waves, [lower_index, upper_index]
+        return new_waves, new_waves_slice
     else:
         return new_waves
 
@@ -89,6 +80,7 @@ def gaussian_check_input(x, cwl, fwhm, intensity):
     if type(x) is not np.ndarray:
         raise TypeError("type(x) is not np.ndarray")
     if not any(np.isreal(x)):
+        print('x =', x)
         raise TypeError("x must only contain real scalars") # this also checks that the array is 1D
     # :param scalar cwl: Mean of the gaussian
     if not np.isreal(cwl):
@@ -145,7 +137,7 @@ class Gaussian(object):
 
         if reduced_range is None:
             self.reducedx = [x for c in self.cwl]
-            self.reducedx_indicies = [[0, len(x)-1] for c in self.cwl]
+            self.reducedx_indicies = [slice(0, len(x)) for c in self.cwl] # TODO: here
         else:
             self.reducedx = []
             self.reducedx_indicies = []
@@ -184,7 +176,7 @@ class Gaussian(object):
     def peak_3d(self, theta):
         cwl, fwhm, intensity = theta
         cwl = list(cwl)
-        return self.make_peak(self.cwl, fwhm, intensity)
+        return self.make_peak(cwl, fwhm, intensity)
 
     def make_peak(self, cwl, fwhm, intensity):
         fwhm = put_in_iterable(fwhm)
@@ -193,7 +185,7 @@ class Gaussian(object):
 
         peak = np.zeros(len(self.x))
         for f, c, fw, rx, rxi in zip(self.fractions, cwl, fwhm, self.reducedx, self.reducedx_indicies):
-            peak[rxi[0]:rxi[1]+1] += self.func(rx, c, fw, f)
+            peak[rxi] += self.func(rx, c, fw, f)
 
         return intensity*peak
 

@@ -101,7 +101,8 @@ class SpectrometerChord(object):
             likeli = - log( (1 + self.square_normalised_residuals) ).sum( )
         else:
             likeli=-0.5*self.square_normalised_residuals.sum()
-        if likeli==nan:
+
+        if np.isnan(likeli):
             raise ValueError('likeli == nan')
         if any(np.isinf(self.square_normalised_residuals)):
             raise ValueError('Some points of abs prob are inf')
@@ -130,11 +131,12 @@ class SpectrometerChord(object):
 
         # TODO - BIG SAVINGS BOGOF
         # TODO - centre of mass check?
+        # spectra=spectra+background
         # spectra=self.instrument_function_matrix.dot(spectra)
         # background=fftconvolve(background, self.instrument_function, mode='same')
         spectra=spectra+background
         spectra=fftconvolve(spectra, self.instrument_function_fm, mode='same')
-        spectra=spectra.clip(.1)
+        spectra=spectra.clip(background)
         spectra*=self.dispersion_ratios
 
         if len(self.x_data_fm)!=len(spectra):
@@ -142,24 +144,25 @@ class SpectrometerChord(object):
 
         # wave calibration
         wavecal_interp=interp1d(self.x_data_fm, spectra, bounds_error=False, fill_value="extrapolate")
+        # wavecal_interp=interp1d(self.x_data, spectra, bounds_error=False, fill_value="extrapolate")
         cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
         self.cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
         return wavecal_interp(self.cal_wave)
 
-    def wavelength_scaling(self, inverse=False):
-        cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
-        if inverse:
-            calibrate=self.wavelength_calibrator.inverse_calibrate
-        else:
-            calibrate=self.wavelength_calibrator.calibrate
-
-        for line in self.lines:
-            if type(line)==XLine:
-                line.line.cwl=calibrate(line.line.cwl, cal_theta)
-            if type(line)==ADAS406Lines:
-                line.linefunction.line.cwl=calibrate(line.linefunction.line.cwl, cal_theta)
-            if type(line)==BalmerHydrogenLine:
-                line.lineshape.cwl=calibrate(line.lineshape.cwl, cal_theta)
+    # def wavelength_scaling(self, inverse=False):
+    #     cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
+    #     if inverse:
+    #         calibrate=self.wavelength_calibrator.inverse_calibrate
+    #     else:
+    #         calibrate=self.wavelength_calibrator.calibrate
+    #
+    #     for line in self.lines:
+    #         if type(line)==XLine:
+    #             line.line.cwl=calibrate(line.line.cwl, cal_theta)
+    #         if type(line)==ADAS406Lines:
+    #             line.linefunction.line.cwl=calibrate(line.linefunction.line.cwl, cal_theta)
+    #         if type(line)==BalmerHydrogenLine:
+    #             line.lineshape.cwl=calibrate(line.lineshape.cwl, cal_theta)
 
     def get_lines(self):
         # print("Getting line objects")
@@ -212,6 +215,7 @@ class SpectrometerChord(object):
                                             self.instrument_function_x.max(), if_x_fm_res)
         self.instrument_function_fm=int_func_interp(self.instrument_function_x_fm)
         self.instrument_function_fm/=np.trapz(self.instrument_function_fm, self.instrument_function_x_fm)
+        self.instrument_function_fm=centre_peak(self.instrument_function_fm)
 
         fine_axis = linspace(0, len(self.x_data), len(self.x_data_fm))
         shape = (len(self.x_data), len(self.x_data_fm))

@@ -44,6 +44,40 @@ class XLine(object):
         self.log_ems_estimate = np.log10(log_ems_estimate)
 
 
+from scipy.constants import speed_of_light
+def doppler_shift(cwl, atomic_mass, velocity):
+    velocity/=speed_of_light
+    return cwl*(velocity+1)
+
+def update_DopplerLine_cwls(line, cwls):
+    if not len(cwls)==len(line.line.cwl):
+        error_string='Transition has {} line and {} where given'.format(len(line.line.cwl), len(cwls))
+        raise ValueError(error_string)
+
+    line.line.cwl=np.array(cwls)
+
+def doppler_shift_ADAS406Lines(self,  velocity):
+    # get doppler shifted wavelengths
+    cwls=np.array(copy(self.cwls))
+    new_cwl=doppler_shift(cwls, self.atomic_mass, velocity)
+    # update wavelengths
+    update_DopplerLine_cwls(self.linefunction, new_cwl)
+
+def update_HydrogenLineShape_cwl(line, cwl):
+    old_cwl=copy(line.cwl)
+    # update cwl for stark and zeeman
+    line.cwl=cwl
+    # update for DopplerLine
+    update_DopplerLine_cwls(line.doppler_function, [cwl])
+    # shift the DopplerLine wavelengths so the peak remains centred for the convolution
+    line.doppler_function.line.reducedx[0]+=(cwl-old_cwl)
+
+def doppler_shift_BalmerHydrogenLine(self, velocity):
+    # get doppler shifted wavelengths
+    new_cwl=doppler_shift(copy(self.cwl), self.atomic_mass, velocity)
+    # update wavelengths
+    update_HydrogenLineShape_cwl(self.lineshape, new_cwl)
+
 def ti_to_fwhm(cwl, atomic_mass, ti):
     return cwl * 7.715e-5 * sqrt(ti / atomic_mass)
 
@@ -118,6 +152,7 @@ class ADAS406Lines(object):
         self.atomic_mass = get_atomic_mass(species)
         self.cwls = put_in_iterable(cwls)
         self.line = self.species+'_'+str(self.cwls)[1:-1].replace(', ', '_')
+        # self.cwls=[cw-0.1955 for cw in self.cwls]
         self.jj_frac_full = plasma.input_dict[self.species][cwls]['jj_frac']
         self.wavelengths = wavelengths
         self.los = self.plasma.profile_function.electron_density.x
@@ -132,7 +167,8 @@ class ADAS406Lines(object):
                 self.lines.append(tmp_cwl)
                 self.jj_frac.append(frac)
 
-        self.linefunction = DopplerLine(self.lines, self.wavelengths, atomic_mass=self.atomic_mass, fractions=self.jj_frac, half_range=5)
+        self.linefunction = DopplerLine(self.lines, self.wavelengths, atomic_mass=self.atomic_mass,
+                                        fractions=self.jj_frac, half_range=half_range)
         self.tec406 = self.plasma.impurity_tecs[self.line]
 
         length = diff(self.los)[0]
@@ -148,6 +184,9 @@ class ADAS406Lines(object):
         # te = self.plasma.plasma_state['electron_temperature']
         tau = self.plasma.plasma_state[self.species+'_tau'][0]
         # tau = np.zeros(len(ne))+self.plasma.plasma_state[self.species+'_tau'][0]
+        if self.species+'_velocity' in self.plasma.plasma_state:
+            velocity=self.plasma.plasma_state[self.species+'_velocity']
+            doppler_shift_ADAS406Lines(self, velocity)
 
         self.tec_in[:, 0] = self.plasma.plasma_state[self.species+'_tau'][0]# np.array([tau, ne, te])
         self.tec_in[:, 1] = self.plasma.plasma_state['electron_density']
@@ -175,7 +214,7 @@ class ADAS406Lines(object):
         self.ems_conc = n0 / self.ems_ne
         self.ems_te = dot(ems,self.tec_in[:, 2]) / ems_sum
 
-        return self.linefunction(ti, ems_sum )
+        return self.linefunction(ti, ems_sum)
 
 
 # def comparison(self, theta, line_model='stehle_param'):
@@ -268,12 +307,12 @@ class HydrogenLineShape(object):
 
         # print("Transition n=%d -> %d | %f A"%(self.n_upper, self.n_lower, np.round(self.cwl, 2)))
 
-        # TODO - why?
-        wavelengths_doppler_num = len(self.wavelengths) # todo make a power of 2
-        if wavelengths_doppler_num % 2 == 0:
-            wavelengths_doppler_num += 1
+        # # TODO - why?
+        # wavelengths_doppler_num = len(self.wavelengths) # todo make a power of 2
+        # if wavelengths_doppler_num % 2 == 0:
+        #     wavelengths_doppler_num += 1
 
-        self.wavelengths_doppler = linspace(self.cwl-10, self.cwl+10, wavelengths_doppler_num)
+        self.wavelengths_doppler = arange(self.cwl-10, self.cwl+10, np.diff(self.wavelengths)[0])
         self.doppler_function = DopplerLine(cwl=copy(self.cwl), wavelengths=self.wavelengths_doppler, atomic_mass=atomic_mass, half_range=5000)
 
     def __call__(self, theta):
@@ -284,8 +323,12 @@ class HydrogenLineShape(object):
 
         doppler_component = self.doppler_function(ion_temperature, 1)
         stark_component = stehle_param(self.n_upper, self.n_lower, self.cwl, self.wavelengths, electron_density, electron_temperature)
-        peak=fftconvolve(stark_component, doppler_component, 'same')
+
+        peak=np.convolve(stark_component, doppler_component/doppler_component.sum(), 'same')
+        # peak=fftconvolve(stark_component, doppler_component, 'same')
         peak/=trapz(peak, self.wavelengths)
+
+        # return stark_component
 
         if self.zeeman:
             return zeeman_split(self.cwl, peak, self.wavelengths, b_field, viewangle)
@@ -307,15 +350,18 @@ class BalmerHydrogenLine(object):
         self.los = self.plasma.profile_function.electron_density.x
         self.dl_per_sr = diff(self.los)[0] / (4*pi)
 
-        self.reduced_wavelength, self.reduced_wavelength_indicies = \
-            reduce_wavelength(wavelengths, cwl, half_range, return_indicies=True, power2=False)
+        # self.reduced_wavelength, self.reduced_wavelength_indicies = \
+        #     reduce_wavelength(wavelengths, cwl, half_range, return_indicies=True, power2=False)
 
         self.len_wavelengths = len(self.wavelengths)
         self.exc_pec = self.plasma.hydrogen_pecs[self.line+'_exc']
         self.rec_pec = self.plasma.hydrogen_pecs[self.line+'_rec']
 
-        self.lineshape = HydrogenLineShape(self.cwl, self.reduced_wavelength, self.n_upper, n_lower=self.n_lower,
+        # self.lineshape = HydrogenLineShape(self.cwl, self.reduced_wavelength, self.n_upper, n_lower=self.n_lower,
+        #                                    atomic_mass=self.atomic_mass, zeeman=zeeman)
+        self.lineshape = HydrogenLineShape(self.cwl, self.wavelengths, self.n_upper, n_lower=self.n_lower,
                                            atomic_mass=self.atomic_mass, zeeman=zeeman)
+
 
     def __call__(self):
         n0 = self.plasma.plasma_state[self.species+'_dens']
@@ -325,6 +371,9 @@ class BalmerHydrogenLine(object):
         te = self.plasma.plasma_state['electron_temperature']
         bfield = self.plasma.plasma_state['b-field']
         viewangle = self.plasma.plasma_state['viewangle']
+        if self.species+'_velocity' in self.plasma.plasma_state:
+            velocity=self.plasma.plasma_state[self.species+'_velocity']
+            doppler_shift_BalmerHydrogenLine(self, velocity)
 
         rec_pec = np.exp(self.rec_pec(ne, te))
         exc_pec = np.exp(self.exc_pec(ne, te))
@@ -355,12 +404,11 @@ class BalmerHydrogenLine(object):
         self.rec_lineshape_input = [self.rec_ne, self.rec_te, ti, bfield, viewangle]
         self.exc_peak = nan_to_num( self.lineshape(self.exc_lineshape_input) )
         self.rec_peak = nan_to_num( self.lineshape(self.rec_lineshape_input) )
-        tmp_peak = self.rec_peak*rec_sum + self.exc_peak*exc_sum
 
-        peak = zeros(self.len_wavelengths) # TODO - replace reduce_wavelength output with a slice
-        peak[self.reduced_wavelength_indicies[0]:self.reduced_wavelength_indicies[1]+1] = tmp_peak
+        return self.rec_peak*rec_sum + self.exc_peak*exc_sum
 
-        return peak
+        # tmpline=DopplerLine(self.cwl, wavelengths=self.wavelengths, atomic_mass=2, fractions=None, half_range=50)
+        # return tmpline(ti, 1)*(rec_sum + exc_sum)
 
 
 

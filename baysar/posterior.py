@@ -9,7 +9,7 @@ from scipy.optimize import fmin_l_bfgs_b
 
 import concurrent.futures
 
-from baysar.priors import CurvatureCost, AntiprotonCost, TauPrior
+from baysar.priors import CurvatureCost, AntiprotonCost, MainIonFractionCost, TauPrior
 from baysar.plasmas import PlasmaLine
 from baysar.spectrometers import SpectrometerChord
 from baysar.tools import within, progressbar, clip_data
@@ -57,9 +57,13 @@ class BaysarPosterior(object):
         self.curvature = curvature
         if self.curvature is not None:
             self.posterior_components.append(CurvatureCost(self.plasma, self.curvature))
-        self.posterior_components.append(AntiprotonCost(self.plasma))
+
+        # priors for impure plasmas (could use better phrasing)
         if len(self.plasma.impurities)>0:
+            self.posterior_components.append(AntiprotonCost(self.plasma))
+            self.posterior_components.append(MainIonFractionCost(self.plasma))
             self.posterior_components.append(TauPrior(self.plasma))
+
         self.posterior_components.extend(priors)
 
         self.nan_thetas = []

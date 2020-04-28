@@ -57,6 +57,18 @@ class arb_obj_single_log_input(object):
             theta = theta[0]
         return np.power(self.power, theta)
 
+def calibrate(num_pixels, theta):
+    cwl, dispersion=theta
+
+    pixel_array=np.arange(num_pixels, dtype=float)
+    pixel_array-=np.mean(pixel_array)
+    pixel_array*=dispersion
+    pixel_array+=cwl
+
+    return pixel_array
+
+# from baysar.tools import calibrate
+
 # tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[-5, 5])
 class default_calwave_function(object):
     def __init__(self, number_of_variables=2, bounds=[ [1e2, 1e5], [0.01, 1.] ]):
@@ -73,10 +85,11 @@ class default_calwave_function(object):
         return args[0]
 
     def calibrate(self, x, theta):
-        cwl, dispersion=theta
-        num=len(x)
-        cwl-=(num*dispersion)/2
-        return cwl+np.arange(num)*dispersion
+        # cwl, dispersion=theta
+        # num=len(x)
+        # cwl-=(num*dispersion)/2
+        # return cwl+np.arange(num)*dispersion
+        return calibrate(len(x), theta)
 
 class default_cal_function(object):
     def __init__(self, number_of_variables=1, bounds=[ [-5, 20] ]):
@@ -402,7 +415,7 @@ class PlasmaLine():
 
             tmp_in = (tau, ne, te)
             # average_charge = np.exp(self.impurity_average_charge[species](tmp_in))
-            average_charge = self.impurity_average_charge[species](tmp_in).clip(min=0)
+            average_charge = self.impurity_average_charge[species](tmp_in).clip(min=0) /2 #TODO: ...
 
             total_impurity_electrons+=average_charge*conc
 

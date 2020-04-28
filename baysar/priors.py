@@ -10,12 +10,28 @@ class AntiprotonCost:
     def __init__(self, plasma, sigma=1e11):
         self.plasma=plasma
         self.anti_profile_varience=sigma
+
     def __call__(self):
         if any(self.plasma.plasma_state['main_ion_density'] < 0):
             anti_profile=self.plasma.plasma_state['main_ion_density'].clip(max=0)
             return -0.5*np.square(anti_profile/self.anti_profile_varience).sum()
         else:
             return 0.
+
+class MainIonFractionCost:
+    def __init__(self, plasma, threshold=0.5, sigma=0.1):
+        self.plasma=plasma
+        self.threshold=threshold
+        self.sigma=sigma
+
+    def __call__(self):
+        ne=self.plasma.plasma_state['electron_density']
+        n_ion=self.plasma.plasma_state['main_ion_density']
+
+        n_ion_fraction=n_ion/ne
+
+        return sum([gaussian_high_pass_cost(f, self.threshold, self.sigma) for f in n_ion_fraction])
+
 
 def curvature(profile):
     grad1 = np.gradient(profile / max(profile))
@@ -34,6 +50,7 @@ class CurvatureCost(object):
             self.slice=slice(1, -1)
         else:
             self.slice=slice(0, len(self.empty_array))
+
     def __call__(self):
         curves=0
         for tag in ['electron_density']: # , 'electron_temperature']:
