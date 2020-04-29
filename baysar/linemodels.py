@@ -46,8 +46,8 @@ class XLine(object):
 
 from scipy.constants import speed_of_light
 def doppler_shift(cwl, atomic_mass, velocity):
-    velocity/=speed_of_light
-    return cwl*(velocity+1)
+    f_velocity=velocity/speed_of_light
+    return cwl*(f_velocity+1)
 
 def update_DopplerLine_cwls(line, cwls):
     if not len(cwls)==len(line.line.cwl):
@@ -185,8 +185,8 @@ class ADAS406Lines(object):
         tau = self.plasma.plasma_state[self.species+'_tau'][0]
         # tau = np.zeros(len(ne))+self.plasma.plasma_state[self.species+'_tau'][0]
         if self.species+'_velocity' in self.plasma.plasma_state:
-            velocity=self.plasma.plasma_state[self.species+'_velocity']
-            doppler_shift_ADAS406Lines(self, velocity)
+            self.velocity=self.plasma.plasma_state[self.species+'_velocity']
+            doppler_shift_ADAS406Lines(self, self.velocity)
 
         self.tec_in[:, 0] = self.plasma.plasma_state[self.species+'_tau'][0]# np.array([tau, ne, te])
         self.tec_in[:, 1] = self.plasma.plasma_state['electron_density']
@@ -372,8 +372,8 @@ class BalmerHydrogenLine(object):
         bfield = self.plasma.plasma_state['b-field']
         viewangle = self.plasma.plasma_state['viewangle']
         if self.species+'_velocity' in self.plasma.plasma_state:
-            velocity=self.plasma.plasma_state[self.species+'_velocity']
-            doppler_shift_BalmerHydrogenLine(self, velocity)
+            self.velocity=self.plasma.plasma_state[self.species+'_velocity']
+            doppler_shift_BalmerHydrogenLine(self, self.velocity)
 
         rec_pec = np.exp(self.rec_pec(ne, te))
         exc_pec = np.exp(self.exc_pec(ne, te))

@@ -149,21 +149,6 @@ class SpectrometerChord(object):
         self.cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
         return wavecal_interp(self.cal_wave)
 
-    # def wavelength_scaling(self, inverse=False):
-    #     cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
-    #     if inverse:
-    #         calibrate=self.wavelength_calibrator.inverse_calibrate
-    #     else:
-    #         calibrate=self.wavelength_calibrator.calibrate
-    #
-    #     for line in self.lines:
-    #         if type(line)==XLine:
-    #             line.line.cwl=calibrate(line.line.cwl, cal_theta)
-    #         if type(line)==ADAS406Lines:
-    #             line.linefunction.line.cwl=calibrate(line.linefunction.line.cwl, cal_theta)
-    #         if type(line)==BalmerHydrogenLine:
-    #             line.lineshape.cwl=calibrate(line.lineshape.cwl, cal_theta)
-
     def get_lines(self):
         # print("Getting line objects")
         self.lines = []

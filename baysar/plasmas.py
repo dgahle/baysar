@@ -142,6 +142,9 @@ def get_meta(element):
     meta[0]=1
     return meta
 
+def kms_to_ms(velocity):
+    return 1e3*velocity
+
 class PlasmaLine():
 
     """
@@ -184,7 +187,7 @@ class PlasmaLine():
         self(np.random.rand(self.n_params))
 
     def __call__(self, theta):
-        return self.update_plasma_state(theta)
+        self.update_plasma_state(theta)
 
     def get_impurities(self):
         self.impurities = []
@@ -247,8 +250,8 @@ class PlasmaLine():
                 slice_lengths.append(1)
                 bounds.append(b)
 
-        impurity_tags = ['_dens', '_Ti', '_tau']
-        impurity_bounds = [[10, 15], [-2, 2], [-5, 2]]
+        impurity_tags = ['_dens', '_Ti', '_tau', '_velocity']
+        impurity_bounds = [[10, 15], [-2, 2], [-5, 2], [-50, 50]]
         for tag in impurity_tags:
             for s in self.species:
                 is_h_isotope = any([s[0:2]==h+'_' for h in self.hydrogen_isotopes])
@@ -271,18 +274,19 @@ class PlasmaLine():
         self.is_resolved = collections.OrderedDict()
         ti_resolved = self.input_dict['ion_resolved_temperatures']
         tau_resolved = self.input_dict['ion_resolved_tau']
+        if 'ion_resolved_velocity' in self.input_dict:
+            velocity_resolved = self.input_dict['ion_resolved_velocity']
+        else:
+            velocity_resolved = True
         # checking if Ti and tau is resolved
         res_not_apply = [not any([tag.endswith(t) for t in impurity_tags]) for tag in self.tags]
+        velocity_resolution_check = [tag.endswith('_velocity') and velocity_resolved for tag in self.tags]
         ti_resolution_check = [tag.endswith('_Ti') and ti_resolved for tag in self.tags]
         dens_tau_resolution_check = [(tag.endswith('_tau') or tag.endswith('_dens')) and tau_resolved for tag in self.tags]
         # actually making dictionary to have flags for which parameters are resoloved
-        for tag, is_ti_r, is_tau_r, rna in \
-                zip(self.tags, ti_resolution_check, dens_tau_resolution_check, res_not_apply):
-            self.is_resolved[tag] = is_ti_r or is_tau_r or rna
-
-            # # adding the bounds for the impurity_tags
-            # if any([t in tag for t in impurity_tags]):
-            #     bounds.append(impurity_bounds[ np.where([t in tag for t in impurity_tags]) ])
+        zip_list=[self.tags, velocity_resolution_check, ti_resolution_check, dens_tau_resolution_check, res_not_apply]
+        for tag, is_v_r, is_ti_r, is_tau_r, rna in zip(*zip_list):
+            self.is_resolved[tag] = is_v_r or is_ti_r or is_tau_r or rna
 
         # building the slices to map BaySAR input to model parameters
         slices = []
@@ -323,14 +327,18 @@ class PlasmaLine():
         self.plasma_theta = collections.OrderedDict(plasma_theta)
 
     def update_plasma_state(self, theta):
-        assert len(theta)==self.n_params, 'len(theta)!=self.n_params'
+        if not len(theta)==self.n_params:
+            raise ValueError('len(theta)!=self.n_params')
+
         self.update_plasma_theta(theta)
 
         plasma_state = []
-        for p, f_check in zip(self.slices.keys(), self.function_check):
+        for p in self.slices:
             values = np.array(theta[self.slices[p]]).flatten()
-            if f_check:
+            # print(p, values)
+            if p in self.theta_functions:
                 values = self.theta_functions[p](values)
+                # print(p, values, self.theta_functions[p])
             plasma_state.append((p, values))
 
         self.plasma_state = collections.OrderedDict(plasma_state)
@@ -374,7 +382,10 @@ class PlasmaLine():
     def assign_theta_functions(self):
         theta_functions = [self.cal_functions, self.calwave_functions, self.background_functions,
                            [self.profile_function.electron_density, self.profile_function.electron_temperature],
-                           [power10 for tag in self.tags if any([tag.startswith(s+'_') for s in self.species]) or 'X_' in tag]]
+                           [power10 for tag in self.tags if any([(tag.startswith(s+'_') and ('_velocity' not in tag)) for s in self.species])],
+                           [kms_to_ms for tag in self.tags if '_velocity' in tag],
+                           [power10 for tag in self.tags if 'X_' in tag]]
+
         theta_functions = np.concatenate(theta_functions).tolist()
         # theta_functions = np.concatenate( [f if type(f)!=list else f for f in theta_functions] ).tolist()
 

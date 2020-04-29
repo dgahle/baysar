@@ -110,16 +110,17 @@ class BaysarPosterior(object):
         self.last_proposal=theta
         if not skip_error:
             self.check_call_input(theta, skip_error)
-        # print('saved last theta')
         # updating plasma state
         self.plasma(theta)
+
         # print('updated plasma')
         prob = sum( p() for p in self.posterior_components )
-        # print('prob calculated')
+
         if not skip_error:
             self.check_call_output(prob)
         # prob/=self.temper # temper default is 1
         self.last_proposal_logp=prob
+
         return prob
 
     def check_call_input(self, theta, skip_error):
