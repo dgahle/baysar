@@ -129,13 +129,22 @@ class SpectrometerChord(object):
                 continuum=dl*total_rates*ne*n1
                 spectra+=continuum.sum(1)/(4*np.pi)
 
+        cif0='calint_func_'+str(self.chord_number) in self.plasma.plasma_state
+        cif1='instrument_function_calibrator' in dir(self)
+        calibrating_instrument_function=cif0 and cif1
+        if calibrating_instrument_function:
+            int_func_cal_theta=self.plasma.plasma_state['calint_func_'+str(self.chord_number)]
+            instrument_function_last_used=self.instrument_function_calibrator.calibrate(int_func_cal_theta)
+        else:
+            instrument_function_last_used=self.instrument_function_fm
+
         # TODO - BIG SAVINGS BOGOF
         # TODO - centre of mass check?
         # spectra=spectra+background
         # spectra=self.instrument_function_matrix.dot(spectra)
         # background=fftconvolve(background, self.instrument_function, mode='same')
         spectra=spectra+background
-        spectra=fftconvolve(spectra, self.instrument_function_fm, mode='same')
+        spectra=fftconvolve(spectra, instrument_function_last_used, mode='same')
         spectra=spectra.clip(background)
         spectra*=self.dispersion_ratios
 

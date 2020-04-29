@@ -324,8 +324,8 @@ class HydrogenLineShape(object):
         doppler_component = self.doppler_function(ion_temperature, 1)
         stark_component = stehle_param(self.n_upper, self.n_lower, self.cwl, self.wavelengths, electron_density, electron_temperature)
 
-        peak=np.convolve(stark_component, doppler_component/doppler_component.sum(), 'same')
-        # peak=fftconvolve(stark_component, doppler_component, 'same')
+        # peak=np.convolve(stark_component, doppler_component/doppler_component.sum(), 'same')
+        peak=fftconvolve(stark_component, doppler_component, 'same')
         peak/=trapz(peak, self.wavelengths)
 
         # return stark_component

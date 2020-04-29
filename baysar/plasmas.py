@@ -68,6 +68,14 @@ def calibrate(num_pixels, theta):
     return pixel_array
 
 # from baysar.tools import calibrate
+# instrument_function_calibrator.calibrate(int_func_cal_theta)
+class GaussianInstrumentFunctionCalibratior:
+    def __init__(self, bounds=[[-2, 2]]):
+        self.number_of_variables=1
+        self.bounds=bounds
+
+    def __call__():
+        pass
 
 # tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[-5, 5])
 class default_calwave_function(object):
@@ -171,6 +179,7 @@ class PlasmaLine():
                                    'ne': np.logspace(12, 15, 15),
                                    'tau': np.logspace(-8, 3, 12)}
         self.adas_plasma_inputs['big_ne'] = np.array([self.adas_plasma_inputs['ne'] for t in self.adas_plasma_inputs['te']]).T
+        self.include_doppler_shifts=True
 
         self.get_impurities()
         self.get_impurity_ion_bal()
@@ -250,8 +259,11 @@ class PlasmaLine():
                 slice_lengths.append(1)
                 bounds.append(b)
 
-        impurity_tags = ['_dens', '_Ti', '_tau', '_velocity']
-        impurity_bounds = [[10, 15], [-2, 2], [-5, 2], [-50, 50]]
+        impurity_tags = ['_dens', '_Ti', '_tau']
+        impurity_bounds = [[10, 15], [-2, 2], [-5, 2]]
+        if self.include_doppler_shifts:
+            impurity_tags.append('_velocity')
+            impurity_bounds.append([-50, 50])
         for tag in impurity_tags:
             for s in self.species:
                 is_h_isotope = any([s[0:2]==h+'_' for h in self.hydrogen_isotopes])
@@ -382,9 +394,13 @@ class PlasmaLine():
     def assign_theta_functions(self):
         theta_functions = [self.cal_functions, self.calwave_functions, self.background_functions,
                            [self.profile_function.electron_density, self.profile_function.electron_temperature],
-                           [power10 for tag in self.tags if any([(tag.startswith(s+'_') and ('_velocity' not in tag)) for s in self.species])],
-                           [kms_to_ms for tag in self.tags if '_velocity' in tag],
-                           [power10 for tag in self.tags if 'X_' in tag]]
+                           [power10 for tag in self.tags if any([(tag.startswith(s+'_') and ('_velocity' not in tag)) for s in self.species])]
+                           ]
+
+        if self.include_doppler_shifts:
+            theta_functions.append([kms_to_ms for tag in self.tags if '_velocity' in tag])
+
+        theta_functions.append([power10 for tag in self.tags if 'X_' in tag])
 
         theta_functions = np.concatenate(theta_functions).tolist()
         # theta_functions = np.concatenate( [f if type(f)!=list else f for f in theta_functions] ).tolist()
