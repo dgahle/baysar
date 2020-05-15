@@ -140,23 +140,37 @@ class SpectrometerChord(object):
 
         # TODO - BIG SAVINGS BOGOF
         # TODO - centre of mass check?
-        # spectra=spectra+background
-        # spectra=self.instrument_function_matrix.dot(spectra)
-        # background=fftconvolve(background, self.instrument_function, mode='same')
-        spectra=spectra+background
-        spectra=fftconvolve(spectra, instrument_function_last_used, mode='same')
-        spectra=spectra.clip(background)
-        spectra*=self.dispersion_ratios
+        dot=False
+        if dot:
+            # spectra=spectra+background/self.dispersion_ratios
+            # spectra=spectra
+            spectra*=self.dispersion_ratios
+            spectra=self.instrument_function_matrix.dot(spectra)
+            spectra+=background
 
-        if len(self.x_data_fm)!=len(spectra):
-            raise ValueError("len(self.x_data_fm)!=len(spectra). Lengths are {} and {}".format(len(self.x_data_fm), len(spectra)))
+            if len(self.x_data)!=len(spectra):
+                raise ValueError("len(self.x_data_fm)!=len(spectra). Lengths are {} and {}".format(len(self.x_data), len(spectra)))
+            # wave calibration
+            wavecal_interp=interp1d(self.x_data, spectra, bounds_error=False, fill_value="extrapolate")
+            # wavecal_interp=interp1d(self.x_data, spectra, bounds_error=False, fill_value="extrapolate")
+            cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
+            self.cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
+            return wavecal_interp(self.cal_wave)
+        else:
+            spectra=fftconvolve(spectra, instrument_function_last_used, mode='same')
+            spectra*=self.dispersion_ratios
+            spectra+=background
+            spectra=spectra.clip(background)
 
-        # wave calibration
-        wavecal_interp=interp1d(self.x_data_fm, spectra, bounds_error=False, fill_value="extrapolate")
-        # wavecal_interp=interp1d(self.x_data, spectra, bounds_error=False, fill_value="extrapolate")
-        cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
-        self.cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
-        return wavecal_interp(self.cal_wave)
+            if len(self.x_data_fm)!=len(spectra):
+                raise ValueError("len(self.x_data_fm)!=len(spectra). Lengths are {} and {}".format(len(self.x_data_fm), len(spectra)))
+
+            # wave calibration
+            wavecal_interp=interp1d(self.x_data_fm, spectra, bounds_error=False, fill_value="extrapolate")
+            # wavecal_interp=interp1d(self.x_data, spectra, bounds_error=False, fill_value="extrapolate")
+            cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
+            self.cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
+            return wavecal_interp(self.cal_wave)
 
     def get_lines(self):
         # print("Getting line objects")
@@ -223,7 +237,7 @@ class SpectrometerChord(object):
             # else:
             #     matrix[i, :] = matrix_i / k
 
-        self.instrument_function_matrix=sparse.csc_matrix(self.dispersion_ratios*matrix)
+        self.instrument_function_matrix=sparse.csc_matrix(matrix) # *self.dispersion_ratios)
         self.instrument_function_matrix.eliminate_zeros()
         self.check_instrument_function_matrix(self.instrument_function_matrix)
 

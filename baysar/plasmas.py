@@ -144,10 +144,10 @@ atomic_number={'He':2, 'Li':3, 'Be':4, 'B':5, 'C':6, 'N':7, 'O':8, 'F':9, 'Ne':1
 def get_number_of_ions(element):
     return atomic_number[element]+1
 
-def get_meta(element):
+def get_meta(element, index=0):
     num=get_number_of_ions(element)
     meta=np.zeros(num)
-    meta[0]=1
+    meta[index]=1
     return meta
 
 def kms_to_ms(velocity):
@@ -179,7 +179,15 @@ class PlasmaLine():
                                    'ne': np.logspace(12, 15, 15),
                                    'tau': np.logspace(-8, 3, 12)}
         self.adas_plasma_inputs['big_ne'] = np.array([self.adas_plasma_inputs['ne'] for t in self.adas_plasma_inputs['te']]).T
-        self.include_doppler_shifts=True
+        if 'doppler_shifts' in self.input_dict:
+            self.include_doppler_shifts=self.input_dict['doppler_shifts']
+        else:
+            self.include_doppler_shifts=True
+
+        if 'zeeman' in self.input_dict:
+            self.zeeman=self.input_dict['zeeman']
+        else:
+            self.zeeman=False
 
         self.get_impurities()
         self.get_impurity_ion_bal()
@@ -253,7 +261,7 @@ class PlasmaLine():
         hydrogen_shape_tags = ['b-field', 'viewangle']
         hydrogen_shape_bounds = [[0, 10], [0, 2]]
 
-        if self.contains_hydrogen:
+        if self.contains_hydrogen and self.zeeman:
             for tag, b in zip(hydrogen_shape_tags, hydrogen_shape_bounds):
                 self.tags.append(tag)
                 slice_lengths.append(1)
@@ -488,9 +496,13 @@ class PlasmaLine():
             shape=(len(tau), len(ne), len(te), num_ions)
             bal=np.zeros(shape)
             power=[] # np.zeros(shape)
+            if elem+'_meta_index' in self.input_dict:
+                meta_index=self.input_dict[elem+'_meta_index']
+            else:
+                meta_index=0
+            meta=get_meta(elem, index=meta_index)
             for t_counter, t in enumerate(tau):
                 with HiddenPrints():
-                    meta=get_meta(elem)
                     out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
                 bal[t_counter, :, :, :]=out['ion'].clip(1e-30)
                 power.append(pow)
@@ -498,7 +510,7 @@ class PlasmaLine():
             ion_bals.append((elem, bal))
             rad_power.append((elem, power))
 
-        self.impurity_ion_bal = dict(ion_bals)
+        self.impurity_ion_bal=dict(ion_bals)
         self.impurity_raditive_power=dict(rad_power)
 
     def build_impurity_tec(self, file, exc, rec, elem, ion):

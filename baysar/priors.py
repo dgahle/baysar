@@ -1,9 +1,11 @@
 import numpy as np
 
 def gaussian_high_pass_cost(tmp, threshold, error):
+    # everything above the threshold is good
     return -0.5*(max([0, threshold-tmp])/error)**2
 
 def gaussian_low_pass_cost(tmp, threshold, error):
+    # everything below the threshold is good
     return -0.5*(max([0, tmp-threshold])/error)**2
 
 class AntiprotonCost:

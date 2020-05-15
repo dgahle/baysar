@@ -1,5 +1,6 @@
 import os, sys, io
 import time as clock
+from copy import copy
 
 import numpy as np
 from numpy import random
@@ -9,7 +10,9 @@ from scipy.optimize import fmin_l_bfgs_b
 
 import concurrent.futures
 
-from baysar.priors import CurvatureCost, AntiprotonCost, MainIonFractionCost, TauPrior
+# from baysar.priors import gaussian_low_pass_cost
+
+from baysar.priors import CurvatureCost, AntiprotonCost, MainIonFractionCost, TauPrior, gaussian_low_pass_cost, gaussian_high_pass_cost
 from baysar.plasmas import PlasmaLine
 from baysar.spectrometers import SpectrometerChord
 from baysar.tools import within, progressbar, clip_data
@@ -321,7 +324,98 @@ class BaysarPosterior(object):
                     return sample
         return sample
 
-from copy import copy
+class Baysar2DWrapperPosterior:
+
+    def __init__(self, baysar_posteriors, te_separatrix_err=1, pe_separatrix_err=1e13, pe_max=5e14, priors=None):
+        self.chord_posteriors=baysar_posteriors
+
+        self.posterior_components=[]
+        self.posterior_components.extend(self.chord_posteriors)
+
+        self.priors=[self.separatrix_prior]
+        if priors is not None:
+            self.priors.extend(*priors)
+
+        self.te_separatrix_err=te_separatrix_err
+        # self.ne_separatrix_err=ne_separatrix_err
+        self.pe_separatrix_err=pe_separatrix_err
+        self.pe_max=pe_max
+
+        self.get_theta_bounds()
+        self.get_separatrix_indicies()
+        self.get_chord_slices()
+
+    def __call__(self, theta):
+        self.last_proposal=theta
+        zip_list=[self.chord_posteriors, self.chord_slices]
+        prob=sum(p(theta[t_slice]) for p, t_slice in zip(*zip_list))
+        if len(self.priors) > 0:
+            prob+=sum(p() for p in self.priors)
+        return prob
+
+    def cost(self, theta):
+        return -self(theta)
+
+    def random_start(self, order=1, flat_plasma=True):
+        start=[chord.random_start(order=order) for chord in self.chord_posteriors]
+        if flat_plasma:
+            ne_profile=start[0][self.chord_posteriors[0].plasma.slices['electron_density']]
+            te_profile=start[0][self.chord_posteriors[0].plasma.slices['electron_temperature']]
+            for chord_num, chord in enumerate(self.chord_posteriors):
+                tags=['electron_density', 'electron_temperature']
+                for tag, profile in zip(tags, [ne_profile, te_profile]):
+                    start[chord_num][chord.plasma.slices[tag]]=profile
+
+        return np.array(start).flatten().tolist()
+
+    def separatrix_prior(self):
+        self.get_separatrix_values()
+
+        # te must drop or stay constant
+        self.te_prior_prob=sum([gaussian_low_pass_cost(d_te, 0, self.te_separatrix_err) for d_te in np.diff(self.te_separatrix)])
+
+        # ne must be unimodal
+        self.ne_prior_prob=0
+
+        # pe must drop or stay constant
+        self.pe_prior_prob=sum([gaussian_low_pass_cost(d_te, 0, self.pe_separatrix_err) for d_te in np.diff(self.pe_separatrix)])
+        # max pe print_errors
+        self.pe_max_prior_prob=gaussian_low_pass_cost(self.pe_separatrix[0], self.pe_max, self.pe_separatrix_err)
+        # max pe drop
+        self.pe_max_drop_prior_prob=gaussian_low_pass_cost(self.pe_separatrix[0]/self.pe_separatrix[0], 10., 1.)
+
+        s_prior_probs=[self.te_prior_prob, self.ne_prior_prob,
+                      self.pe_prior_prob, self.pe_max_prior_prob, self.pe_max_drop_prior_prob]
+                      
+        return sum(s_prior_probs)
+
+    def get_separatrix_values(self):
+        self.te_separatrix=[np.power(10, te) for te in [self.last_proposal[i] for i in self.te_separatrix_indicies]]
+        self.ne_separatrix=[np.power(10, ne) for ne in [self.last_proposal[i] for i in self.ne_separatrix_indicies]]
+        self.pe_separatrix=[te*ne for ne, te in zip(self.ne_separatrix, self.te_separatrix)]
+
+
+    def get_theta_bounds(self):
+        self.theta_bounds=[]
+        for chord in self.chord_posteriors:
+            self.theta_bounds.extend(chord.plasma.theta_bounds.tolist())
+
+    def get_separatrix_indicies(self):
+        self.te_separatrix_indicies=[]
+        self.ne_separatrix_indicies=[]
+        shift=0
+        for chord in self.chord_posteriors:
+            self.te_separatrix_indicies.append(chord.plasma.slices['electron_temperature'].start+shift)
+            self.ne_separatrix_indicies.append(chord.plasma.slices['electron_density'].start+shift)
+            shift+=chord.plasma.n_params
+
+    def get_chord_slices(self):
+        self.chord_slices=[]
+        start=0
+        for chord in self.chord_posteriors:
+            n_params=chord.plasma.n_params
+            self.chord_slices.append(slice(start, start+n_params))
+
 
 # Todo: add a check input function
 class BaysarPosteriorFilterWrapper(object):

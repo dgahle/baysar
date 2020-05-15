@@ -369,8 +369,12 @@ class BalmerHydrogenLine(object):
         ti = self.plasma.plasma_state[self.species+'_Ti']
         ne = self.plasma.plasma_state['electron_density']
         te = self.plasma.plasma_state['electron_temperature']
-        bfield = self.plasma.plasma_state['b-field']
-        viewangle = self.plasma.plasma_state['viewangle']
+        if self.plasma.zeeman:
+            bfield = self.plasma.plasma_state['b-field']
+            viewangle = self.plasma.plasma_state['viewangle']
+        else:
+            bfield=0
+            viewangle=0
         if self.species+'_velocity' in self.plasma.plasma_state:
             self.velocity=self.plasma.plasma_state[self.species+'_velocity']
             doppler_shift_BalmerHydrogenLine(self, self.velocity)
