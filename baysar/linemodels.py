@@ -192,8 +192,8 @@ class ADAS406Lines(object):
         self.tec_in[:, 1] = self.plasma.plasma_state['electron_density']
         self.tec_in[:, 2] = self.plasma.plasma_state['electron_temperature']
         # TODO: comparison to weight on log(tau) vs tau
-        adas_taus = self.plasma.adas_plasma_inputs['tau']
-        j=adas_taus.searchsorted(tau)
+        adas_taus = self.plasma.adas_plasma_inputs['magical_tau']
+        j=adas_taus.searchsorted(np.log10(tau))
         i=j-1
 
         d_tau=1/(adas_taus[j]-adas_taus[i])
@@ -204,6 +204,7 @@ class ADAS406Lines(object):
         tec406_rhs = self.tec406[j](self.tec_in[:, 1], self.tec_in[:, 2])
         tec = np.exp(tec406_lhs*i_weight+tec406_rhs*j_weight)
         tec = np.nan_to_num(tec) # todo - why? and fix!
+        self.tec=tec
 
         ems = n0 * tec * self.length_per_sr
         ems = ems.clip(min=1e-20)
@@ -214,7 +215,13 @@ class ADAS406Lines(object):
         self.ems_conc = n0 / self.ems_ne
         self.ems_te = dot(ems,self.tec_in[:, 2]) / ems_sum
 
-        return self.linefunction(ti, ems_sum)
+        peak=self.linefunction(ti, ems_sum)
+        if any(np.isnan(peak)):
+            raise TypeError('NaNs in peaks of {} (tau={})'.format(self.line, np.log10(tau)))
+        if any(np.isinf(peak)):
+            raise TypeError('infs in peaks of {} (tau={})'.format(self.line, np.log10(tau)))
+
+        return peak
 
 
 # def comparison(self, theta, line_model='stehle_param'):

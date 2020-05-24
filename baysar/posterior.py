@@ -100,10 +100,10 @@ class BaysarPosterior(object):
 
     def init_test(self, skip_test):
         start=self.random_start()
-        run_check=self(start, True)
+        run_check=self(start, skip_test)
         if not (np.isreal(run_check) and -1e50 < run_check and run_check < 0):
             if skip_test:
-                ValueError("Posterior is not evalauating correctly. logP =", run_check, 'from input=', start)
+                print(ValueError("Posterior is not evalauating correctly. logP =", run_check, 'from input=', start))
             else:
                 raise ValueError("Posterior is not evalauating correctly. logP =", run_check, 'from input=', start)
         print("Posterior successfully created!") #instantiated
@@ -386,7 +386,7 @@ class Baysar2DWrapperPosterior:
 
         s_prior_probs=[self.te_prior_prob, self.ne_prior_prob,
                       self.pe_prior_prob, self.pe_max_prior_prob, self.pe_max_drop_prior_prob]
-                      
+
         return sum(s_prior_probs)
 
     def get_separatrix_values(self):
@@ -602,7 +602,7 @@ if __name__=='__main__':
     instrument_function = [np.array([0, 1, 0])]
     emission_constant = [1e11]
     species = ['D', 'C', 'N']
-    ions = [ ['0'] , ['1'], ['1', '2', '3', '4'] ]
+    ions = [ ['0'] , ['1', '2'], ['1', '2', '3', '4'] ]
     noise_region = [[4040, 4050]]
     mystery_lines = [ [ [4070], [4001, 4002] ],
                       [    [1],    [0.4, 0.6]]]
@@ -613,8 +613,16 @@ if __name__=='__main__':
                                 mystery_lines=mystery_lines, refine=[0.05],
                                 ion_resolved_temperatures=False, ion_resolved_tau=True)
 
+    from baysar.lineshapes import MeshPlasma, BowmanTeePlasma
+    from baysar.plasmas import arb_obj
 
-    posterior = BaysarPosterior(input_dict=input_dict, curvature=1e2)
+    x=np.linspace(-10, 35, 50)
+    profile_function=BowmanTeePlasma(x=x, bounds=None, dr_bounds=[-5, 1], bounds_ne=[13, 15], bounds_te=[0, 1.7], background=False)
+    posterior=BaysarPosterior(input_dict=input_dict, check_bounds=False, skip_test=False,
+                                curvature=None, print_errors=False,
+                                profile_function=profile_function)
+
+    # posterior = BaysarPosterior(input_dict=input_dict, curvature=1e2)
 
     from tulasa.general import plot
     from tulasa.plotting_functions import plot_fit
@@ -624,7 +632,7 @@ if __name__=='__main__':
     posterior(random_sample[-1])
     plot(chord.forward_model())
     print(chord.lines)
-
+    posterior.plasma.impurity_tecs['N_2_4097.33_4103.43'][5]()
     # start_sample=posterior.sample_start(number=10, scale=1000, order=3, flat=True)
     # plot_fit(posterior, random_sample, alpha=0.3)
     # plot([posterior(t) for t in random_sample])

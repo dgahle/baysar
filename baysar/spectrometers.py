@@ -89,8 +89,8 @@ class SpectrometerChord(object):
             raise ValueError('Some points of square_normalised_residuals are zero')
 
         if any(np.isinf(self.square_normalised_residuals)):
-            for func in self.plasma.theta_functions:
-                print(func, self.plasma.theta_functions[func])
+            # for func in self.plasma.theta_functions:
+            #     print(func, self.plasma.theta_functions[func])
             raise ValueError('Some points of square_normalised_residuals are inf')
 
         if any(np.isnan(self.square_normalised_residuals)):
