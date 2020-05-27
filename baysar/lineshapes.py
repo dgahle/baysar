@@ -343,19 +343,106 @@ class BowmanTeePlasma(object):
         self.electron_temperature.bounds=self.bounds_te
 
 
+class SimplePlasma:
+    def __init__(self, x=None): # , bounds=None, dr_bounds=[0, 2], bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        if x is None:
+            self.x=np.linspace(0, 60, 100)
+        else:
+            self.x=x
+
+        self.electron_density=Poisson(self.x)
+        self.electron_temperature=ExpDecay(self.x)
+
+class ExpDecay:
+    def __init__(self, x):
+        self.x=x
+        self.x_len=len(self.x)
+        self.number_of_variables=2
+        self.bounds=[ [-1, 2], # peak range
+                      [-2, 1] ] # base range
+
+    def __call__(self, theta):
+        a, b=[np.power(10., t) for t in theta]
+        base=np.ones(self.x_len)+b
+
+        return (a*np.power(base, -self.x)).clip(0.01)
+
+from scipy.special import factorial
+class Poisson:
+    def __init__(self, x):
+        self.x=x
+        self.x_len=len(self.x)
+        self.number_of_variables=2
+        self.bounds=[ [12, 16], # peak range
+                      [-3, 2] ] # base range
+
+    def __call__(self, theta):
+        a, nu=[np.power(10., t) for t in theta]
+        peak=np.power(np.zeros(self.x_len)+nu, self.x)
+        peak*=np.exp(-nu)/factorial(self.x)
+        peak*=(a/peak.max())
+
+        return peak
+
+    # def __call__(self, theta):
+    #     a, nu=theta
+
+class GaussianPlasma:
+    def __init__(self, x=None, cwl=None): # , bounds=None, dr_bounds=[0, 2], bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        self.x=x
+        self.cwl=cwl
+
+        self.get_attributes()
+
+    def __call__(self, theta):
+        if self.cwl is None:
+            intensity, fwhm, cwl=theta
+        else:
+            intensity, fwhm=theta
+            cwl=self.cwl
+
+        intensity=np.power(10, intensity)
+        fwhm=np.power(10, fwhm)
+        peak=gaussian(self.x, cwl, fwhm, intensity)
+        return peak.clip(0.01)
+
+    def get_attributes(self):
+        x_bounds0=[self.x.min(), self.x.max()]
+        x_bounds1=[-1, np.log10(self.x.max()/2)]
+        if self.cwl is None:
+            self.number_of_variables=3
+            self.bounds=[ [12, 16], # peak range
+                           x_bounds1, # fwhm range
+                           x_bounds0 ] # cwl range
+        else:
+            self.number_of_variables=2
+            self.bounds=[ [12, 16], # peak range
+                          x_bounds1 ] # fwhm range
+
+
+
+
+class SimpleGaussianPlasma:
+    def __init__(self, x=None): # , bounds=None, dr_bounds=[0, 2], bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        if x is None:
+            self.x=np.linspace(0, 60, 100)
+        else:
+            self.x=x
+
+        self.electron_density=GaussianPlasma(x=self.x)
+        self.electron_temperature=GaussianPlasma(x=self.x, cwl=0)
+
+
+
+
 
 if __name__=='__main__':
 
-    from tulasa.general import plot, close_plots
-    import time as clock
+    from tulasa.general import close_plots, plot
+    # from baysar.lineshapes import Poisson
+    import numpy as np
+    l=Poisson(np.arange(100))
+    plot([l([15, a]) for a in [-1, 1, 1.7, 2]], multi='fake')
 
-    profile_function=BowmanTeePlasma()
-
-    theta0=np.ones(7)
-    peaks=[]
-    for i in np.linspace(1, 10, 5): # .5*(np.arange(5)+1):
-        theta0[2]=i
-        print(i, ': ', *theta0)
-        peaks.append(profile_function.electron_temperature(theta0))
-
-    plot(peaks, x=[profile_function.electron_temperature.x for p in peaks], multi='fake') #, log=True)
+    l=ExpDecay(np.arange(100))
+    plot([l([1, a]) for a in [-2, -1, 0, 1, 2]], multi='fake')

@@ -203,7 +203,8 @@ jj_fraction = [[1], [1], [1], [1], [1],
 pecs = [None, None, None, None, None,
         my_n_ii_file, my_n_ii_file, my_n_ii_file, my_n_ii_file,
         my_n_ii_file, my_n_ii_file, my_n_ii_file, my_n_ii_file]
-exc_block = [1, 2, 3, 4, 5, 1, 2, 3, 6, 7, 9, 10, 42]
+exc_block = [1, 2, 3, 4, 5,
+            1, 2, 3, 6, 7, 9, 10, 42]
 rec_block = [61, 62, 63, 64, 65, 51, 52, 53, 56, 57, 59, 60, 92]
 
 adas_line_data['N']['1'] = add_ion_info(adas_line_data['N']['1'], wavelengths, jj_fraction,

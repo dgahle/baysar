@@ -234,6 +234,30 @@ class WallConditionsPrior:
 
         return cost
 
+class SimpleWallPrior:
+    def __init__(self, plasma, te_min=0.5, ne_min=2e12, te_err=None, ne_err=None):
+        self.plasma=plasma
+        self.te_min=te_min
+        self.ne_min=ne_min
+        self.te_err=te_err
+        self.ne_err=ne_err
+
+        default_error=.5
+        if self.te_err is None:
+            self.te_err=default_error*self.te_min
+        if self.ne_err is None:
+            self.ne_err=default_error*self.ne_min
+
+    def __call__(self):
+        te=self.plasma.plasma_state['electron_temperature'][-1]
+        ne=self.plasma.plasma_state['electron_density'][-1]
+
+        cost=0
+        cost+=gaussian_low_pass_cost(te, self.te_min, self.te_err)
+        cost+=gaussian_low_pass_cost(ne, self.ne_min, self.ne_err)
+
+        return cost
+
 class BowmanTeePrior:
     def __init__(self, plasma, sigma_err=0.2, nu_err=0.2):
         self.plasma=plasma
