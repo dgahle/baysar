@@ -192,10 +192,10 @@ class ADAS406Lines(object):
         self.tec_in[:, 1] = self.plasma.plasma_state['electron_density']
         self.tec_in[:, 2] = self.plasma.plasma_state['electron_temperature']
         # TODO: comparison to weight on log(tau) vs tau
-        adas_taus = self.plasma.adas_plasma_inputs['magical_tau']
-        j=adas_taus.searchsorted(np.log10(tau))
-        # adas_taus = self.plasma.adas_plasma_inputs['tau_exc']
-        # j=adas_taus.searchsorted(tau)
+        # adas_taus = self.plasma.adas_plasma_inputs['magical_tau']
+        # j=adas_taus.searchsorted(np.log10(tau))
+        adas_taus = self.plasma.adas_plasma_inputs['tau_exc']
+        j=adas_taus.searchsorted(tau)
         i=j-1
 
         d_tau=1/(adas_taus[j]-adas_taus[i])

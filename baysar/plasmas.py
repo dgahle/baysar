@@ -523,8 +523,8 @@ class PlasmaLine():
 
         te = self.adas_plasma_inputs['te']
         ne = self.adas_plasma_inputs['ne']
-        tau = self.adas_plasma_inputs['magical_tau']
-        # tau = self.adas_plasma_inputs['tau_exc']
+        # tau = self.adas_plasma_inputs['magical_tau']
+        tau = self.adas_plasma_inputs['tau_exc']
 
         elem, ion = self.species_to_elem_and_ion(species)
         ionp1 = ion + 1
@@ -566,14 +566,14 @@ class PlasmaLine():
                     out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
                 bal[t_counter, :, :, :]=out['ion'].clip(1e-30)
                 power.append(pow)
-            # downstream transport
-            meta_index=-1
-            meta=get_meta(elem, index=meta_index)
-            for t_counter, t in enumerate(tau_rec):
-                with HiddenPrints():
-                    out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
-                bal[len(tau_exc)+t_counter, :, :, :]=out['ion'].clip(1e-30)
-                power.append(pow)
+            # # downstream transport
+            # meta_index=-1
+            # meta=get_meta(elem, index=meta_index)
+            # for t_counter, t in enumerate(tau_rec):
+            #     with HiddenPrints():
+            #         out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
+            #     bal[len(tau_exc)+t_counter, :, :, :]=out['ion'].clip(1e-30)
+            #     power.append(pow)
 
             ion_bals.append((elem, bal))
             rad_power.append((elem, power))
@@ -581,21 +581,17 @@ class PlasmaLine():
         self.impurity_ion_bal=dict(ion_bals)
         self.impurity_raditive_power=dict(rad_power)
 
-    def build_impurity_tec(self, file, exc, rec, elem, ion, dictionary=None):
+    def build_impurity_tec(self, file, exc, rec, elem, ion):
 
         te = self.adas_plasma_inputs['te']
         ne = self.adas_plasma_inputs['ne']
-        tau = self.adas_plasma_inputs['magical_tau']
-        # tau = self.adas_plasma_inputs['tau_exc']
+        # tau = self.adas_plasma_inputs['magical_tau']
+        tau = self.adas_plasma_inputs['tau_exc']
         big_ne = self.adas_plasma_inputs['big_ne']
 
         with HiddenPrints():
             pecs_exc, info_exc = read_adf15(file, exc, te, ne, all=True)  # (te, ne), _
             pecs_rec, info_rec = read_adf15(file, rec, te, ne, all=True)  # (te, ne), _
-
-        if dictionary is not None:
-            dictionary['pecs_exc']=pecs_exc.T
-            dictionary['pecs_rec']=pecs_rec.T
 
         print(file, exc, elem, ion, info_exc['wavelength'], info_rec['wavelength'])
 
@@ -606,15 +602,15 @@ class PlasmaLine():
             # ionbal = self.impurity_ion_bal[elem]
             z_bal=self.impurity_ion_bal[elem][t_counter, :, :, ion]
             zp1_bal=self.impurity_ion_bal[elem][t_counter, :, :, ion+1]
-            rates = big_ne*(pecs_exc.T*z_bal+pecs_rec.T*zp1_bal) # /(z_bal+zp1_bal)
-            # rates_exc=pecs_exc.T*z_bal
-            # rates_rec=pecs_rec.T*zp1_bal
-            # rates=np.nan_to_num( np.log10(rates_exc+rates_rec) )
-            # rates+=np.log10(big_ne)
+            # rates = big_ne*(pecs_exc.T*z_bal+pecs_rec.T*zp1_bal) # /(z_bal+zp1_bal)
+            rates_exc=pecs_exc.T*z_bal
+            rates_rec=pecs_rec.T*zp1_bal
+            rates=np.nan_to_num( np.log10(rates_exc+rates_rec) )
+            rates+=np.log10(big_ne)
             # tec406[t_counter, :, :] = big_ne*(pecs_exc.T*ionbal[t_counter, :, :, ion] +
             #                                   pecs_rec.T*ionbal[t_counter, :, :, ion+1])
-            tec_splines.append(RectBivariateSpline(ne, te, np.log(rates.clip(1e-50))).ev)
-            # tec_splines.append(RectBivariateSpline(ne, te, rates).ev)
+            # tec_splines.append(RectBivariateSpline(ne, te, np.log(rates.clip(1e-50))).ev)
+            tec_splines.append(RectBivariateSpline(ne, te, rates).ev)
 
         # # log10 is spitting out errors ::( but it still runs ::)
         # # What about scipy.interpolate.Rbf ? # TODO - 1e40 REEEEEEEEEEEE
@@ -635,7 +631,7 @@ class PlasmaLine():
                 rec = self.input_dict[species][line]['rec_block']
                 elem, ion = self.species_to_elem_and_ion(species)
                 print(line, self.input_dict[species][line])
-                tec = self.build_impurity_tec(file, exc, rec, elem, ion, dictionary=self.input_dict[species][line])
+                tec = self.build_impurity_tec(file, exc, rec, elem, ion)
                 tecs.append((line_tag, tec))
 
         self.impurity_tecs = dict(tecs)
