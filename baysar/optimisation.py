@@ -167,6 +167,7 @@ def evolutionary_gradient_ascent(posterior=None, initial_population = None, gene
         'population_size' : pop.popsize,
         'threads_used' : threads,
         'perturbation_size' : perturbation,
+        'solutions' : solutions, 
         'mutation_probability' : mutation_probability,
         'optimal_theta' : pop.elite_adults[-1],
         'max_log_prob' : pop.elite_fitnesses[-1],
@@ -180,6 +181,7 @@ def evolutionary_gradient_ascent(posterior=None, initial_population = None, gene
         'evaluation_history' : evaluation_history,
         'flag_history' : flag_history
     }
+
     return result
 
 

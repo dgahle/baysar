@@ -602,15 +602,15 @@ class PlasmaLine():
             # ionbal = self.impurity_ion_bal[elem]
             z_bal=self.impurity_ion_bal[elem][t_counter, :, :, ion]
             zp1_bal=self.impurity_ion_bal[elem][t_counter, :, :, ion+1]
-            # rates = big_ne*(pecs_exc.T*z_bal+pecs_rec.T*zp1_bal) # /(z_bal+zp1_bal)
-            rates_exc=pecs_exc.T*z_bal
-            rates_rec=pecs_rec.T*zp1_bal
-            rates=np.nan_to_num( np.log10(rates_exc+rates_rec) )
-            rates+=np.log10(big_ne)
+            rates = big_ne*(pecs_exc.T*z_bal+pecs_rec.T*zp1_bal) # /(z_bal+zp1_bal)
+            # rates_exc=pecs_exc.T*z_bal
+            # rates_rec=pecs_rec.T*zp1_bal
+            # rates=np.nan_to_num( np.log10(rates_exc+rates_rec) )
+            # rates+=np.log10(big_ne)
             # tec406[t_counter, :, :] = big_ne*(pecs_exc.T*ionbal[t_counter, :, :, ion] +
             #                                   pecs_rec.T*ionbal[t_counter, :, :, ion+1])
-            # tec_splines.append(RectBivariateSpline(ne, te, np.log(rates.clip(1e-50))).ev)
-            tec_splines.append(RectBivariateSpline(ne, te, rates).ev)
+            tec_splines.append(RectBivariateSpline(ne, te, np.log(rates.clip(1e-50))).ev)
+            # tec_splines.append(RectBivariateSpline(ne, te, rates).ev)
 
         # # log10 is spitting out errors ::( but it still runs ::)
         # # What about scipy.interpolate.Rbf ? # TODO - 1e40 REEEEEEEEEEEE

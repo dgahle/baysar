@@ -353,6 +353,17 @@ class SimplePlasma:
         self.electron_density=Poisson(self.x)
         self.electron_temperature=ExpDecay(self.x)
 
+class SimplePlasma:
+    def __init__(self, x=None): # , bounds=None, dr_bounds=[0, 2], bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        if x is None:
+            self.x=np.linspace(0, 60, 100)
+        else:
+            self.x=x
+
+        self.electron_density=ExpDecay(self.x)
+        self.electron_density.bounds[0]=[12, 16]
+        self.electron_temperature=ExpDecay(self.x)
+
 class ExpDecay:
     def __init__(self, x):
         self.x=x
@@ -366,6 +377,50 @@ class ExpDecay:
         base=np.ones(self.x_len)+b
 
         return (a*np.power(base, -self.x)).clip(0.01)
+
+class ExpDecay:
+    def __init__(self, x):
+        self.x=x
+        self.x_len=len(self.x)
+        self.number_of_variables=2
+        self.bounds=[ [-1, 2], # peak range
+                      [-2, 1] ] # base range
+
+    def __call__(self, theta):
+        a, b=[np.power(10., t) for t in theta]
+        base=np.ones(self.x_len)+b
+
+        return (a*np.power(base, -self.x)).clip(0.01)
+
+class ADoubleExpDecay:
+    def __init__(self, x):
+        self.x=x
+        self.x_len=len(self.x)
+        self.number_of_variables=5
+        self.bounds=[ [12, 16], # peak range
+                      [-2, 1], # base range
+                      [0, 50], # peak center
+                      [-3, 1], # asymmetry size
+                      [-5, 5] ] # asymmetry gradient ()
+
+    def __call__(self, theta):
+        # a, b=[np.power(10., t) for t in theta]
+        a, b, x0, f, k=theta
+
+        base=np.ones(self.x_len)+np.power(10., b)
+        base*=np.exp( np.power(10., f)*np.tanh(k*(self.x-x0)) )
+
+        return (np.power(10., a)*np.power(base, x0-self.x)).clip(0.01)
+
+class LessSimplePlasma:
+    def __init__(self, x=None): # , bounds=None, dr_bounds=[0, 2], bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        if x is None:
+            self.x=np.linspace(0, 60, 100)
+        else:
+            self.x=x
+
+        self.electron_density=ADoubleExpDecay(self.x)
+        self.electron_temperature=ExpDecay(self.x)
 
 from scipy.special import factorial
 class Poisson:
@@ -433,16 +488,98 @@ class SimpleGaussianPlasma:
         self.electron_temperature=GaussianPlasma(x=self.x, cwl=0)
 
 
+class ReducedBowmanTProfile:
+    def __init__(self, x, log_peak_bounds, centre=None):
+
+        self.x=x
+        self.bounds=[log_peak_bounds]
+        self.centre=centre
+
+        self.get_bounds()
+
+    def __call__(self, theta):
+        if self.centre is None:
+            A, c, sigma, f=theta
+        else:
+            A, sigma, f=theta
+            c=self.centre
+
+        btheta=[np.power(10, A), c, np.power(10, sigma), self.q, self.nu, self.k, f, 0]
+        return bowman_tee_distribution(self.x, btheta)
 
 
+    def get_bounds(self):
+
+        if self.centre is None:
+            self.bounds.append([-5, 5])
+
+        shape_bounds=[[np.log10(2.), 1], # log sigma
+                      [0, 2]] # asymmetry bounds (scales logarythmically?)
+                      # [-3, -3]]
+
+        self.bounds.extend(shape_bounds)
+        self.number_of_variables=len(self.bounds)
+
+        self.q=2. # gaussian setting
+        self.nu=1.
+        self.k=1.
+
+class ReducedBowmanTPlasma(object):
+    def __init__(self, x=None, dr_bounds=[-5, 5], bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        if x is None:
+            self.x=np.linspace(-15, 35, 50)
+        else:
+            self.x=x
+
+        self.electron_density=ReducedBowmanTProfile(self.x, bounds_ne, centre=None)
+        self.electron_temperature=ReducedBowmanTProfile(self.x, bounds_te, centre=0)
+
+class LinearSeparatrix:
+    def __init__(self, x, peak_bounds=[0, 1.7]):
+        self.x=x
+        self.bounds=[peak_bounds]
+        self.bounds.append([0.5, 1.5])
+        self.number_of_variables=len(self.bounds)
+
+    def __call__(self, theta):
+        Te, grad=theta
+        profile=np.power(10, Te)-grad*self.x
+        profile.clip(0.1)
+        return np.log10(profile)
+
+class CauchySeparatrix:
+    def __init__(self, x, peak_bounds=[12.7, 16], centre=None):
+        self.x=x
+        # build bounds
+        self.bounds=[peak_bounds, [12.7, 14]]
+        if self.centre is None:
+            self.bounds.append([-5, 5])
+        self.bounds.append([0.5, 1.5])
+
+    def __call__(self, theta):
+        if self.centre is None:
+            ne, ne_min, centre, sigma=theta
+        else:
+            ne, ne_min, sigma=theta
+            centre=self.centre
+
+        chi_squared=np.square( (centre-self.x)/sigma )
+        profile=np.power(10, ne_min)+np.power(10, ne)/(1+chi_squared)
+        profile.clip(1e11)
+        return np.log10(profile)
+
+class SimpleSeparatrix(object):
+    def __init__(self, chords=None, bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        self.x=np.array(chords)
+
+        self.CauchySeparatrix=ReducedBowmanTProfile(self.x, bounds_ne, centre=self.x[-1])
+        self.electron_temperature=LinearSeparatrix(self.x, bounds_te)
 
 if __name__=='__main__':
 
     from tulasa.general import close_plots, plot
-    # from baysar.lineshapes import Poisson
-    import numpy as np
-    l=Poisson(np.arange(100))
-    plot([l([15, a]) for a in [-1, 1, 1.7, 2]], multi='fake')
 
-    l=ExpDecay(np.arange(100))
-    plot([l([1, a]) for a in [-2, -1, 0, 1, 2]], multi='fake')
+    x=np.linspace(-20, 50, 50)
+    l=ReducedBowmanTPlasma(x=x)
+    peaks=[l.electron_temperature([0, 0, 1]), l.electron_density([0, -2, .5, 1.5])]
+    plot(peaks, x=[x, x], multi='fake')

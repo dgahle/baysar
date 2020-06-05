@@ -27,7 +27,7 @@ class MainIonFractionCost:
         self.sigma=sigma
 
     def __call__(self):
-        ne=self.plasma.plasma_state['electron_density']
+        ne=self.plasma.plasma_state['electron_density'].clip(1)
         n_ion=self.plasma.plasma_state['main_ion_density']
 
         n_ion_fraction=n_ion/ne
