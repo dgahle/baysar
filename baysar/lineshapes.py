@@ -547,9 +547,11 @@ class LinearSeparatrix:
         profile.clip(0.1)
         return np.log10(profile)
 
+
 class CauchySeparatrix:
     def __init__(self, x, peak_bounds=[12.7, 16], centre=None):
         self.x=x
+        self.centre=centre
         # build bounds
         self.bounds=[peak_bounds, [12.7, 14]]
         if self.centre is None:
@@ -569,10 +571,10 @@ class CauchySeparatrix:
         return np.log10(profile)
 
 class SimpleSeparatrix(object):
-    def __init__(self, chords=None, bounds_ne=[11, 16], bounds_te=[-1, 2]):
+    def __init__(self, chords, bounds_ne=[11, 16], bounds_te=[-1, 2]):
         self.x=np.array(chords)
 
-        self.CauchySeparatrix=ReducedBowmanTProfile(self.x, bounds_ne, centre=self.x[-1])
+        self.electron_density=CauchySeparatrix(self.x, bounds_ne) # , centre=self.x[-1])
         self.electron_temperature=LinearSeparatrix(self.x, bounds_te)
 
 if __name__=='__main__':

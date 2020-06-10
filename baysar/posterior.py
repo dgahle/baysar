@@ -609,6 +609,37 @@ class PosteriorLogisticTran:
         return 1-2*self.transform(theta)
 
 
+from baysar.lineshapes import SimpleSeparatrix
+from baysar.plasmas import PlasmaSimple2D
+class BaysarSimple2DWrapper:
+    def __init__(self, posteriors, chords, profile_function=None):
+        if profile_function is None:
+            self.profile_function=SimpleSeparatrix(chords)
+        else:
+            self.profile_function=profile_function
+
+        self.priors=[]
+        self.posteriors=posteriors
+        self.plasma=PlasmaSimple2D(chords=chords, plasmas=[p.plasma for p in self.posteriors], profile_function=self.profile_function)
+
+    def __call__(self, theta):
+        # update 2d plasma
+        self.plasma.update_plasma_state(theta)
+        # need to go from 2D to a series of 1D thetas
+        thetas=self.plasma.get_1d_thetas()
+        # need to evaluate all the BaysarPosteriors
+        logp=sum([p(thee) for thee in self.posteriors])
+        # prior stuff?
+        if len(self.priors) > 0:
+            for p in self.priors:
+                logp+=p()
+
+        return logp
+
+    def cost(self, theta):
+        return -self(theta)
+
+
 if __name__=='__main__':
 
     from baysar.input_functions import make_input_dict

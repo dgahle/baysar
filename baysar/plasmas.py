@@ -2,6 +2,7 @@ import numpy as np
 
 import os, sys, io
 import copy, warnings
+from itertools import product
 
 import collections
 from baysar.lineshapes import MeshLine
@@ -12,6 +13,11 @@ from adas import run_adas406, read_adf15
 
 def power10(var):
     return np.power(10, var)
+
+
+def check_bounds_order(bounds):
+    check=[b[0]<b[1] for b in bounds]
+    return all(check)
 
 
 class HiddenPrints:
@@ -672,9 +678,157 @@ class PlasmaLine():
         return [((bound[0]<r) and (r<bound[1])) or any([b==r for b in bound]) for bound, r in zip(self.theta_bounds, theta)]
 
 
-def check_bounds_order(bounds):
-    check=[b[0]<b[1] for b in bounds]
-    return all(check)
+class PlasmaSimple2D:
+    def __init__(self, chords, plasmas, profile_function=None):
+        self.chords=np.array(chords)
+        self.plasmas=plasmas
+        self.profile_function=profile_function
+
+        self.get_species()
+        self.build_tags_slices_and_bounds()
+        self.get_theta_functions()
+
+    def __call__(self):
+        pass
+
+    def get_species(self):
+        self.species=[]
+        for plasma in self.plasmas:
+            for species0 in plasma.species:
+                k=1+len(species0.split('_')[-1])
+                species1=species0[:-k]
+                if species1 not in self.species:
+                    self.species.append(species1)
+
+
+    def build_tags_slices_and_bounds(self):
+        self.plasma_state={}
+        self.plasma_theta={}
+
+        tags=[]
+        slices=[]
+        bounds=[]
+        # global/2D parameters
+        # emission calibration
+        tags.append('cal')
+        bounds.append([-1, 1])
+        slices.append(slice(0, 1))
+        # wave calibration
+        tags.append('calwave')
+        bounds.extend([[4037.5, 4042.5], [0.19, 0.20]])
+        slices.append(slice(slices[-1].stop, slices[-1].stop+2))
+        # background
+        tags.append('background')
+        bounds.extend([[11, 13]])
+        slices.append(slice(slices[-1].stop, slices[-1].stop+1))
+        # separatrix varriables
+        # electron density
+        tags.append('electron_density_separatrix')
+        ne_sep_bounds=[[13, 14], [12, 13], [18, 20], [1, 10]]
+        bounds.extend(ne_sep_bounds)
+        slices.append(slice(slices[-1].stop, slices[-1].stop+len(ne_sep_bounds)))
+        tags.append('electron_density_radial')
+        ne_radial_bounds=[[-1, 1], [0.7, 1.0], [0., 2.]]
+        bounds.extend(ne_radial_bounds)
+        slices.append(slice(slices[-1].stop, slices[-1].stop+len(ne_radial_bounds)))
+        # electron temperature
+        tags.append('electron_temperature_separatrix')
+        te_sep_bounds=[[0, 1.7], [0.8, 1.0]]
+        bounds.extend(te_sep_bounds)
+        slices.append(slice(slices[-1].stop, slices[-1].stop+len(te_sep_bounds)))
+        tags.append('electron_temperature_radial')
+        te_radial_bounds=[[0.3, 0.5], [0., 2.]]
+        bounds.extend(te_radial_bounds)
+        slices.append(slice(slices[-1].stop, slices[-1].stop+len(te_radial_bounds)))
+        # species
+        species_attributes=['dens', 'Ti', 'velocity', 'tau']
+        species_attributes_bounds=[[-2, 0], [0, 2], [-30, 30], [-6, 2]]
+        for elem, (att, att_bounds) in product(self.species, zip(species_attributes, species_attributes_bounds)):
+            # print(elem, att, att_bounds)
+            att_check=(att is 'tau')
+            elem_check=(elem[0] in ('H', 'D'))
+            # check=att_check+elem_check
+            # print(elem, att, elem_check, att_check, check)
+            if not (elem_check and att_check):
+                tags.append(elem+'_'+att)
+                bounds.append(att_bounds)
+                slices.append(slice(slices[-1].stop, slices[-1].stop+1))
+
+        self.tags=tags
+        self.theta_bounds=bounds
+        self.slices=dict(((a, b) for a,b in zip(tags, slices)))
+
+    def get_theta_functions(self):
+        self.theta_functions={}
+        if self.profile_function is not None:
+            self.theta_functions['electron_density_separatrix']=self.profile_function.electron_density
+            self.theta_functions['electron_temperature_separatrix']=self.profile_function.electron_temperature
+
+    def update_plasma_state(self, theta):
+        self.last_theta=theta
+        for tag in self.tags:
+            tmp_slice=self.slices[tag]
+            self.plasma_theta[tag]=theta[tmp_slice]
+            if tag in self.theta_functions:
+                self.plasma_state[tag]=self.theta_functions[tag](theta[tmp_slice])
+            else:
+                self.plasma_state[tag]=theta[tmp_slice]
+
+    def get_1d_thetas(self):
+        plasmas=self.plasmas
+        fan_numbers=self.chords
+        # if chord_numbers is None:
+        chord_numbers=[0 for n in fan_numbers]
+
+        thetas1d=[]
+        for plasma, fan_num, chord_num in zip(plasmas, fan_numbers, chord_numbers):
+            thetas1d.append( get_1d_theta(plasma, fan_num, chord_num) )
+
+        return thetas1d
+
+def get_1d_theta(plasma, fan_num, chord_num=0):
+    new_theta=np.zeros(plasma.n_params)
+
+    calibration_tags=['cal', 'calwave', 'background']
+    for ctag in calibration_tags:
+        tmp_tag=ctag+'_'+str(chord_num)
+        new_theta[plasma.slices[tmp_tag]]=plasma2d.plasma_state[ctag]
+
+    for ptag in ['electron_density', 'electron_temperature']:
+        new_theta[plasma.slices[ptag]][0]=plasma2d.plasma_state[ptag+'_separatrix'][fan_num]
+        new_theta[plasma.slices[ptag]][1:]=plasma2d.plasma_state[ptag+'_radial']
+
+    species_attributes=['dens', 'Ti', 'velocity', 'tau']
+    for species, att in product(plasma.species, species_attributes):
+        tmp_tag=species+'_'+att
+        split_species=species.split('_')
+        elem, charge=species[:-(1+len(species.split('_')[-1]))], int(split_species[-1])
+        if tmp_tag in plasma.slices:
+            # density
+            if att is 'dens':
+                if charge > 0:
+                    dk=np.log10(charge)
+                else:
+                    dk=0
+                new_theta[plasma.slices[tmp_tag]]=plasma2d.plasma_state['electron_density_separatrix'][fan_num]
+                fraction=plasma2d.plasma_state[elem+'_'+att][0]
+                new_theta[plasma.slices[tmp_tag]]-=(fraction+dk)
+            # Ti
+            if att is 'Ti':
+                new_theta[plasma.slices[tmp_tag]]=plasma2d.plasma_state[elem+'_'+att]
+            # velocity
+            if att is 'velocity':
+                new_theta[plasma.slices[tmp_tag]]=plasma2d.plasma_state[elem+'_'+att]
+            # tau
+            if att is 'tau':
+                new_theta[plasma.slices[tmp_tag]]=plasma2d.plasma_state[elem+'_'+att]
+            pass
+
+    if plasma.zeeman:
+        new_theta[plasma.slices['b-field']]=0.
+        new_theta[plasma.slices['viewangle']]=0.
+
+    return new_theta
 
 if __name__ == '__main__':
 
@@ -685,11 +839,12 @@ if __name__ == '__main__':
     experimental_emission = [np.array([1e12*np.random.rand() for w in wavelength_axis[0]])]
     instrument_function = [np.array([0, 1, 0])]
     emission_constant = [1e11]
-    species = ['D', 'N']
+    species = ['D_ADAS', 'N']
     ions = [ ['0'], ['1', '2', '3'] ]
     noise_region = [[4040, 4050]]
-    mystery_lines = [ [[4070], [4001, 4002]],
-                       [[1], [0.4, 0.6]]]
+    # mystery_lines = [ [[4070], [4001, 4002]],
+    #                    [[1], [0.4, 0.6]]]
+    mystery_lines = None
 
     input_dict = make_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
                                 instrument_function=instrument_function, emission_constant=emission_constant,
@@ -697,20 +852,17 @@ if __name__ == '__main__':
                                 mystery_lines=mystery_lines, refine=[0.01],
                                 ion_resolved_temperatures=False, ion_resolved_tau=True)
 
-    plasma = PlasmaLine(input_dict)
+    from baysar.lineshapes import ReducedBowmanTPlasma
 
-    # rand_theta = np.random.rand(plasma.n_params)
-    # plasma(rand_theta)
-    #
-    # # for k in plasma.plasma_state_tags.keys():
-    # for k in plasma.slices.keys():
-    #     print(k, plasma.plasma_state[k], type(plasma.plasma_state[k]), plasma.slices[k],
-    #           plasma.theta_bounds[plasma.slices[k]], type(plasma.theta_bounds[plasma.slices[k]]))
-    #
-    # k = 'main_ion_density'
-    # print(k, plasma.plasma_state[k])
-    # print(plasma.theta_bounds)
-    # print(plasma.is_theta_within_bounds(rand_theta))
+    x=np.linspace(-15, 35, 100)
+    profile_function=ReducedBowmanTPlasma(x=x, dr_bounds=[-5, 1], bounds_ne=[13, 15], bounds_te=[0, 1.7])
+    plasma = PlasmaLine(input_dict, profile_function=profile_function)
 
+    chords=[0, 1]
+    from baysar.lineshapes import SimpleSeparatrix
+    profile_function=SimpleSeparatrix(chords)
+    plasma2d = PlasmaSimple2D(chords=chords, plasmas=[plasma, plasma], profile_function=profile_function)
+    plasma2d.update_plasma_state([np.random.uniform(b[0], b[1]) for b in plasma2d.theta_bounds])
 
-    pass
+    thetas1d=plasma2d.get_1d_thetas()
+    print(thetas1d)
