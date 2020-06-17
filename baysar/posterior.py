@@ -628,7 +628,7 @@ class BaysarSimple2DWrapper:
         # need to go from 2D to a series of 1D thetas
         thetas=self.plasma.get_1d_thetas()
         # need to evaluate all the BaysarPosteriors
-        logp=sum([p(thee) for thee in self.posteriors])
+        logp=sum([p(thee) for p, thee in zip(self.posteriors, thetas)])
         # prior stuff?
         if len(self.priors) > 0:
             for p in self.priors:

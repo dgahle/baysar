@@ -338,6 +338,11 @@ class PlasmaLine():
                     self.tags.append(sion)
                     slice_lengths.append(1)
                     bounds.append(tmp_b)
+                else:
+                    sion = s+tag
+                    self.tags.append(sion)
+                    slice_lengths.append(1)
+                    bounds.append([-6, -3])
 
         if 'X_lines' in self.input_dict:
             for line in self.input_dict['X_lines']:
@@ -417,7 +422,13 @@ class PlasmaLine():
                 # print(p, values, self.theta_functions[p])
             plasma_state.append((p, values))
 
-        self.plasma_state = collections.OrderedDict(plasma_state)
+        if hasattr(self, 'plasma_state'):
+            for (p, values) in plasma_state:
+                self.plasma_state[p]=values
+        else:
+            self.plasma_state = collections.OrderedDict(plasma_state)
+            self.plasma_state['n0_time']=5e-6
+
         self.plasma_state['main_ion_density']=self.plasma_state['electron_density']-self.calc_total_impurity_electrons(True)
 
     def print_plasma_state(self):
@@ -702,8 +713,8 @@ class PlasmaSimple2D:
 
 
     def build_tags_slices_and_bounds(self):
-        self.plasma_state={}
-        self.plasma_theta={}
+        self.plasma_state=collections.OrderedDict()
+        self.plasma_theta=collections.OrderedDict()
 
         tags=[]
         slices=[]
@@ -742,7 +753,7 @@ class PlasmaSimple2D:
         slices.append(slice(slices[-1].stop, slices[-1].stop+len(te_radial_bounds)))
         # species
         species_attributes=['dens', 'Ti', 'velocity', 'tau']
-        species_attributes_bounds=[[-2, 0], [0, 2], [-30, 30], [-6, 2]]
+        species_attributes_bounds=[[-2, 0], [0, 2], [-30, 30], [-6, 1]]
         for elem, (att, att_bounds) in product(self.species, zip(species_attributes, species_attributes_bounds)):
             # print(elem, att, att_bounds)
             att_check=(att is 'tau')
@@ -756,10 +767,10 @@ class PlasmaSimple2D:
 
         self.tags=tags
         self.theta_bounds=bounds
-        self.slices=dict(((a, b) for a,b in zip(tags, slices)))
+        self.slices=collections.OrderedDict( ((a, b) for a,b in zip(tags, slices)) )
 
     def get_theta_functions(self):
-        self.theta_functions={}
+        self.theta_functions=collections.OrderedDict()
         if self.profile_function is not None:
             self.theta_functions['electron_density_separatrix']=self.profile_function.electron_density
             self.theta_functions['electron_temperature_separatrix']=self.profile_function.electron_temperature
@@ -782,53 +793,56 @@ class PlasmaSimple2D:
 
         thetas1d=[]
         for plasma, fan_num, chord_num in zip(plasmas, fan_numbers, chord_numbers):
-            thetas1d.append( get_1d_theta(plasma, fan_num, chord_num) )
+            # print(plasma, fan_num, chord_num)
+            thetas1d.append( self.get_1d_theta(plasma, fan_num, chord_num) )
 
         return thetas1d
 
-def get_1d_theta(plasma, fan_num, chord_num=0):
-    new_theta=np.zeros(plasma.n_params)
+    def get_1d_theta(self, plasma, fan_num, chord_num=0):
+        new_theta=np.zeros(plasma.n_params)
+        fan_num_index=np.where(fan_num==self.chords)[0][0]
 
-    calibration_tags=['cal', 'calwave', 'background']
-    for ctag in calibration_tags:
-        tmp_tag=ctag+'_'+str(chord_num)
-        new_theta[plasma.slices[tmp_tag]]=plasma2d.plasma_state[ctag]
+        calibration_tags=['cal', 'calwave', 'background']
+        for ctag in calibration_tags:
+            tmp_tag=ctag+'_'+str(chord_num)
+            new_theta[plasma.slices[tmp_tag]]=self.plasma_state[ctag]
 
-    for ptag in ['electron_density', 'electron_temperature']:
-        new_theta[plasma.slices[ptag]][0]=plasma2d.plasma_state[ptag+'_separatrix'][fan_num]
-        new_theta[plasma.slices[ptag]][1:]=plasma2d.plasma_state[ptag+'_radial']
+        for ptag in ['electron_density', 'electron_temperature']:
+            new_theta[plasma.slices[ptag].start]=self.plasma_state[ptag+'_separatrix'][fan_num_index]
+            new_theta[plasma.slices[ptag]][1:]=self.plasma_state[ptag+'_radial']
 
-    species_attributes=['dens', 'Ti', 'velocity', 'tau']
-    for species, att in product(plasma.species, species_attributes):
-        tmp_tag=species+'_'+att
-        split_species=species.split('_')
-        elem, charge=species[:-(1+len(species.split('_')[-1]))], int(split_species[-1])
-        if tmp_tag in plasma.slices:
-            # density
-            if att is 'dens':
-                if charge > 0:
-                    dk=np.log10(charge)
-                else:
-                    dk=0
-                new_theta[plasma.slices[tmp_tag]]=plasma2d.plasma_state['electron_density_separatrix'][fan_num]
-                fraction=plasma2d.plasma_state[elem+'_'+att][0]
-                new_theta[plasma.slices[tmp_tag]]-=(fraction+dk)
-            # Ti
-            if att is 'Ti':
-                new_theta[plasma.slices[tmp_tag]]=plasma2d.plasma_state[elem+'_'+att]
-            # velocity
-            if att is 'velocity':
-                new_theta[plasma.slices[tmp_tag]]=plasma2d.plasma_state[elem+'_'+att]
-            # tau
-            if att is 'tau':
-                new_theta[plasma.slices[tmp_tag]]=plasma2d.plasma_state[elem+'_'+att]
-            pass
+        species_attributes=['dens', 'Ti', 'velocity', 'tau']
+        for species, att in product(plasma.species, species_attributes):
+            # print(species, att)
+            tmp_tag=species+'_'+att
+            split_species=species.split('_')
+            elem, charge=species[:-(1+len(species.split('_')[-1]))], int(split_species[-1])
+            if tmp_tag in plasma.slices:
+                # density
+                if att is 'dens':
+                    if charge > 0:
+                        dk=np.log10(charge)
+                    else:
+                        dk=0
+                    new_theta[plasma.slices[tmp_tag]]=self.plasma_state['electron_density_separatrix'][fan_num_index]
+                    fraction=self.plasma_state[elem+'_'+att][0]
+                    new_theta[plasma.slices[tmp_tag]]-=(fraction+dk)
+                # Ti
+                if att is 'Ti':
+                    new_theta[plasma.slices[tmp_tag]]=self.plasma_state[elem+'_'+att]
+                # velocity
+                if att is 'velocity':
+                    new_theta[plasma.slices[tmp_tag]]=self.plasma_state[elem+'_'+att]
+                # tau
+                if att is 'tau':
+                    new_theta[plasma.slices[tmp_tag]]=self.plasma_state[elem+'_'+att]
+                pass
 
-    if plasma.zeeman:
-        new_theta[plasma.slices['b-field']]=0.
-        new_theta[plasma.slices['viewangle']]=0.
+        if plasma.zeeman:
+            new_theta[plasma.slices['b-field']]=0.
+            new_theta[plasma.slices['viewangle']]=0.
 
-    return new_theta
+        return new_theta
 
 if __name__ == '__main__':
 

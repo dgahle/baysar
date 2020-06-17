@@ -544,7 +544,7 @@ class LinearSeparatrix:
     def __call__(self, theta):
         Te, grad=theta
         profile=np.power(10, Te)-grad*self.x
-        profile.clip(0.1)
+        profile=profile.clip(0.1)
         return np.log10(profile)
 
 

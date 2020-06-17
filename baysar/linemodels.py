@@ -345,7 +345,7 @@ class HydrogenLineShape(object):
             return peak
 
 
-
+from adas import read_adf11
 class BalmerHydrogenLine(object):
     def __init__(self, plasma, species, cwl, wavelengths, half_range=40000, zeeman=True):
         self.plasma = plasma
@@ -358,6 +358,8 @@ class BalmerHydrogenLine(object):
         self.atomic_mass = get_atomic_mass(self.species)
         self.los = self.plasma.profile_function.electron_density.x
         self.dl_per_sr = diff(self.los)[0] / (4*pi)
+        self.scdfile='/home/adas/adas/adf11/scd12/scd12_h.dat'
+        self.acdfile='/home/adas/adas/adf11/acd12/acd12_h.dat'
 
         # self.reduced_wavelength, self.reduced_wavelength_indicies = \
         #     reduce_wavelength(wavelengths, cwl, half_range, return_indicies=True, power2=False)
@@ -373,11 +375,28 @@ class BalmerHydrogenLine(object):
 
 
     def __call__(self):
-        n0 = self.plasma.plasma_state[self.species+'_dens']
         n1 = self.plasma.plasma_state['main_ion_density']
         ti = self.plasma.plasma_state[self.species+'_Ti']
         ne = self.plasma.plasma_state['electron_density']
         te = self.plasma.plasma_state['electron_temperature']
+        n0 = self.plasma.plasma_state[self.species+'_dens'][0]
+        scd = read_adf11(file=self.scdfile, adf11type='scd', is1=1, index_1=-1, index_2=-1,
+                         te=te, dens=ne, all=False, skipzero=False, unit_te='ev')
+        acd = read_adf11(file=self.acdfile, adf11type='acd', is1=1, index_1=-1, index_2=-1,
+                         te=te, dens=ne, all=False, skipzero=False, unit_te='ev')
+
+        # n0_time=self.plasma.plasma_state['n0_time']
+        n0_time=self.plasma.plasma_state[self.species+'_tau'][0]
+        # n0+=(n1*ne*acd-n0*ne*scd)*n0_time
+        n0-=n0*ne*scd*n0_time
+        n0=n0.clip(0)
+
+        self.n0_profile=n0
+        self.scd=scd
+        self.acd=acd
+        self.ion_source=n0*ne*scd
+        self.ion_sink=n1*ne*acd
+
         if self.plasma.zeeman:
             bfield = self.plasma.plasma_state['b-field']
             viewangle = self.plasma.plasma_state['viewangle']
