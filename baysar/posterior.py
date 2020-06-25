@@ -13,7 +13,7 @@ import concurrent.futures
 from multiprocessing import Pool
 # from baysar.priors import gaussian_low_pass_cost
 
-from baysar.priors import CurvatureCost, AntiprotonCost, MainIonFractionCost, TauPrior, gaussian_low_pass_cost, gaussian_high_pass_cost
+from baysar.priors import CurvatureCost, AntiprotonCost, MainIonFractionCost, NeutralFractionCost, StaticElectronPressureCost, TauPrior, gaussian_low_pass_cost, gaussian_high_pass_cost
 from baysar.plasmas import PlasmaLine
 from baysar.spectrometers import SpectrometerChord
 from baysar.tools import within, progressbar, clip_data
@@ -62,6 +62,11 @@ class BaysarPosterior(object):
         if self.curvature is not None:
             self.posterior_components.append(CurvatureCost(self.plasma, self.curvature))
 
+        # static Pe priors
+        self.posterior_components.append(StaticElectronPressureCost(self.plasma))
+        # neutral fraction priors
+        if self.plasma.contains_hydrogen:
+            self.posterior_components.append(NeutralFractionCost(self.plasma))
         # priors for impure plasmas (could use better phrasing)
         if len(self.plasma.impurities)>0:
             self.posterior_components.append(AntiprotonCost(self.plasma))

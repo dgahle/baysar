@@ -34,6 +34,36 @@ class MainIonFractionCost:
 
         return sum([gaussian_high_pass_cost(f, self.threshold, self.sigma) for f in n_ion_fraction])
 
+class StaticElectronPressureCost:
+    def __init__(self, plasma, threshold=1e15, sigma=0.1):
+        self.plasma=plasma
+        self.threshold=threshold
+        self.sigma=sigma
+
+    def __call__(self):
+        ne=self.plasma.plasma_state['electron_density'].clip(1)
+        te=self.plasma.plasma_state['electron_temperature'].clip(.01)
+        pe=te*ne
+
+        return sum([gaussian_low_pass_cost(f, 1, self.sigma) for f in pe/self.threshold])
+
+class NeutralFractionCost:
+    def __init__(self, plasma, threshold=[5e-3, 2e-1], sigma=0.1, species='D_ADAS_0'):
+        self.plasma=plasma
+        self.threshold=threshold
+        self.sigma=sigma
+        self.species=species
+
+    def __call__(self):
+        n0=self.plasma.plasma_state[self.species+'_dens'].clip(1)
+        ne=self.plasma.plasma_state['electron_density']
+        f0=n0/ne.max()
+
+        low_pass=sum([gaussian_low_pass_cost(f, 1, self.sigma) for f in f0/self.threshold[1]])
+        high_pass=sum([gaussian_high_pass_cost(f, 1, self.sigma) for f in f0/self.threshold[0]])
+
+        return low_pass+high_pass
+
 
 def curvature(profile):
     grad1 = np.gradient(profile / max(profile))
