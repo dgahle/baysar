@@ -9,7 +9,7 @@ from baysar.lineshapes import MeshLine
 from baysar.tools import within
 
 from scipy.interpolate import RegularGridInterpolator, RectBivariateSpline
-from adas import run_adas406, read_adf15
+from adas import run_adas406, read_adf11, read_adf15
 
 def power10(var):
     return np.power(10, var)
@@ -437,21 +437,22 @@ class PlasmaLine():
 
     def update_neutral_profile(self):
         species=self.hydrogen_species[0]
-        ne = self.plasma.plasma_state['electron_density']
-        te = self.plasma.plasma_state['electron_temperature']
-        n0 = self.plasma.plasma_state[species+'_dens'][0]
+        ne = self.plasma_state['electron_density']
+        te = self.plasma_state['electron_temperature']
+        n0 = self.plasma_state[species+'_dens'][0]
+        n1 = self.plasma_state['main_ion_density']
 
         scd = read_adf11(file=self.scdfile, adf11type='scd', is1=1, index_1=-1, index_2=-1,
                          te=te, dens=ne, all=False, skipzero=False, unit_te='ev')
         acd = read_adf11(file=self.acdfile, adf11type='acd', is1=1, index_1=-1, index_2=-1,
                          te=te, dens=ne, all=False, skipzero=False, unit_te='ev')
 
-        # n0_time=self.plasma.plasma_state['n0_time']
+        # n0_time=self.plasma_state['n0_time']
         n0_time=self.plasma_state[species+'_tau'][0]
         # n0+=(n1*ne*acd-n0*ne*scd)*n0_time
         n0-=n0*ne*scd*n0_time
         n0=n0.clip(0)
-        self.plasma.plasma_state[species+'_dens']=n0
+        self.plasma_state[species+'_dens']=n0
 
         self.scd=scd
         self.acd=acd
