@@ -180,31 +180,41 @@ class ADAS406Lines(object):
 
         n0 = self.plasma.plasma_state[self.species+'_dens']
         ti = self.plasma.plasma_state[self.species+'_Ti']
-        # ne = self.plasma.plasma_state['electron_density']
-        # te = self.plasma.plasma_state['electron_temperature']
+        ne = self.plasma.plasma_state['electron_density'].flatten()
+        te = self.plasma.plasma_state['electron_temperature'].flatten()
         tau = self.plasma.plasma_state[self.species+'_tau'][0]
         # tau = np.zeros(len(ne))+self.plasma.plasma_state[self.species+'_tau'][0]
         if self.species+'_velocity' in self.plasma.plasma_state:
             self.velocity=self.plasma.plasma_state[self.species+'_velocity']
             doppler_shift_ADAS406Lines(self, self.velocity)
 
-        self.tec_in[:, 0] = self.plasma.plasma_state[self.species+'_tau'][0]# np.array([tau, ne, te])
-        self.tec_in[:, 1] = self.plasma.plasma_state['electron_density']
-        self.tec_in[:, 2] = self.plasma.plasma_state['electron_temperature']
+        # self.tec_in[:, 0] = self.plasma.plasma_state[self.species+'_tau'][0]# np.array([tau, ne, te])
+        # self.tec_in[:, 1] = self.plasma.plasma_state['electron_density']
+        # self.tec_in[:, 2] = self.plasma.plasma_state['electron_temperature']
         # TODO: comparison to weight on log(tau) vs tau
-        # adas_taus = self.plasma.adas_plasma_inputs['magical_tau']
-        # j=adas_taus.searchsorted(np.log10(tau))
-        adas_taus = self.plasma.adas_plasma_inputs['tau_exc']
-        j=adas_taus.searchsorted(tau)
+        adas_taus = self.plasma.adas_plasma_inputs['magical_tau'] # needs line below to!!!
+        j=adas_taus.searchsorted(np.log10(tau))
+        # adas_taus = self.plasma.adas_plasma_inputs['tau_exc']
+        # j=adas_taus.searchsorted(tau)
         i=j-1
+
+        # index checks:
+        if any([not c < len(adas_taus) for c in (i, j)]):
+            things=[i, j, np.round(np.log10(tau), 2), len(adas_taus), adas_taus.min(), adas_taus.max()]
+            raise ValueError("Indices i and/or j ({}, {}) are out of bounds. tau = 1e{} s and len(adas_taus) = {} with range ({}, {})".format(*things))
 
         d_tau=1/(adas_taus[j]-adas_taus[i])
         i_weight = (tau-adas_taus[i])*d_tau
         j_weight = (adas_taus[j]-tau)*d_tau
 
-        tec406_lhs = self.tec406[i](self.tec_in[:, 1], self.tec_in[:, 2])
-        tec406_rhs = self.tec406[j](self.tec_in[:, 1], self.tec_in[:, 2])
-        tec = np.exp(tec406_lhs*i_weight+tec406_rhs*j_weight)
+        # tec406_lhs = self.tec406[i](self.tec_in[:, 1], self.tec_in[:, 2])
+        # tec406_rhs = self.tec406[j](self.tec_in[:, 1], self.tec_in[:, 2])
+        tec406_lhs = self.tec406[i].ev(ne, te)
+        tec406_rhs = self.tec406[j].ev(ne, te)
+        self.tec406_lhs=tec406_lhs
+        self.tec406_lhs=tec406_lhs
+        # tec = np.exp(tec406_lhs*i_weight+tec406_rhs*j_weight)
+        tec = np.exp(tec406_lhs)*i_weight + np.exp(tec406_rhs)*j_weight
         tec = np.nan_to_num(tec) # todo - why? and fix!
         self.tec=tec
 
@@ -213,15 +223,15 @@ class ADAS406Lines(object):
         ems_sum = ems.sum()
 
         self.emission_profile = ems
-        self.ems_ne = dot(ems,self.tec_in[:, 1]) / ems_sum
+        self.ems_ne = dot(ems, self.tec_in[:, 1]) / ems_sum
         self.ems_conc = n0 / self.ems_ne
-        self.ems_te = dot(ems,self.tec_in[:, 2]) / ems_sum
+        self.ems_te = dot(ems, self.tec_in[:, 2]) / ems_sum
 
         peak=self.linefunction(ti, ems_sum)
         if any(np.isnan(peak)):
-            raise TypeError('NaNs in peaks of {} (tau={})'.format(self.line, np.log10(tau)))
+            raise TypeError('NaNs in peaks of {} (tau={}, ems_sum={})'.format(self.line, np.log10(tau), ems_sum))
         if any(np.isinf(peak)):
-            raise TypeError('infs in peaks of {} (tau={})'.format(self.line, np.log10(tau)))
+            raise TypeError('infs in peaks of {} (tau={}, ems_sum={}))'.format(self.line, np.log10(tau), ems_sum))
 
         return peak
 
@@ -358,8 +368,6 @@ class BalmerHydrogenLine(object):
         self.atomic_mass = get_atomic_mass(self.species)
         self.los = self.plasma.profile_function.electron_density.x
         self.dl_per_sr = diff(self.los)[0] / (4*pi)
-        self.scdfile='/home/adas/adas/adf11/scd12/scd12_h.dat'
-        self.acdfile='/home/adas/adas/adf11/acd12/acd12_h.dat'
 
         # self.reduced_wavelength, self.reduced_wavelength_indicies = \
         #     reduce_wavelength(wavelengths, cwl, half_range, return_indicies=True, power2=False)
@@ -380,22 +388,8 @@ class BalmerHydrogenLine(object):
         ne = self.plasma.plasma_state['electron_density']
         te = self.plasma.plasma_state['electron_temperature']
         n0 = self.plasma.plasma_state[self.species+'_dens'][0]
-        scd = read_adf11(file=self.scdfile, adf11type='scd', is1=1, index_1=-1, index_2=-1,
-                         te=te, dens=ne, all=False, skipzero=False, unit_te='ev')
-        acd = read_adf11(file=self.acdfile, adf11type='acd', is1=1, index_1=-1, index_2=-1,
-                         te=te, dens=ne, all=False, skipzero=False, unit_te='ev')
-
-        # n0_time=self.plasma.plasma_state['n0_time']
-        n0_time=self.plasma.plasma_state[self.species+'_tau'][0]
-        # n0+=(n1*ne*acd-n0*ne*scd)*n0_time
-        n0-=n0*ne*scd*n0_time
-        n0=n0.clip(0)
 
         self.n0_profile=n0
-        self.scd=scd
-        self.acd=acd
-        self.ion_source=n0*ne*scd
-        self.ion_sink=n1*ne*acd
 
         if self.plasma.zeeman:
             bfield = self.plasma.plasma_state['b-field']

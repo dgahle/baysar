@@ -221,13 +221,16 @@ class PlasmaLine():
         self.hydrogen_isotopes = ['H', 'D', 'T']
         self.contains_hydrogen = (self.species!=self.impurity_species)
 
+        self.scdfile='/home/adas/adas/adf11/scd12/scd12_h.dat'
+        self.acdfile='/home/adas/adas/adf11/acd12/acd12_h.dat'
+
         # tau_exc=np.logspace(-7, 1, 10)
         # tau_rec=np.logspace(1, -5, 18)
         # magical_tau=np.concatenate( ((np.log10(tau_exc)-np.log10(tau_exc).max()), (-np.log10(tau_rec)+2)) )
         tau_exc=np.logspace(-7, 2, 10)
-        tau_rec=np.logspace(1, -5, 18)
+        tau_rec=np.logspace(1, -4, 12)
         magical_tau=np.concatenate( ((np.log10(tau_exc)), (-np.log10(tau_rec)+4)) )
-        self.adas_plasma_inputs = {'te': np.logspace(-1, 2, 60), # TODO can we get the raw data instead?
+        self.adas_plasma_inputs = {'te': np.logspace(-1, 2, 24), # TODO can we get the raw data instead?
                                    'ne': np.logspace(12, 15, 15),
                                    'tau_exc': tau_exc,
                                    'tau_rec': tau_rec,
@@ -323,7 +326,7 @@ class PlasmaLine():
                 bounds.append(b)
 
         impurity_tags = ['_dens', '_Ti', '_tau']
-        impurity_bounds = [[10, 15], [-1, 2], [-6, 1]]
+        impurity_bounds = [[10, 15], [-1, 2], [-6, 6]]
         # impurity_bounds = [[10, 15], [-2, 2], [-8, 2]] # including magical tau
         if self.include_doppler_shifts:
             impurity_tags.append('_velocity')
@@ -342,7 +345,7 @@ class PlasmaLine():
                     sion = s+tag
                     self.tags.append(sion)
                     slice_lengths.append(1)
-                    bounds.append([-6, -3])
+                    bounds.append([-7, 0])
 
         if 'X_lines' in self.input_dict:
             for line in self.input_dict['X_lines']:
@@ -427,9 +430,33 @@ class PlasmaLine():
                 self.plasma_state[p]=values
         else:
             self.plasma_state = collections.OrderedDict(plasma_state)
-            self.plasma_state['n0_time']=5e-6
 
         self.plasma_state['main_ion_density']=self.plasma_state['electron_density']-self.calc_total_impurity_electrons(True)
+        if self.contains_hydrogen:
+            self.update_neutral_profile()
+
+    def update_neutral_profile(self):
+        species=self.hydrogen_species[0]
+        ne = self.plasma.plasma_state['electron_density']
+        te = self.plasma.plasma_state['electron_temperature']
+        n0 = self.plasma.plasma_state[species+'_dens'][0]
+
+        scd = read_adf11(file=self.scdfile, adf11type='scd', is1=1, index_1=-1, index_2=-1,
+                         te=te, dens=ne, all=False, skipzero=False, unit_te='ev')
+        acd = read_adf11(file=self.acdfile, adf11type='acd', is1=1, index_1=-1, index_2=-1,
+                         te=te, dens=ne, all=False, skipzero=False, unit_te='ev')
+
+        # n0_time=self.plasma.plasma_state['n0_time']
+        n0_time=self.plasma_state[species+'_tau'][0]
+        # n0+=(n1*ne*acd-n0*ne*scd)*n0_time
+        n0-=n0*ne*scd*n0_time
+        n0=n0.clip(0)
+        self.plasma.plasma_state[species+'_dens']=n0
+
+        self.scd=scd
+        self.acd=acd
+        self.ion_source=n0*ne*scd
+        self.ion_sink=n1*ne*acd
 
     def print_plasma_state(self):
         print_plasma_state(self)
@@ -540,8 +567,8 @@ class PlasmaLine():
 
         te = self.adas_plasma_inputs['te']
         ne = self.adas_plasma_inputs['ne']
-        # tau = self.adas_plasma_inputs['magical_tau']
-        tau = self.adas_plasma_inputs['tau_exc']
+        tau = self.adas_plasma_inputs['magical_tau']
+        # tau = self.adas_plasma_inputs['tau_exc']
 
         elem, ion = self.species_to_elem_and_ion(species)
         ionp1 = ion + 1
@@ -565,8 +592,8 @@ class PlasmaLine():
 
         for elem in self.impurities:
             num_ions=get_number_of_ions(elem)
-            # shape=(len(tau_exc)+len(tau_rec), len(ne), len(te), num_ions)
-            shape=(len(tau_exc), len(ne), len(te), num_ions)
+            shape=(len(tau_exc)+len(tau_rec), len(ne), len(te), num_ions)
+            # shape=(len(tau_exc), len(ne), len(te), num_ions)
             bal=np.zeros(shape)
             power=[] # np.zeros(shape)
             # if elem+'_meta_index' in self.input_dict:
@@ -577,20 +604,21 @@ class PlasmaLine():
             meta_index=0
             meta=get_meta(elem, index=meta_index)
             print(elem, 'meta', meta)
+            min_frac=1e-5
             for t_counter, t in enumerate(tau_exc):
                 print(t_counter, t)
                 with HiddenPrints():
                     out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
-                bal[t_counter, :, :, :]=out['ion'].clip(1e-30)
+                bal[t_counter, :, :, :]=out['ion'].clip(min_frac)
                 power.append(pow)
-            # # downstream transport
-            # meta_index=-1
-            # meta=get_meta(elem, index=meta_index)
-            # for t_counter, t in enumerate(tau_rec):
-            #     with HiddenPrints():
-            #         out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
-            #     bal[len(tau_exc)+t_counter, :, :, :]=out['ion'].clip(1e-30)
-            #     power.append(pow)
+            # downstream transport
+            meta_index=-1
+            meta=get_meta(elem, index=meta_index)
+            for t_counter, t in enumerate(tau_rec):
+                with HiddenPrints():
+                    out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
+                bal[len(tau_exc)+t_counter, :, :, :]=out['ion'].clip(min_frac)
+                power.append(pow)
 
             ion_bals.append((elem, bal))
             rad_power.append((elem, power))
@@ -602,8 +630,8 @@ class PlasmaLine():
 
         te = self.adas_plasma_inputs['te']
         ne = self.adas_plasma_inputs['ne']
-        # tau = self.adas_plasma_inputs['magical_tau']
-        tau = self.adas_plasma_inputs['tau_exc']
+        tau = self.adas_plasma_inputs['magical_tau']
+        # tau = self.adas_plasma_inputs['tau_exc']
         big_ne = self.adas_plasma_inputs['big_ne']
 
         with HiddenPrints():
@@ -626,7 +654,8 @@ class PlasmaLine():
             # rates+=np.log10(big_ne)
             # tec406[t_counter, :, :] = big_ne*(pecs_exc.T*ionbal[t_counter, :, :, ion] +
             #                                   pecs_rec.T*ionbal[t_counter, :, :, ion+1])
-            tec_splines.append(RectBivariateSpline(ne, te, np.log(rates.clip(1e-50))).ev)
+            # tec_splines.append(RectBivariateSpline(ne, te, np.log(rates.clip(1e-50))).ev)
+            tec_splines.append(RectBivariateSpline(ne, te, np.log(rates.clip(1e-30))))
             # tec_splines.append(RectBivariateSpline(ne, te, rates).ev)
 
         # # log10 is spitting out errors ::( but it still runs ::)
