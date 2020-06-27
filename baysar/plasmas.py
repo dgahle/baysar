@@ -436,7 +436,7 @@ class PlasmaLine():
 
         self.calc_total_impurity_electrons(True)
         if self.reverse_electroneutrality:
-            self.plasma_state['main_ion_density']=self.plasma_state['electron_density']
+            self.plasma_state['main_ion_density']=self.plasma_state['electron_density'].copy()
             self.plasma_state['electron_density']+=self.total_impurity_electrons
         else:
             self.plasma_state['main_ion_density']=self.plasma_state['electron_density']-self.total_impurity_electrons
