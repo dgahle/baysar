@@ -262,7 +262,7 @@ class BaysarPosterior(object):
 
     def optimise(self, pop_size=12, num_eras=3, generations=3, threads=12, initial_population=None,
                  random_sample_size=int(1e3), random_order=3, perturbation=None, filename=None,
-                 plot=False, plasma_reference=None, return_out=True):
+                 plot=False, plasma_reference=None, return_out=True, maxiter=100):
 
         if initial_population is None:
             initial_population=self.random_sample(number=random_sample_size, order=random_order)
@@ -271,7 +271,7 @@ class BaysarPosterior(object):
             perturbation=np.logspace(-2, 1, 9)
 
         out, big_out=optimise(self, initial_population, pop_size=pop_size, num_eras=num_eras, generations=generations,
-                              threads=threads, bounds=self.plasma.theta_bounds.tolist(),
+                              threads=threads, bounds=self.plasma.theta_bounds.tolist(), maxiter=maxiter,
                               cal_index=self.plasma.slices['background_0'].start, perturbation=perturbation, filename=filename)
 
         if plot:

@@ -86,7 +86,8 @@ def bfgs_worker(posterior, bounds, maxiter, maxfun, connection, end):
 
 
 def evolutionary_gradient_ascent(posterior=None, initial_population = None, generations=20, threads=1,
-                                 perturbation=0.075, mutation_probability = 0.5, bounds = None, maxiter = 1000, maxfun= int(3e4)):
+                                 perturbation=0.075, mutation_probability = 0.5, bounds = None,
+                                 maxiter = 1000, maxfun= int(3e4)):
 
     # initialise all the processes
     shutdown_evt = Event()
@@ -167,7 +168,7 @@ def evolutionary_gradient_ascent(posterior=None, initial_population = None, gene
         'population_size' : pop.popsize,
         'threads_used' : threads,
         'perturbation_size' : perturbation,
-        'solutions' : solutions, 
+        'solutions' : solutions,
         'mutation_probability' : mutation_probability,
         'optimal_theta' : pop.elite_adults[-1],
         'max_log_prob' : pop.elite_fitnesses[-1],
@@ -534,7 +535,7 @@ def sample_around_theta(theta, num=11, pc=0.025, cal_pc=1e-4, cal_index=4):
     return s0
 
 def optimise(posterior, initial_population, pop_size=12, num_eras=3, generations=3, threads=12,
-             bounds=None, cal_index=None, perturbation=0.075, filename=None):
+             bounds=None, cal_index=None, perturbation=0.075, filename=None, maxiter=1000):
 
     big_out=[]
     print(' # gen s0 best prob: ', posterior(initial_population[0]))
@@ -544,8 +545,9 @@ def optimise(posterior, initial_population, pop_size=12, num_eras=3, generations
         print()
         print('# era {}.'.format(era))
         # further informative print statements are produced by evolutionary_gradient_ascent
-        out=evolutionary_gradient_ascent(posterior=posterior, initial_population=s0[:pop_size], generations=generations, threads=threads, maxiter=1000,
-                                         perturbation=perturbation, mutation_probability=0.5, bounds=bounds)
+        out=evolutionary_gradient_ascent(posterior=posterior, initial_population=s0[:pop_size], generations=generations,
+                                         threads=threads, maxiter=maxiter, perturbation=perturbation,
+                                         mutation_probability=0.5, bounds=bounds)
         if era < (num_eras-1):
             s0=sample_around_theta(out['optimal_theta'], num=int(1e3), pc=0.1, cal_index=cal_index)
             while len(s0) < pop_size:

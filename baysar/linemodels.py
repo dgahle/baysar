@@ -219,13 +219,14 @@ class ADAS406Lines(object):
         self.tec=tec
 
         ems = n0 * tec * self.length_per_sr
-        ems = ems.clip(min=1e-20)
+        ems = ems.clip(min=1)
         ems_sum = ems.sum()
 
         self.emission_profile = ems
-        self.ems_ne = dot(ems, self.tec_in[:, 1]) / ems_sum
+
+        self.ems_ne = dot(ems, ne) / ems_sum
         self.ems_conc = n0 / self.ems_ne
-        self.ems_te = dot(ems, self.tec_in[:, 2]) / ems_sum
+        self.ems_te = dot(ems, te) / ems_sum
 
         peak=self.linefunction(ti, ems_sum)
         if any(np.isnan(peak)):
