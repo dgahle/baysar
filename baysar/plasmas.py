@@ -431,7 +431,16 @@ class PlasmaLine():
         else:
             self.plasma_state = collections.OrderedDict(plasma_state)
 
-        self.plasma_state['main_ion_density']=self.plasma_state['electron_density']-self.calc_total_impurity_electrons(True)
+        if not hasattr(self, 'reverse_electroneutrality'):
+            self.reverse_electroneutrality=False
+
+        self.calc_total_impurity_electrons(True)
+        if self.reverse_electroneutrality:
+            self.plasma_state['main_ion_density']=self.plasma_state['electron_density']
+            self.plasma_state['electron_density']+=self.total_impurity_electrons
+        else:
+            self.plasma_state['main_ion_density']=self.plasma_state['electron_density']-self.total_impurity_electrons
+
         if self.contains_hydrogen:
             self.update_neutral_profile()
 
