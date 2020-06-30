@@ -342,18 +342,16 @@ class HydrogenLineShape(object):
             electron_density, electron_temperature, ion_temperature = theta
 
         doppler_component = self.doppler_function(ion_temperature, 1)
+        if self.zeeman:
+            doppler_component=zeeman_split(self.cwl, doppler_component, self.wavelengths_doppler, b_field, viewangle)
+
         stark_component = stehle_param(self.n_upper, self.n_lower, self.cwl, self.wavelengths, electron_density, electron_temperature)
 
         # peak=np.convolve(stark_component, doppler_component/doppler_component.sum(), 'same')
         peak=fftconvolve(stark_component, doppler_component, 'same')
         peak/=trapz(peak, self.wavelengths)
 
-        # return stark_component
-
-        if self.zeeman:
-            return zeeman_split(self.cwl, peak, self.wavelengths, b_field, viewangle)
-        else:
-            return peak
+        return peak
 
 
 from adas import read_adf11
@@ -404,12 +402,9 @@ class BalmerHydrogenLine(object):
 
         rec_pec = np.exp(self.rec_pec(ne, te))
         exc_pec = np.exp(self.exc_pec(ne, te))
-        self.rec_profile = n1.clip(1.)*ne*self.dl_per_sr*rec_pec
-        self.exc_profile = n0*ne*self.dl_per_sr*nan_to_num(exc_pec)
-
         # set minimum number of photons to be 1
-        self.rec_profile.clip(1.)
-        self.exc_profile.clip(1.)
+        self.rec_profile = (n1*ne*self.dl_per_sr*rec_pec).clip(1.)
+        self.exc_profile = (n0*ne*self.dl_per_sr*nan_to_num(exc_pec)).clip(1.)
 
         rec_sum = self.rec_profile.sum()
         exc_sum = self.exc_profile.sum()
@@ -417,9 +412,11 @@ class BalmerHydrogenLine(object):
 
         # used for the emission lineshape calculation
         self.ems_profile = self.rec_profile + self.exc_profile
+
         self.exc_ne = dot(self.exc_profile, ne) / exc_sum
-        self.rec_ne = dot(self.rec_profile, ne) / rec_sum
         self.exc_te = dot(self.exc_profile, te) / exc_sum
+
+        self.rec_ne = dot(self.rec_profile, ne) / rec_sum
         self.rec_te = dot(self.rec_profile, te) / rec_sum
 
         # just because there are nice to have
