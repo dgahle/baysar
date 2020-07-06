@@ -155,7 +155,7 @@ class SpectrometerChord(object):
             # wavecal_interp=interp1d(self.x_data, spectra, bounds_error=False, fill_value="extrapolate")
             cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
             self.cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
-            return wavecal_interp(self.cal_wave)
+            spectra=wavecal_interp(self.cal_wave)
         else:
             spectra=fftconvolve(spectra, instrument_function_last_used, mode='same')
             spectra*=self.dispersion_ratios
@@ -170,7 +170,10 @@ class SpectrometerChord(object):
             # wavecal_interp=interp1d(self.x_data, spectra, bounds_error=False, fill_value="extrapolate")
             cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
             self.cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
-            return wavecal_interp(self.cal_wave)
+            spectra= wavecal_interp(self.cal_wave)
+
+        return spectra.clip(background)
+
 
     def get_lines(self):
         # print("Getting line objects")
