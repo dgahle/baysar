@@ -48,8 +48,7 @@ class SpectrometerChord(object):
         self.dispersion=diff(self.x_data)[0]
         self.dispersion_fm=diff(self.x_data_fm)[0]
         self.dispersion_ratios=self.dispersion_fm/self.dispersion
-        self.instrument_function=centre_peak(self.input_dict['instrument_function'][self.chord_number])
-        self.instrument_function=np.true_divide(self.instrument_function, self.instrument_function.sum())
+        self.instrument_function=self.input_dict['instrument_function'][self.chord_number]
 
         self.noise_region=self.input_dict['noise_region'][self.chord_number]
         self.a_cal=self.input_dict['emission_constant'][self.chord_number]
@@ -208,7 +207,9 @@ class SpectrometerChord(object):
                     self.lines.append(line)
 
     def int_func_sparce_matrix(self):
-        # self.centre_instrument_function()
+        # check that the instrument_function is centred and normalised
+        self.instrument_function=centre_peak(self.instrument_function)
+        self.instrument_function=np.true_divide(self.instrument_function, self.instrument_function.sum())
         # todo - set default to refine=1 not None
         len_instrument_function = len(self.instrument_function)
 
