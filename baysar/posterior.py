@@ -80,6 +80,8 @@ class BaysarPosterior(object):
         self.positive_thetas = []
         self.runtimes = []
 
+        self.set_sensible_bounds()
+
         self.init_test(skip_test)
 
     def check_init_inputs(self, priors, check_bounds, temper, curvature, print_errors):
@@ -163,6 +165,46 @@ class BaysarPosterior(object):
         for chord_num, refine in enumerate(self.input_dict['refine']):
             chord = SpectrometerChord(plasma=self.plasma, refine=refine, chord_number=chord_num)
             self.posterior_components.append(chord)
+
+    def set_sensible_bounds(self, dcwl=5, ddisp=0.02):
+        import numpy as np
+        # chordal bounds
+        for chord_num in range(self.plasma.num_chords):
+            tmp_chord=self.posterior_components[chord_num]
+            # build new bounds
+            # build cal bounds
+            if tmp_chord.y_data.max() > 1e6:
+                cal_bounds=[-1, 1]
+            else:
+                cal_bounds=[8, 15]
+            self.plasma.theta_bounds[self.plasma.slices['cal_'+str(chord_num)]]=cal_bounds
+
+            # build wavelenth bounds
+            estimate_cwl=tmp_chord.x_data.mean()
+            cwl_bounds=[estimate_cwl-dcwl, estimate_cwl+dcwl]
+            self.plasma.theta_bounds[self.plasma.slices['calwave_'+str(chord_num)]][0]=cwl_bounds
+            estimate_disp=np.diff( tmp_chord.x_data ).mean()
+            disp_bounds=[estimate_disp-ddisp, estimate_disp+ddisp]
+            self.plasma.theta_bounds[self.plasma.slices['calwave_'+str(chord_num)]][1]=disp_bounds
+
+            # build background bounds
+            estimate_background=tmp_chord.y_data_continuum.mean()
+            d_background=tmp_chord.y_data_continuum.std()
+            background_bounds=[estimate_background-d_background, estimate_background+d_background]
+            self.plasma.theta_bounds[self.plasma.slices['background_'+str(chord_num)]]=background_bounds
+
+        # impurity density
+        for s in self.plasma.slices:
+            if s.endswith('_dens'):
+                s_split=s.split('_')
+                charge=float(s_split[-2])
+                new_limit=self.plasma.theta_bounds[self.plasma.slices['electron_density']][0, 1]
+                if not charge==0: # impurity ions
+                    new_limit-=np.log10(charge)
+                    self.plasma.theta_bounds[self.plasma.slices[s]][0]=[new_limit-2, new_limit]
+                else: # neutrals
+                    new_limit=-0.7
+                    self.plasma.theta_bounds[self.plasma.slices[s]][0]=[new_limit-2, new_limit]
 
     def random_start(self, order=1, flat=False):
         start = [np.mean(np.random.uniform(bounds[0], bounds[1], size=order)) for bounds in self.plasma.theta_bounds]
@@ -268,7 +310,7 @@ class BaysarPosterior(object):
             initial_population=self.random_sample(number=random_sample_size, order=random_order)
 
         if perturbation is None:
-            perturbation=np.logspace(-2, 1, 9)
+            perturbation=np.logspace(-4, -2, 7)
 
         out, big_out=optimise(self, initial_population, pop_size=pop_size, num_eras=num_eras, generations=generations,
                               threads=threads, bounds=self.plasma.theta_bounds.tolist(), maxiter=maxiter,
