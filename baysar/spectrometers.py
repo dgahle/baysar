@@ -57,6 +57,8 @@ class SpectrometerChord(object):
         self.radiance_calibrator=self.plasma.cal_functions[self.chord_number]
         self.background_function=self.plasma.background_functions[self.chord_number]
 
+        self.dot=False
+
         self.get_error()
         self.get_lines()
         self.int_func_sparce_matrix()
@@ -139,8 +141,7 @@ class SpectrometerChord(object):
 
         # TODO - BIG SAVINGS BOGOF
         # TODO - centre of mass check?
-        dot=False
-        if dot:
+        if self.dot:
             # spectra=spectra+background/self.dispersion_ratios
             # spectra=spectra
             spectra*=self.dispersion_ratios
@@ -170,6 +171,9 @@ class SpectrometerChord(object):
             cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
             self.cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
             spectra= wavecal_interp(self.cal_wave)
+
+        if len(self.y_data)!=len(spectra):
+            raise ValueError("len(self.y_data)!=len(spectra). Lengths are {} and {}".format(len(self.y_data), len(spectra)))
 
         return spectra.clip(background)
 
