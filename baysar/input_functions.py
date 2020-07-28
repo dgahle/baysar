@@ -152,7 +152,7 @@ def check_input_dict_input(wavelength_axis, experimental_emission, instrument_fu
 
 def make_input_dict(wavelength_axis, experimental_emission, instrument_function,
                     emission_constant, noise_region,
-                    species, ions, line_data=adas_line_data, mystery_lines=None,
+                    species, line_data=adas_line_data, mystery_lines=None,
                     refine=0.01, ion_resolved_temperatures=False, ion_resolved_tau=False):
 
     '''
@@ -172,6 +172,16 @@ def make_input_dict(wavelength_axis, experimental_emission, instrument_function,
     :param (bool) ion_resolved_tau: If False there is an single particle density and ion confinement time (tau) per element not per ion.
     :return (dict) input_dict: Contains all the needed info instantiate both BaysarPosterior and SpectrometerChord classes.
     '''
+
+    # unpack species and ions
+    species_new=[]
+    ions=[]
+    for s in species:
+        species_new.append(s)
+        ions.append([str(ion) for ion in species[s]])
+
+    del species
+    species=species_new
 
     check_input_dict_input(wavelength_axis, experimental_emission, instrument_function,
                            emission_constant, noise_region, species, ions, line_data, mystery_lines,
