@@ -191,7 +191,7 @@ class BaysarPosterior(object):
             estimate_background=tmp_chord.y_data_continuum.mean()
             d_background=tmp_chord.y_data_continuum.std()
             background_bounds=[estimate_background-d_background, estimate_background+d_background]
-            self.plasma.theta_bounds[self.plasma.slices['background_'+str(chord_num)]]=background_bounds
+            self.plasma.theta_bounds[self.plasma.slices['background_'+str(chord_num)]]=[np.log10(bb) for bb in background_bounds]
 
         # impurity density
         for s in self.plasma.slices:
@@ -232,13 +232,15 @@ class BaysarPosterior(object):
             #     # np.log10(estemate_ems)-1+np.random.normal(0, 0.1)
         return np.array(start)
 
-    def _random_start(self, order, co=1):
+    def _random_start(self, order=1, co=1):
         seed=co*float(str(clock.time()).split('.')[-1])
         np.random.seed(int(seed))
-        rs=self.random_start(int(order))
+        rs=[np.random.uniform(bounds[0], bounds[1], size=order).mean() for bounds in self.plasma.theta_bounds]
+        if not all(self.plasma.is_theta_within_bounds(rs)):
+            raise ValueError("Error in rs shape. {} should be {}.".format(rs.shape, self.plasma.n_params))
         return (self(rs), rs)
 
-    def _random_sample(self, number=1, order=1, flat=False, num_processes=1.):
+    def _random_sample(self, number=1, order=1, flat=False, num_processes=1):
         number=int(number)
         seed_coefficients=np.random.uniform(0, 1, number)
         iterator=zip(np.zeros(number)+order, seed_coefficients)
