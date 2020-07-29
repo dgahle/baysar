@@ -116,9 +116,6 @@ class SpectrometerChord(object):
 
         background_theta=self.plasma.plasma_state['background_'+str(self.chord_number)]
         background=self.background_function.calculate_background(background_theta)
-        print('background', background_theta, background_theta)
-        if np.isinf(background):
-            raise ValueError("Background is inf")
 
         ems_cal_theta=self.plasma.plasma_state['cal_'+str(self.chord_number)]
         spectra=self.radiance_calibrator.inverse_calibrate(spectra, ems_cal_theta)
