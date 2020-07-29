@@ -116,6 +116,9 @@ class SpectrometerChord(object):
 
         background_theta=self.plasma.plasma_state['background_'+str(self.chord_number)]
         background=self.background_function.calculate_background(background_theta)
+        print('background', background_theta, background_theta)
+        if np.isinf(background):
+            raise ValueError("Background is inf")
 
         ems_cal_theta=self.plasma.plasma_state['cal_'+str(self.chord_number)]
         spectra=self.radiance_calibrator.inverse_calibrate(spectra, ems_cal_theta)
@@ -143,35 +146,43 @@ class SpectrometerChord(object):
         # TODO - BIG SAVINGS BOGOF
         # TODO - centre of mass check?
         if self.dot:
-            # spectra=spectra+background/self.dispersion_ratios
-            # spectra=spectra
             spectra*=self.dispersion_ratios
             spectra=self.instrument_function_matrix.dot(spectra)
-            spectra+=background
 
             if len(self.x_data)!=len(spectra):
                 raise ValueError("len(self.x_data_fm)!=len(spectra). Lengths are {} and {}".format(len(self.x_data), len(spectra)))
 
+            self.x_data_wavecal_interp=self.x_data
         else:
             spectra=fftconvolve(spectra, instrument_function_last_used, mode='same')
             spectra*=self.dispersion_ratios
-            spectra+=background
-            spectra=spectra.clip(background)
 
             if len(self.x_data_fm)!=len(spectra):
                 raise ValueError("len(self.x_data_fm)!=len(spectra). Lengths are {} and {}".format(len(self.x_data_fm), len(spectra)))
+            elif np.isinf(spectra).any():
+                raise TypeError("spectra contains infs")
+            elif np.isnan(spectra).any():
+                raise TypeError("spectra contains NaNs")
 
+            self.x_data_wavecal_interp=self.x_data_fm
+
+        spectra+=background
+        self.prewavecal_spectra=spectra
         # wave calibration
-        wavecal_interp=interp1d(self.x_data_fm, spectra, bounds_error=False, fill_value="extrapolate")
-        # wavecal_interp=interp1d(self.x_data, spectra, bounds_error=False, fill_value="extrapolate")
+        self.wavecal_interp=interp1d(self.x_data_wavecal_interp, spectra, bounds_error=False, fill_value="extrapolate")
         cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
         self.cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
-        spectra= wavecal_interp(self.cal_wave)
+        spectra=self.wavecal_interp(self.cal_wave).clip(background)
 
+        # output checks
         if len(self.y_data)!=len(spectra):
             raise ValueError("len(self.y_data)!=len(spectra). Lengths are {} and {}".format(len(self.y_data), len(spectra)))
+        elif np.isnan(spectra).any():
+            raise TypeError("spectra contains NaNs")
+        elif np.isinf(spectra).any():
+                raise TypeError("spectra contains infs")
 
-        return spectra.clip(background)
+        return spectra
 
 
     def get_lines(self):
