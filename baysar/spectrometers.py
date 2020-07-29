@@ -95,6 +95,7 @@ class SpectrometerChord(object):
             raise ValueError('Some points of square_normalised_residuals are inf')
 
         if any(np.isnan(self.square_normalised_residuals)):
+            print(fm)
             print('nan indicies', np.where(np.isnan(self.square_normalised_residuals)))
             raise ValueError('Some points of square_normalised_residuals are nan')
 
@@ -150,12 +151,7 @@ class SpectrometerChord(object):
 
             if len(self.x_data)!=len(spectra):
                 raise ValueError("len(self.x_data_fm)!=len(spectra). Lengths are {} and {}".format(len(self.x_data), len(spectra)))
-            # wave calibration
-            wavecal_interp=interp1d(self.x_data, spectra, bounds_error=False, fill_value="extrapolate")
-            # wavecal_interp=interp1d(self.x_data, spectra, bounds_error=False, fill_value="extrapolate")
-            cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
-            self.cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
-            spectra=wavecal_interp(self.cal_wave)
+
         else:
             spectra=fftconvolve(spectra, instrument_function_last_used, mode='same')
             spectra*=self.dispersion_ratios
@@ -165,12 +161,12 @@ class SpectrometerChord(object):
             if len(self.x_data_fm)!=len(spectra):
                 raise ValueError("len(self.x_data_fm)!=len(spectra). Lengths are {} and {}".format(len(self.x_data_fm), len(spectra)))
 
-            # wave calibration
-            wavecal_interp=interp1d(self.x_data_fm, spectra, bounds_error=False, fill_value="extrapolate")
-            # wavecal_interp=interp1d(self.x_data, spectra, bounds_error=False, fill_value="extrapolate")
-            cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
-            self.cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
-            spectra= wavecal_interp(self.cal_wave)
+        # wave calibration
+        wavecal_interp=interp1d(self.x_data_fm, spectra, bounds_error=False, fill_value="extrapolate")
+        # wavecal_interp=interp1d(self.x_data, spectra, bounds_error=False, fill_value="extrapolate")
+        cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
+        self.cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
+        spectra= wavecal_interp(self.cal_wave)
 
         if len(self.y_data)!=len(spectra):
             raise ValueError("len(self.y_data)!=len(spectra). Lengths are {} and {}".format(len(self.y_data), len(spectra)))
