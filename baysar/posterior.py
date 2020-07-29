@@ -166,7 +166,7 @@ class BaysarPosterior(object):
             chord = SpectrometerChord(plasma=self.plasma, refine=refine, chord_number=chord_num)
             self.posterior_components.append(chord)
 
-    def set_sensible_bounds(self, dcwl=5, ddisp=0.02):
+    def set_sensible_bounds(self, dcwl=2, ddisp=0.02):
         import numpy as np
         # chordal bounds
         for chord_num in range(self.plasma.num_chords):
@@ -235,7 +235,7 @@ class BaysarPosterior(object):
     def _random_start(self, order=1, co=1):
         seed=co*float(str(clock.time()).split('.')[-1])
         np.random.seed(int(seed))
-        rs=[np.random.uniform(bounds[0], bounds[1], size=order).mean() for bounds in self.plasma.theta_bounds]
+        rs=[np.random.uniform(bounds[0], bounds[1], size=int(order)).mean() for bounds in self.plasma.theta_bounds]
         if not all(self.plasma.is_theta_within_bounds(rs)):
             raise ValueError("Error in rs shape. {} should be {}.".format(rs.shape, self.plasma.n_params))
         return (self(rs), rs)
@@ -243,7 +243,7 @@ class BaysarPosterior(object):
     def _random_sample(self, number=1, order=1, flat=False, num_processes=1):
         number=int(number)
         seed_coefficients=np.random.uniform(0, 1, number)
-        iterator=zip(np.zeros(number)+order, seed_coefficients)
+        iterator=zip(np.zeros(number, dtype=int)+order, seed_coefficients)
         with Pool(processes=num_processes) as pool:
             sample=pool.starmap(self._random_start, iterator) # outputs a list of outputs
 
