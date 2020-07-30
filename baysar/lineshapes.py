@@ -489,11 +489,12 @@ class SimpleGaussianPlasma:
 
 
 class ReducedBowmanTProfile:
-    def __init__(self, x, log_peak_bounds, centre=None):
+    def __init__(self, x, log_peak_bounds, centre=None, dr_bounds=None):
 
         self.x=x
         self.bounds=[log_peak_bounds]
         self.centre=centre
+        self.dr_bounds=dr_bounds
 
         self.get_bounds()
 
@@ -511,7 +512,10 @@ class ReducedBowmanTProfile:
     def get_bounds(self):
 
         if self.centre is None:
-            self.bounds.append([-5, 5])
+            if self.dr_bounds is None:
+                self.bounds.append([-5, 5])
+            else:
+                self.bounds.append(self.dr_bounds)
 
         shape_bounds=[[np.log10(2.), 1], # log sigma
                       [0, 2]] # asymmetry bounds (scales logarythmically?)
@@ -531,7 +535,7 @@ class ReducedBowmanTPlasma(object):
         else:
             self.x=x
 
-        self.electron_density=ReducedBowmanTProfile(self.x, bounds_ne, centre=None)
+        self.electron_density=ReducedBowmanTProfile(self.x, bounds_ne, centre=None, dr_bounds=dr_bounds)
         self.electron_temperature=ReducedBowmanTProfile(self.x, bounds_te, centre=0)
 
 class LinearSeparatrix:
@@ -576,6 +580,69 @@ class SimpleSeparatrix(object):
 
         self.electron_density=CauchySeparatrix(self.x, bounds_ne) # , centre=self.x[-1])
         self.electron_temperature=LinearSeparatrix(self.x, bounds_te)
+
+def esymmtric_gaussian(x, ems, cwl, sigma, efactor):
+    dx=cwl-x
+    sigma+=efactor/(1+np.exp(-dx))
+    mean_square=np.square(dx/sigma)
+
+    return ems*np.exp(-0.5*mean_square)
+
+def esymmtric_cauchy(x, ems, cwl, sigma, efactor):
+    dx=x-cwl
+    sigma+=efactor/(1+np.exp(-dx))
+    mean_square=np.square(dx/sigma)
+
+    return ems/(1+mean_square)
+
+class EsymmtricProfile:
+    def __init__(self, x, log_peak_bounds, centre=None, ptype='cauchy'):
+
+        self.x=x
+        self.bounds=[log_peak_bounds]
+        self.centre=centre
+
+        self.get_bounds()
+
+        if ptype not in ('cauchy', 'gaussian'):
+            raise ValueError("ptype not in ('cauchy', 'gaussian')")
+
+        if ptype is 'cauchy':
+            self.peak=esymmtric_cauchy
+        if ptype is 'gaussian':
+            self.peak=esymmtric_gaussian
+
+    def __call__(self, theta):
+        if self.centre is None:
+            A, c, sigma, f=theta
+        else:
+            A, sigma, f=theta
+            c=self.centre
+
+        btheta=[np.power(10, A), c, sigma, f]
+        return self.peak(self.x, *btheta).clip(1e-3)
+
+    def get_bounds(self):
+
+        if self.centre is None:
+            self.bounds.append([-5, 2])
+
+        shape_bounds=[[1., 10.],
+                      [0, 10]] # asymmetry bounds
+
+        self.bounds.extend(shape_bounds)
+        self.number_of_variables=len(self.bounds)
+
+class EsymmtricCauchyPlasma:
+    def __init__(self, x=None, dr_bounds=[-5, 2], bounds_ne=[13, 15], bounds_te=[0., 1.7], ptype='cauchy'):
+        if x is None:
+            self.x=np.linspace(-10, 25, 50)
+        else:
+            self.x=x
+
+        self.electron_density=EsymmtricProfile(self.x, bounds_ne, centre=None, ptype='cauchy')
+        self.electron_temperature=EsymmtricProfile(self.x, bounds_te, centre=0, ptype='cauchy')
+
 
 if __name__=='__main__':
 
