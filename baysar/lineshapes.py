@@ -489,12 +489,13 @@ class SimpleGaussianPlasma:
 
 
 class ReducedBowmanTProfile:
-    def __init__(self, x, log_peak_bounds, centre=None, dr_bounds=None):
+    def __init__(self, x, log_peak_bounds, centre=None, dr_bounds=None, sigma_bounds=None):
 
         self.x=x
         self.bounds=[log_peak_bounds]
         self.centre=centre
         self.dr_bounds=dr_bounds
+        self.sigma_bounds=sigma_bounds
 
         self.get_bounds()
 
@@ -505,7 +506,8 @@ class ReducedBowmanTProfile:
             A, sigma, f=theta
             c=self.centre
 
-        btheta=[np.power(10, A), c, np.power(10, sigma), self.q, self.nu, self.k, f, 0]
+        # btheta=[np.power(10, A), c, np.power(10, sigma), self.q, self.nu, self.k, f, 0]
+        btheta=[np.power(10, A), c, sigma, self.q, self.nu, self.k, f, 0]
         return bowman_tee_distribution(self.x, btheta)
 
 
@@ -517,8 +519,13 @@ class ReducedBowmanTProfile:
             else:
                 self.bounds.append(self.dr_bounds)
 
-        shape_bounds=[[np.log10(2.), 1], # log sigma
-                      [0, 2]] # asymmetry bounds (scales logarythmically?)
+
+        if self.sigma_bounds is None:
+            self.bounds.append([1, 10])
+        else:
+            self.bounds.append(self.sigma_bounds)
+
+        shape_bounds=[ [0, 1] ] # asymmetry bounds (scales logarythmically?)
                       # [-3, -3]]
 
         self.bounds.extend(shape_bounds)
@@ -529,14 +536,14 @@ class ReducedBowmanTProfile:
         self.k=1.
 
 class ReducedBowmanTPlasma(object):
-    def __init__(self, x=None, dr_bounds=[-5, 5], bounds_ne=[11, 16], bounds_te=[-1, 2]):
+    def __init__(self, x=None, sigma_bounds=[1, 10], dr_bounds=[-5, 5], bounds_ne=[11, 16], bounds_te=[-1, 2]):
         if x is None:
             self.x=np.linspace(-15, 35, 50)
         else:
             self.x=x
 
-        self.electron_density=ReducedBowmanTProfile(self.x, bounds_ne, centre=None, dr_bounds=dr_bounds)
-        self.electron_temperature=ReducedBowmanTProfile(self.x, bounds_te, centre=0)
+        self.electron_density=ReducedBowmanTProfile(self.x, bounds_ne, centre=None, dr_bounds=dr_bounds, sigma_bounds=sigma_bounds)
+        self.electron_temperature=ReducedBowmanTProfile(self.x, bounds_te, centre=0, sigma_bounds=sigma_bounds)
 
 class LinearSeparatrix:
     def __init__(self, x, peak_bounds=[0, 1.7]):
