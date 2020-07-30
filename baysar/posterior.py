@@ -201,10 +201,9 @@ class BaysarPosterior(object):
                 new_limit=self.plasma.theta_bounds[self.plasma.slices['electron_density']][0, 1]
                 if not charge==0: # impurity ions
                     new_limit-=np.log10(charge)
-                    self.plasma.theta_bounds[self.plasma.slices[s]][0]=[new_limit-2, new_limit]
                 else: # neutrals
-                    new_limit=-0.7
-                    self.plasma.theta_bounds[self.plasma.slices[s]][0]=[new_limit-2, new_limit]
+                    new_limit-=0.7
+                self.plasma.theta_bounds[self.plasma.slices[s]][0]=[new_limit-2, new_limit]
 
     def random_start(self, order=1, flat=False):
         start = [np.mean(np.random.uniform(bounds[0], bounds[1], size=order)) for bounds in self.plasma.theta_bounds]
