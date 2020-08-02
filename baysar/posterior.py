@@ -191,6 +191,8 @@ class BaysarPosterior(object):
             estimate_background=tmp_chord.y_data_continuum.mean()
             d_background=tmp_chord.y_data_continuum.std()
             background_bounds=[estimate_background-d_background, estimate_background+d_background]
+            background_limits=[estimate_background/10, estimate_background*10]
+            background_bounds=[m(a, b) for m, a, b in zip([max, min], background_bounds, background_limits)]
             self.plasma.theta_bounds[self.plasma.slices['background_'+str(chord_num)]]=[np.log10(bb) for bb in background_bounds]
 
         # impurity density
