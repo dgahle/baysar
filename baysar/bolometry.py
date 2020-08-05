@@ -82,9 +82,8 @@ def bolometry(species, te, ne, length=1):
 from baysar.lineshapes import gaussian
 from baysar.priors import gaussian_low_pass_cost, gaussian_high_pass_cost
 class BolometryChord:
-    def __init__(self, signal, error, plasma, length, probtype='likelihood'):
+    def __init__(self, signal, error, plasma, probtype='likelihood'):
         self.plasma=plasma
-        self.length=length
         self.signal=signal
         self.error=error
 
@@ -122,14 +121,14 @@ class BolometryChord:
 
     def bolometry(self):
         # build species dict
-        self.species=self.get_species_dict()
-        self.plasma_power=plasma_power(self.species, te, ne)
-        self.forward_model=self.plasma_power.sum()*self.length
+        self.bolo_input=self.get_bolo_input_dict()
+        self.plasma_power=plasma_power(self.bolo_input, te, ne)
+        self.forward_model=self.plasma_power.sum()*np.diff(self.plasma.los).mean()
 
-    def get_species_dict(self):
-        self.species=get_species_dict(self.plasma)
+    def get_bolo_input_dict(self):
+        self.bolo_input=get_bolo_input_dict(self.plasma)
 
-def get_species_dict(plasma):
+def get_bolo_input_dict(plasma):
     species={'main_ion_density': plasma.plasma_state['main_ion_density']}
     if plasma.contains_hydrogen:
         species['neutrals']={}
