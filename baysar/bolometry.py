@@ -20,7 +20,6 @@ def impurity_power(nz, tau, ne, te, elem, yr, adf11_plt=None, adf11_prb=None,
 
     # get ionisation balance
     meta=get_meta(elem)
-    print(yr, elem, te, ne, tau, meta)
     out, _ =run_adas406(year=yr, elem=elem, te=te, dens=ne, tint=tau, meta=meta)
 
     # get adf11 if not passed
@@ -121,9 +120,11 @@ class BolometryChord:
 
     def bolometry(self):
         # build species dict
-        self.bolo_input=self.get_bolo_input_dict()
-        self.plasma_power=plasma_power(self.bolo_input, te, ne)
-        self.forward_model=self.plasma_power.sum()*np.diff(self.plasma.los).mean()
+        self.get_bolo_input_dict()
+        te=self.plasma.plasma_state['electron_temperature']
+        ne=self.plasma.plasma_state['electron_density']
+        self.plasma_power=plasma_power(self.bolo_input, te, ne)*np.diff(self.plasma.los).mean()
+        self.forward_model=self.plasma_power.sum()
 
     def get_bolo_input_dict(self):
         self.bolo_input=get_bolo_input_dict(self.plasma)
