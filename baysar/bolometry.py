@@ -127,7 +127,26 @@ class BolometryChord:
         self.forward_model=self.plasma_power.sum()*self.length
 
     def get_species_dict(self):
-        self.species={}
+        self.species=get_species_dict(self.plasma)
+
+def get_species_dict(plasma):
+    species={'main_ion_density': plasma.plasma_state['main_ion_density']}
+    if plasma.contains_hydrogen:
+        species['neutrals']={}
+        neutrals=[elem for elem in plasma.species if not any([elem[:1]==(imp+'_')[:1] for imp in plasma.impurities])]
+        for elem in neutrals:
+            species['neutrals'][elem]={'dens': plasma.plasma_state[elem+'_dens']}
+
+    # for imp in posterior.plasma.impurities:
+    #     imp_ions=[elem for elem in posterior.plasma.species if elem[:1]==(imp+'_')[:1]])
+
+    impurities=[elem for elem in plasma.species if any([elem[:1]==(imp+'_')[:1] for imp in plasma.impurities])]
+    species['impurities']={}
+    for imp in impurities:
+        species['impurities'][imp]={'dens': plasma.plasma_state[imp+'_dens'],
+                                    'tau': float(plasma.plasma_state[imp+'_tau'])}
+
+    return species
 
 if __name__=='__main__':
     res=20
