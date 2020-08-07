@@ -5,7 +5,13 @@ adf11_dir="/home/adas/adas/adf11/"
 hydrogen_adf11_plt=adf11_dir+'plt12/plt12_h.dat'
 hydrogen_adf11_prb=adf11_dir+'prb12/prb12_h.dat'
 
-def radiated_power(n0, ni, ne, te, is1, adf11_plt, adf11_prb):
+def radiated_power(n0, ni, ne, te, is1, adf11_plt=None, adf11_prb=None, yr=96):
+    # get adf11 if not passed
+    if adf11_plt is None:
+        adf11_plt=get_adf11(elem, yr, type='plt')
+    if adf11_prb is None:
+        adf11_prb=get_adf11(elem, yr, type='prb')
+
     plt=read_adf11(file=adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne) # , all=False, skipzero=False, unit_te='ev')
     prb=read_adf11(file=adf11_prb, adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne) # , all=False, skipzero=False, unit_te='ev')
 
@@ -16,11 +22,15 @@ def get_adf11(elem, yr, type, adf11_dir=adf11_dir):
 
 from baysar.plasmas import get_meta
 def impurity_power(nz, tau, ne, te, elem, yr, adf11_plt=None, adf11_prb=None,
-                   charge=None, extrapolate=False):
+                   charge=None, extrapolate=False, fast=None):
 
     # get ionisation balance
     meta=get_meta(elem)
-    out, _ =run_adas406(year=yr, elem=elem, te=te, dens=ne, tint=tau, meta=meta)
+    if fast is None:
+        out, _ =run_adas406(year=yr, elem=elem, te=te, dens=ne, tint=tau, meta=meta)
+        bal=out['ion']
+    else:
+        bal=fast(elem=elem, te=te, dens=ne, tau=tau)
 
     # get adf11 if not passed
     if adf11_plt is None:
@@ -30,7 +40,7 @@ def impurity_power(nz, tau, ne, te, elem, yr, adf11_plt=None, adf11_prb=None,
 
     # get power!
     power=0
-    number_of_electrons=out['ion'].shape[-1]-1
+    number_of_electrons=bal.shape[-1]-1
     if charge is None:
         start=0
         end=number_of_electrons
@@ -44,10 +54,10 @@ def impurity_power(nz, tau, ne, te, elem, yr, adf11_plt=None, adf11_prb=None,
             end=charge+1
 
     power=0
-    number_of_electrons=out['ion'].shape[-1]-1
+    number_of_electrons=bal.shape[-1]-1
     for z in np.arange(start, end):
-        n0=nz*out['ion'][:, z]
-        ni=nz*out['ion'][:, z+1]
+        n0=nz*bal[:, z]
+        ni=nz*bal[:, z+1]
         power+=sum( radiated_power(n0, ni, ne, te, z+1, adf11_plt, adf11_prb) )
 
     return power
@@ -55,7 +65,7 @@ def impurity_power(nz, tau, ne, te, elem, yr, adf11_plt=None, adf11_prb=None,
 hydrogen_adf11_plt=adf11_dir+'plt12/plt12_h.dat'
 hydrogen_adf11_prb=adf11_dir+'prb12/prb12_h.dat'
 
-def plasma_power(species, te, ne):
+def plasma_power(species, te, ne, fast=None):
     power=[sum(radiated_power(0, species['main_ion_density'], ne, te, 1, hydrogen_adf11_plt, hydrogen_adf11_prb))]
 
     # add neutral power
@@ -71,20 +81,56 @@ def plasma_power(species, te, ne):
             charge=str(elemx_split[-1])
             tau=species['impurities'][elemx]['tau']
             nz=species['impurities'][elemx]['dens']
-            power.append(impurity_power(nz, tau, ne, te, elem, yr=96, adf11_plt=None, adf11_prb=None, charge=None, extrapolate=False))
+            power.append( impurity_power(nz, tau, ne, te, elem, yr=96, adf11_plt=None,
+                                         adf11_prb=None, charge=None, extrapolate=False, fast=fast) )
 
     return np.array(power)
 
 def bolometry(species, te, ne, length=1):
     return plasma_power(species, te, ne).sum()*length
 
+from scipy.interpolate import RegularGridInterpolator
+class FastRunAdas406:
+    def __init__(self, rawdata, axis):
+        self.rawdata=rawdata
+        self.axis=axis
+
+        self.build_interpolators()
+
+    def __call__(self, elem, te, dens, tau):
+        interpolater_input=(np.log10(tau), (dens), np.log10(te))
+        bal=[]
+        for ion in range(self.rawdata[elem].shape[-1]):
+            bal.append(self.interpolaters[elem][ion](interpolater_input))
+        return np.power(10, np.array(bal)).T
+
+    def build_interpolators(self):
+        self.interpolaters={}
+
+        tau=self.axis['magical_tau']
+        ne=np.log10(self.axis['ne'])
+        te=np.log10(self.axis['te'])
+        for elem in self.rawdata:
+            self.interpolaters[elem]=[]
+            for ion in range(self.rawdata[elem].shape[-1]):
+                tmpbal=self.rawdata[elem][:, :, :, ion]
+                tmp_interp=RegularGridInterpolator((tau, ne, te), np.log(tmpbal.clip(1e-6)), bounds_error=False)
+                self.interpolaters[elem].append(tmp_interp)
+
+
+
 from baysar.lineshapes import gaussian
 from baysar.priors import gaussian_low_pass_cost, gaussian_high_pass_cost
 class BolometryChord:
-    def __init__(self, signal, error, plasma, probtype='likelihood'):
+    def __init__(self, signal, error, plasma, probtype='likelihood', fast=True):
         self.plasma=plasma
         self.signal=signal
         self.error=error
+
+        if fast:
+            self.fast=FastRunAdas406(rawdata=self.plasma.impurity_ion_bal, axis=self.plasma.adas_plasma_inputs)
+        else:
+            self.fast=None
 
         self.probtype=probtype
         self.check_init()
@@ -123,7 +169,7 @@ class BolometryChord:
         self.get_bolo_input_dict()
         te=self.plasma.plasma_state['electron_temperature']
         ne=self.plasma.plasma_state['electron_density']
-        self.plasma_power=plasma_power(self.bolo_input, te, ne)*np.diff(self.plasma.los).mean()
+        self.plasma_power=plasma_power(self.bolo_input, te, ne, fast=self.fast)*np.diff(self.plasma.los).mean()
         self.forward_model=self.plasma_power.sum()
 
     def get_bolo_input_dict(self):
