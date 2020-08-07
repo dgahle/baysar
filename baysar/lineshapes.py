@@ -489,7 +489,8 @@ class SimpleGaussianPlasma:
 
 
 class ReducedBowmanTProfile:
-    def __init__(self, x, log_peak_bounds, centre=None, dr_bounds=None, sigma_bounds=None):
+    def __init__(self, x, log_peak_bounds, centre=None, dr_bounds=None,
+                       sigma_bounds=None, asdex=False, **kwargs):
 
         self.x=x
         self.bounds=[log_peak_bounds]
@@ -497,10 +498,15 @@ class ReducedBowmanTProfile:
         self.dr_bounds=dr_bounds
         self.sigma_bounds=sigma_bounds
 
+        self.asdex=asdex
+        self.asdex_c2=1
+
         self.get_bounds()
 
     def __call__(self, theta):
-        if self.centre is None:
+        if self.centre is None and self.asdex:
+            A, c, sigma, f, A2=theta
+        elif self.centre is None:
             A, c, sigma, f=theta
         else:
             A, sigma, f=theta
@@ -508,7 +514,12 @@ class ReducedBowmanTProfile:
 
         # btheta=[np.power(10, A), c, np.power(10, sigma), self.q, self.nu, self.k, f, 0]
         btheta=[np.power(10, A), c, sigma, self.q, self.nu, self.k, f, 0]
-        return bowman_tee_distribution(self.x, btheta)
+        peak=bowman_tee_distribution(self.x, btheta)
+        if self.asdex:
+            b2theta=[np.power(10, A2), self.x.max()-self.asdex_c2, sigma, self.q, self.nu, self.k, f, 0]
+            peak+=bowman_tee_distribution(self.x, b2theta)
+
+        return peak
 
 
     def get_bounds(self):
@@ -525,10 +536,12 @@ class ReducedBowmanTProfile:
         else:
             self.bounds.append(self.sigma_bounds)
 
-        shape_bounds=[ [0, 1] ] # asymmetry bounds (scales logarythmically?)
-                      # [-3, -3]]
+        if self.asdex:
+            self.bounds.extend([[-2, 0], self.bounds[0]])
+        else:
+            self.bounds.append([0, 2])
 
-        self.bounds.extend(shape_bounds)
+
         self.number_of_variables=len(self.bounds)
 
         self.q=2. # gaussian setting
@@ -536,13 +549,13 @@ class ReducedBowmanTProfile:
         self.k=1.
 
 class ReducedBowmanTPlasma(object):
-    def __init__(self, x=None, sigma_bounds=[1, 10], dr_bounds=[-5, 5], bounds_ne=[11, 16], bounds_te=[-1, 2]):
+    def __init__(self, x=None, sigma_bounds=[1, 10], dr_bounds=[-5, 5], bounds_ne=[11, 16], bounds_te=[-1, 2], asdex=False):
         if x is None:
             self.x=np.linspace(-15, 35, 50)
         else:
             self.x=x
 
-        self.electron_density=ReducedBowmanTProfile(self.x, bounds_ne, centre=None, dr_bounds=dr_bounds, sigma_bounds=sigma_bounds)
+        self.electron_density=ReducedBowmanTProfile(self.x, bounds_ne, centre=None, dr_bounds=dr_bounds, sigma_bounds=sigma_bounds, asdex=asdex)
         self.electron_temperature=ReducedBowmanTProfile(self.x, bounds_te, centre=0, sigma_bounds=sigma_bounds)
 
 class LinearSeparatrix:
@@ -641,7 +654,7 @@ class EsymmtricProfile:
         self.number_of_variables=len(self.bounds)
 
 class EsymmtricCauchyPlasma:
-    def __init__(self, x=None, dr_bounds=[-5, 2], bounds_ne=[13, 15], bounds_te=[0., 1.7], ptype='cauchy'):
+    def __init__(self, x=None, dr_bounds=[-5, 2], bounds_ne=[13, 15], bounds_te=[0., 1.7], ptype='cauchy', **args):
         if x is None:
             self.x=np.linspace(-10, 25, 50)
         else:
