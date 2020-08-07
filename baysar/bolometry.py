@@ -5,7 +5,7 @@ adf11_dir="/home/adas/adas/adf11/"
 hydrogen_adf11_plt=adf11_dir+'plt12/plt12_h.dat'
 hydrogen_adf11_prb=adf11_dir+'prb12/prb12_h.dat'
 
-def radiated_power(n0, ni, ne, te, is1, adf11_plt=None, adf11_prb=None, yr=96):
+def radiated_power(n0, ni, ne, te, is1, adf11_plt=None, adf11_prb=None, elem='n', yr=96):
     # get adf11 if not passed
     if adf11_plt is None:
         adf11_plt=get_adf11(elem, yr, type='plt')
