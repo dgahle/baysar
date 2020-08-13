@@ -230,7 +230,7 @@ class PlasmaLine():
         tau_exc=np.logspace(-7, 2, 10)
         tau_rec=np.logspace(1, -4, 12)
         magical_tau=np.concatenate( ((np.log10(tau_exc)), (-np.log10(tau_rec)+4)) )
-        self.adas_plasma_inputs = {'te': np.logspace(-1, 2, 24), # TODO can we get the raw data instead?
+        self.adas_plasma_inputs = {'te': np.logspace(-1, 2, 48), # TODO can we get the raw data instead?
                                    'ne': np.logspace(12, 15, 15),
                                    'tau_exc': tau_exc,
                                    'tau_rec': tau_rec,
@@ -317,7 +317,7 @@ class PlasmaLine():
         bounds=self.append_bounds_from_functional(bounds, self.profile_function.electron_temperature)
 
         hydrogen_shape_tags = ['b-field', 'viewangle']
-        hydrogen_shape_bounds = [[0, 10], [0, 2]]
+        hydrogen_shape_bounds = [[0, 1], [0, 2]]
 
         if self.contains_hydrogen and self.zeeman:
             for tag, b in zip(hydrogen_shape_tags, hydrogen_shape_bounds):
@@ -326,26 +326,28 @@ class PlasmaLine():
                 bounds.append(b)
 
         impurity_tags = ['_dens', '_Ti', '_tau']
-        impurity_bounds = [[10, 15], [-1, 2], [-6, 6]]
+        impurity_bounds = [[11, 14], [-1, 2], [-6, 4]]
         # impurity_bounds = [[10, 15], [-2, 2], [-8, 2]] # including magical tau
         if self.include_doppler_shifts:
             impurity_tags.append('_velocity')
-            impurity_bounds.append([-50, 50])
+            impurity_bounds.append([-10, 10])
         for tag in impurity_tags:
             for s in self.species:
                 is_h_isotope = any([s[0:2]==h+'_' for h in self.hydrogen_isotopes])
-                if not (tag == '_tau' and is_h_isotope):
+                if (tag == '_tau' and is_h_isotope):
+                    sion = s+tag
+                    self.tags.append(sion)
+                    slice_lengths.append(1)
+                    bounds.append([-7, -3])
+                elif (tag == '_dens' and is_h_isotope):
+                    pass
+                else:
                     sion = s+tag
                     tmp_b = impurity_bounds[np.where([t in sion for t in impurity_tags])[0][0]]
 
                     self.tags.append(sion)
                     slice_lengths.append(1)
                     bounds.append(tmp_b)
-                else:
-                    sion = s+tag
-                    self.tags.append(sion)
-                    slice_lengths.append(1)
-                    bounds.append([-7, 0])
 
         if 'X_lines' in self.input_dict:
             for line in self.input_dict['X_lines']:
@@ -361,7 +363,7 @@ class PlasmaLine():
         if 'ion_resolved_velocity' in self.input_dict:
             velocity_resolved = self.input_dict['ion_resolved_velocity']
         else:
-            velocity_resolved = True
+            velocity_resolved = False
         # checking if Ti and tau is resolved
         res_not_apply = [not any([tag.endswith(t) for t in impurity_tags]) for tag in self.tags]
         velocity_resolution_check = [tag.endswith('_velocity') and velocity_resolved for tag in self.tags]
@@ -442,13 +444,18 @@ class PlasmaLine():
             self.plasma_state['main_ion_density']=self.plasma_state['electron_density']-self.total_impurity_electrons
 
         if self.contains_hydrogen:
+            species=self.hydrogen_species[0]
+            if self.reverse_electroneutrality:
+                self.plasma_state[species+'_dens']=self.plasma_state['main_ion_density'].copy()
+            else:
+                self.plasma_state[species+'_dens']=self.plasma_state['electron_density'].copy()
             self.update_neutral_profile()
 
     def update_neutral_profile(self):
         species=self.hydrogen_species[0]
         ne = self.plasma_state['electron_density']
         te = self.plasma_state['electron_temperature']
-        n0 = self.plasma_state[species+'_dens'][0]
+        n0 = self.plasma_state[species+'_dens'] # [0]
         n1 = self.plasma_state['main_ion_density']
 
         scd = read_adf11(file=self.scdfile, adf11type='scd', is1=1, index_1=-1, index_2=-1,
@@ -458,8 +465,11 @@ class PlasmaLine():
 
         # n0_time=self.plasma_state['n0_time']
         n0_time=self.plasma_state[species+'_tau'][0]
-        # n0+=(n1*ne*acd-n0*ne*scd)*n0_time
         n0-=n0*ne*scd*n0_time
+        if hasattr(self, 'recombining'):
+            if self.recombining is True:
+                n0+=n1*ne*acd*n0_time
+
         n0=n0.clip(0)
         self.plasma_state[species+'_dens']=n0
 
