@@ -206,6 +206,8 @@ class BaysarPosterior(object):
                 else: # neutrals
                     new_limit-=0.7
                 self.plasma.theta_bounds[self.plasma.slices[s]][0]=[new_limit-2, new_limit]
+            elif s.endswith('_dens'):
+                self.plasma.theta_bounds[self.plasma.slices[s]][0]=[0, 1.7]
 
     def random_start(self, order=1, flat=False):
         start = [np.mean(np.random.uniform(bounds[0], bounds[1], size=order)) for bounds in self.plasma.theta_bounds]
