@@ -21,7 +21,7 @@ class AntiprotonCost:
             return 0.
 
 class MainIonFractionCost:
-    def __init__(self, plasma, threshold=0.5, sigma=0.1):
+    def __init__(self, plasma, threshold=0.8, sigma=0.1):
         self.plasma=plasma
         self.threshold=threshold
         self.sigma=sigma
@@ -30,12 +30,16 @@ class MainIonFractionCost:
         ne=self.plasma.plasma_state['electron_density'].clip(1)
         n_ion=self.plasma.plasma_state['main_ion_density']
 
+        self.factor=ne.copy()
+        self.factor/=self.factor[np.argmax(n_ion)]
+        self.factor=self.factor.clip(0.3)
+
         n_ion_fraction=n_ion/ne
 
-        return sum([gaussian_high_pass_cost(f, self.threshold, self.sigma) for f in n_ion_fraction])
+        return sum([gaussian_high_pass_cost(f, k*self.threshold, self.sigma) for f, k in zip(n_ion_fraction, self.factor)])
 
 class StaticElectronPressureCost:
-    def __init__(self, plasma, threshold=1e15, sigma=0.1):
+    def __init__(self, plasma, threshold=5e15, sigma=0.1):
         self.plasma=plasma
         self.threshold=threshold
         self.sigma=sigma
@@ -47,8 +51,23 @@ class StaticElectronPressureCost:
 
         return sum([gaussian_low_pass_cost(f, 1, self.sigma) for f in pe/self.threshold])
 
+class ElectronDensityTDVCost:
+    def __init__(self, plasma, threshold=1, sigma=0.2):
+        self.plasma=plasma
+        self.threshold=threshold
+        self.sigma=sigma
+
+    def __call__(self):
+        ne_tdv=abs( np.diff(self.plasma.plasma_state['electron_density']) ) # .sum()
+        ni_tdv=abs( np.diff(self.plasma.plasma_state['main_ion_density']) ) # .sum()
+
+        mean=(ne_tdv-ni_tdv)/ni_tdv
+
+        # return sum([gaussian_low_pass_cost(f, 1, self.sigma) for f in mean/self.threshold])
+        return gaussian_low_pass_cost(mean.sum()/self.threshold, 1, self.sigma)
+
 class NeutralFractionCost:
-    def __init__(self, plasma, threshold=[5e-3, 2e-1], sigma=0.1, species='D_ADAS_0'):
+    def __init__(self, plasma, threshold=[5e-3, 2e-1], sigma=1, species='D_ADAS_0'):
         self.plasma=plasma
         self.threshold=threshold
         self.sigma=sigma
@@ -57,12 +76,13 @@ class NeutralFractionCost:
     def __call__(self):
         n0=self.plasma.plasma_state[self.species+'_dens'].clip(1)
         ne=self.plasma.plasma_state['electron_density']
-        f0=n0/ne.max()
+        f0=n0/ne # .max()
 
-        low_pass=sum([gaussian_low_pass_cost(f, 1, self.sigma) for f in f0/self.threshold[1]])
+        # low_pass=sum([gaussian_low_pass_cost(f, 1, self.sigma) for f in f0/self.threshold[1]])
         high_pass=sum([gaussian_high_pass_cost(f, 1, self.sigma) for f in f0/self.threshold[0]])
 
-        return low_pass+high_pass
+        # return low_pass+high_pass
+        return high_pass
 
 
 def curvature(profile):
@@ -246,11 +266,11 @@ class WallConditionsPrior:
         self.te_err=te_err
         self.ne_err=ne_err
 
-        default_error=.5
+        default_error=.2
         if self.te_err is None:
-            self.te_err=default_error*self.te_min
+            self.te_err=default_error
         if self.ne_err is None:
-            self.ne_err=default_error*self.ne_min
+            self.ne_err=default_error
 
     def __call__(self):
         te=self.plasma.plasma_state['electron_temperature']
@@ -258,9 +278,9 @@ class WallConditionsPrior:
 
         cost=0
         for t in [te[0], te[-1]]:
-            cost+=gaussian_low_pass_cost(t, self.te_min, self.te_err)
+            cost+=gaussian_low_pass_cost(t/self.te_min, 1, self.te_err)
         for n in [ne[0], ne[-1]]:
-            cost+=gaussian_low_pass_cost(n, self.ne_min, self.ne_err)
+            cost+=gaussian_low_pass_cost(n/self.ne_min, 1, self.ne_err)
 
         return cost
 
