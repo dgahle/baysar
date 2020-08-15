@@ -179,7 +179,6 @@ class ADAS406Lines(object):
     def __call__(self):
 
         n0 = self.plasma.plasma_state[self.species+'_dens']
-        ti = self.plasma.plasma_state[self.species+'_Ti']
         ne = self.plasma.plasma_state['electron_density'].flatten()
         te = self.plasma.plasma_state['electron_temperature'].flatten()
         tau = self.plasma.plasma_state[self.species+'_tau'][0]
@@ -228,7 +227,13 @@ class ADAS406Lines(object):
         self.ems_conc = n0 / self.ems_ne
         self.ems_te = dot(ems, te) / ems_sum
 
-        peak=self.linefunction(ti, ems_sum)
+        if self.plasma.thermalised:
+            self.ti=self.ems_te
+        else:
+            self.ti=self.plasma.plasma_state[self.species+'_Ti']
+
+
+        peak=self.linefunction(self.ti, ems_sum)
         if any(np.isnan(peak)):
             raise TypeError('NaNs in peaks of {} (tau={}, ems_sum={})'.format(self.line, np.log10(tau), ems_sum))
         if any(np.isinf(peak)):
@@ -383,7 +388,6 @@ class BalmerHydrogenLine(object):
 
     def __call__(self):
         n1 = self.plasma.plasma_state['main_ion_density']
-        ti = self.plasma.plasma_state[self.species+'_Ti']
         ne = self.plasma.plasma_state['electron_density']
         te = self.plasma.plasma_state['electron_temperature']
         n0 = self.plasma.plasma_state[self.species+'_dens'][0]
@@ -424,8 +428,16 @@ class BalmerHydrogenLine(object):
         self.ems_ne = dot(self.ems_profile, ne) / ems_sum
         self.ems_te = dot(self.ems_profile, te) / ems_sum
 
-        self.exc_lineshape_input = [self.exc_ne, self.exc_te, ti, bfield, viewangle]
-        self.rec_lineshape_input = [self.rec_ne, self.rec_te, ti, bfield, viewangle]
+        if self.plasma.thermalised:
+            self.exc_ti=self.exc_te
+            self.rec_ti=self.rec_te
+        else:
+            self.exc_ti=self.plasma.plasma_state[self.species+'_Ti']
+            self.rec_ti=self.plasma.plasma_state[self.species+'_Ti']
+
+
+        self.exc_lineshape_input = [self.exc_ne, self.exc_te, self.exc_ti, bfield, viewangle]
+        self.rec_lineshape_input = [self.rec_ne, self.rec_te, self.rec_ti, bfield, viewangle]
         self.exc_peak = nan_to_num( self.lineshape(self.exc_lineshape_input) )
         self.rec_peak = nan_to_num( self.lineshape(self.rec_lineshape_input) )
 

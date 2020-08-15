@@ -264,6 +264,7 @@ class PlasmaLine():
             self.include_doppler_shifts=True
 
         self.no_sample_neutrals=True
+        self.thermalised=True
 
         if 'zeeman' in self.input_dict:
             self.zeeman=self.input_dict['zeeman']
@@ -348,9 +349,16 @@ class PlasmaLine():
                 slice_lengths.append(1)
                 bounds.append(b)
 
-        impurity_tags = ['_dens', '_Ti', '_tau']
-        impurity_bounds = [[11, 14], [-1, 2], [-6, 4]]
-        # impurity_bounds = [[10, 15], [-2, 2], [-8, 2]] # including magical tau
+        n_bounds=[11, 14]
+        ti_bounds=[-1, 2]
+        tau_bounds=[-6, 4]
+        if self.thermalised:
+            impurity_tags = ['_dens', '_tau']
+            impurity_bounds = [n_bounds, tau_bounds]
+        else:
+            impurity_tags = ['_dens', '_Ti', '_tau']
+            impurity_bounds = [n_bounds, ti_bounds, tau_bounds]
+            # impurity_bounds = [[10, 15], [-2, 2], [-8, 2]] # including magical tau
         if self.include_doppler_shifts:
             impurity_tags.append('_velocity')
             impurity_bounds.append([-10, 10])
@@ -361,7 +369,7 @@ class PlasmaLine():
                     sion = s+tag
                     self.tags.append(sion)
                     slice_lengths.append(1)
-                    bounds.append([-8, -1]) # ([-7, -3])
+                    bounds.append([-6, -3]) # ([-7, -3])
                 elif (tag == '_dens' and is_h_isotope and self.no_sample_neutrals):
                     pass
                 else:
@@ -726,7 +734,7 @@ class PlasmaLine():
         upper_power=np.exp( self.impurity_raditive_power[species][upper_tau].ev(ne, te) )
         lower_power=np.exp( self.impurity_raditive_power[species][lower_tau].ev(ne, te) )
 
-        power=0.5*(upper_wieght*upper_power + upper_wieght*upper_power)
+        power=nz*0.5*(upper_wieght*upper_power + upper_wieght*upper_power)
         if 'power' not in self.plasma_state:
             self.plasma_state['power']={}
 
@@ -734,7 +742,7 @@ class PlasmaLine():
 
         power=np.trapz(power, self.los)
 
-        return nz*power
+        return power
 
     def total_power(self, extrapolate=False):
         power=0
