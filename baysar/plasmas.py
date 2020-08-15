@@ -477,6 +477,8 @@ class PlasmaLine():
                 self.plasma_state[species+'_dens']=self.plasma_state['main_ion_density'].copy()
             self.update_neutral_profile()
 
+        self.total_power()
+
     def update_neutral_profile(self):
         species=self.hydrogen_species[0]
         ne = self.plasma_state['electron_density']
@@ -715,14 +717,14 @@ class PlasmaLine():
 
         upper_index=self.adas_plasma_inputs['magical_tau'].searchsorted(tau)
         lower_index=upper_index-1
-        upper_tau=self.adas_plasma_inputs['magical_tau'][upper_index]
-        lower_tau=self.adas_plasma_inputs['magical_tau'][lower_index]
+        upper_tau=self.adas_plasma_inputs['magical_tau'][upper_index][0]
+        lower_tau=self.adas_plasma_inputs['magical_tau'][lower_index][0]
         dtau=abs(upper_tau-lower_tau)
         upper_wieght=abs(upper_tau-tau)/dtau
         lower_wieght=abs(lower_tau-tau)/dtau
 
-        upper_power=np.exp( self.impurity_raditive_power[species][upper_tau](ne, te) )
-        lower_power=np.exp( self.impurity_raditive_power[species][lower_tau](ne, te) )
+        upper_power=np.exp( self.impurity_raditive_power[species][upper_tau].ev(ne, te) )
+        lower_power=np.exp( self.impurity_raditive_power[species][lower_tau].ev(ne, te) )
 
         power=0.5*(upper_wieght*upper_power + upper_wieght*upper_power)
         if 'power' not in self.plasma_state:
@@ -745,12 +747,12 @@ class PlasmaLine():
         # get neutral power
         for species in self.hydrogen_species:
             n0=self.plasma_state[species+'_dens']
-            plt=read_adf11(file=hydrogen_adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
+            plt=read_adf11(file=hydrogen_adf11_plt, adf11type='plt', is1=1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
             exc_power=ne*n0*plt
             self.plasma_state['power'][species+'_exc']=exc_power
             power+=exc_power
 
-        prb=read_adf11(file=hydrogen_adf11_prb, adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
+        prb=read_adf11(file=hydrogen_adf11_prb, adf11type='prb', is1=1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
         rec_power=ne*ni*prb
         self.plasma_state['power'][self.hydrogen_species[0]+'_rec']=rec_power
         power+=rec_power
@@ -763,6 +765,8 @@ class PlasmaLine():
         # extrapolate impurity power
         if extrapolate:
             pass
+
+        self.plasma_state['power']['total']=power
 
         return power
 
