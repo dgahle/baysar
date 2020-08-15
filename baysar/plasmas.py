@@ -159,6 +159,27 @@ def get_meta(element, index=0):
 def kms_to_ms(velocity):
     return 1e3*velocity
 
+from adas import read_adf11, run_adas406
+
+adf11_dir="/home/adas/adas/adf11/"
+hydrogen_adf11_plt=adf11_dir+'plt12/plt12_h.dat'
+hydrogen_adf11_prb=adf11_dir+'prb12/prb12_h.dat'
+
+def get_adf11(elem, yr, type, adf11_dir=adf11_dir):
+    return adf11_dir+type+str(yr)+'/'+type+str(yr)+'_'+elem.lower()+'.dat'
+
+def radiated_power(n0, ni, ne, te, is1, adf11_plt=None, adf11_prb=None, elem='N', yr=96, all=False):
+    # get adf11 if not passed
+    if adf11_plt is None:
+        adf11_plt=get_adf11(elem, yr, type='plt')
+    if adf11_prb is None:
+        adf11_prb=get_adf11(elem, yr, type='prb')
+
+    plt=read_adf11(file=adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
+    prb=read_adf11(file=adf11_prb, adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
+
+    return (n0*ne*plt, ni*ne*prb)
+
 def print_plasma_state(plasma, posterior_components=None):
     # print headers
     print('ions |    dens    |    tau    |     v     |    Ti    |')
@@ -241,6 +262,8 @@ class PlasmaLine():
             self.include_doppler_shifts=self.input_dict['doppler_shifts']
         else:
             self.include_doppler_shifts=True
+
+        self.no_sample_neutrals=True
 
         if 'zeeman' in self.input_dict:
             self.zeeman=self.input_dict['zeeman']
@@ -338,8 +361,8 @@ class PlasmaLine():
                     sion = s+tag
                     self.tags.append(sion)
                     slice_lengths.append(1)
-                    bounds.append([-7, -3])
-                elif (tag == '_dens' and is_h_isotope):
+                    bounds.append([-8, -1]) # ([-7, -3])
+                elif (tag == '_dens' and is_h_isotope and self.no_sample_neutrals):
                     pass
                 else:
                     sion = s+tag
@@ -445,10 +468,13 @@ class PlasmaLine():
 
         if self.contains_hydrogen:
             species=self.hydrogen_species[0]
-            if self.reverse_electroneutrality:
+            # if self.reverse_electroneutrality:
+            #     self.plasma_state[species+'_dens']=self.plasma_state['main_ion_density'].copy()
+            # else:
+            #     self.plasma_state[species+'_dens']=self.plasma_state['electron_density'].copy()
+            # self.plasma_state[species+'_dens']=self.plasma_state['electron_density'].copy()
+            if not species+'_dens' in self.slices:
                 self.plasma_state[species+'_dens']=self.plasma_state['main_ion_density'].copy()
-            else:
-                self.plasma_state[species+'_dens']=self.plasma_state['electron_density'].copy()
             self.update_neutral_profile()
 
     def update_neutral_profile(self):
@@ -457,6 +483,9 @@ class PlasmaLine():
         te = self.plasma_state['electron_temperature']
         n0 = self.plasma_state[species+'_dens'] # [0]
         n1 = self.plasma_state['main_ion_density']
+
+        if not self.no_sample_neutrals:
+            n0 = n0[0]
 
         scd = read_adf11(file=self.scdfile, adf11type='scd', is1=1, index_1=-1, index_2=-1,
                          te=te, dens=ne, all=False, skipzero=False, unit_te='ev')
@@ -470,7 +499,7 @@ class PlasmaLine():
             if self.recombining is True:
                 n0+=n1*ne*acd*n0_time
 
-        n0=n0.clip(0)
+        n0=n0.clip(1)
         self.plasma_state[species+'_dens']=n0
 
         self.scd=scd
@@ -611,26 +640,33 @@ class PlasmaLine():
         tau_rec = self.adas_plasma_inputs['tau_rec']
 
         for elem in self.impurities:
+            adf11_plt=get_adf11(elem, yr=96, type='plt')
+            adf11_prb=get_adf11(elem, yr=96, type='prb')
             num_ions=get_number_of_ions(elem)
             shape=(len(tau_exc)+len(tau_rec), len(ne), len(te), num_ions)
+            shape_pow=(len(tau_exc)+len(tau_rec), len(ne), len(te), num_ions-1)
             # shape=(len(tau_exc), len(ne), len(te), num_ions)
             bal=np.zeros(shape)
-            power=[] # np.zeros(shape)
-            # if elem+'_meta_index' in self.input_dict:
-            #     meta_index=self.input_dict[elem+'_meta_index']
-            # else:
-            #     meta_index=0
-            # upstream transport
+            power=np.zeros(shape_pow)
             meta_index=0
             meta=get_meta(elem, index=meta_index)
-            print(elem, 'meta', meta)
             min_frac=1e-5
             for t_counter, t in enumerate(tau_exc):
                 print(t_counter, t)
                 with HiddenPrints():
                     out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
                 bal[t_counter, :, :, :]=out['ion'].clip(min_frac)
-                power.append(pow)
+                for ion in range(power.shape[-1]):
+                    is1=ion+1
+                    plt=read_adf11(file=adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+                    prb=read_adf11(file=adf11_prb, adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+
+                    ni=bal[t_counter, :, :, ion]
+                    nr=bal[t_counter, :, :, is1]
+                    tmppower=(ni*plt.T +nr*prb.T)
+                    tmppower*=self.adas_plasma_inputs['big_ne']
+                    power[t_counter, :, :, ion]=tmppower
+
             # downstream transport
             meta_index=-1
             meta=get_meta(elem, index=meta_index)
@@ -638,13 +674,97 @@ class PlasmaLine():
                 with HiddenPrints():
                     out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
                 bal[len(tau_exc)+t_counter, :, :, :]=out['ion'].clip(min_frac)
-                power.append(pow)
+                for ion in range(power.shape[-1]):
+                    is1=ion+1
+                    plt=read_adf11(file=adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+                    prb=read_adf11(file=adf11_prb, adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+
+                    ni=bal[t_counter, :, :, ion]
+                    nr=bal[t_counter, :, :, is1]
+                    tmppower=(ni*plt.T +nr*prb.T)
+                    tmppower*=self.adas_plasma_inputs['big_ne']
+                    power[t_counter, :, :, ion]=tmppower
 
             ion_bals.append((elem, bal))
             rad_power.append((elem, power))
 
         self.impurity_ion_bal=dict(ion_bals)
-        self.impurity_raditive_power=dict(rad_power)
+        self.impurity_raditive_power_dict=dict(rad_power)
+        self.build_impurity_raditive_power_splines()
+
+    def build_impurity_raditive_power_splines(self):
+        ne=self.adas_plasma_inputs['ne']
+        te=self.adas_plasma_inputs['te']
+        self.impurity_raditive_power={}
+        rad_power=[]
+        for elem in self.impurities:
+            for ion in range(self.impurity_raditive_power_dict[elem].shape[-1]):
+                elem_ion=elem+'_'+str( int(ion) )
+                for tnum, tau in enumerate(self.adas_plasma_inputs['magical_tau']):
+                    rates=self.impurity_raditive_power_dict[elem][tnum, :, :, ion]
+                    tmpspline=RectBivariateSpline(ne, te, np.log( rates.clip(1e-30) ))
+                    rad_power.append((tau, tmpspline))
+
+                self.impurity_raditive_power[elem_ion]=dict(rad_power)
+
+    def impurity_power(self, species):
+        nz=self.plasma_state[species+'_dens']
+        tau=np.log10(self.plasma_state[species+'_tau'])
+        ne=self.plasma_state['electron_density']
+        te=self.plasma_state['electron_temperature']
+
+        upper_index=self.adas_plasma_inputs['magical_tau'].searchsorted(tau)
+        lower_index=upper_index-1
+        upper_tau=self.adas_plasma_inputs['magical_tau'][upper_index]
+        lower_tau=self.adas_plasma_inputs['magical_tau'][lower_index]
+        dtau=abs(upper_tau-lower_tau)
+        upper_wieght=abs(upper_tau-tau)/dtau
+        lower_wieght=abs(lower_tau-tau)/dtau
+
+        upper_power=np.exp( self.impurity_raditive_power[species][upper_tau](ne, te) )
+        lower_power=np.exp( self.impurity_raditive_power[species][lower_tau](ne, te) )
+
+        power=0.5*(upper_wieght*upper_power + upper_wieght*upper_power)
+        if 'power' not in self.plasma_state:
+            self.plasma_state['power']={}
+
+        self.plasma_state['power'][species]=power.copy()
+
+        power=np.trapz(power, self.los)
+
+        return nz*power
+
+    def total_power(self, extrapolate=False):
+        power=0
+        ni=self.plasma_state['main_ion_density']
+        te=self.plasma_state['electron_temperature']
+        ne=self.plasma_state['electron_density']
+        if 'power' not in self.plasma_state:
+            self.plasma_state['power']={}
+
+        # get neutral power
+        for species in self.hydrogen_species:
+            n0=self.plasma_state[species+'_dens']
+            plt=read_adf11(file=hydrogen_adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
+            exc_power=ne*n0*plt
+            self.plasma_state['power'][species+'_exc']=exc_power
+            power+=exc_power
+
+        prb=read_adf11(file=hydrogen_adf11_prb, adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
+        rec_power=ne*ni*prb
+        self.plasma_state['power'][self.hydrogen_species[0]+'_rec']=rec_power
+        power+=rec_power
+
+        power=np.trapz(power, self.los)
+
+        # get impurity power
+        for species in self.impurity_species:
+            power+=self.impurity_power(species)
+        # extrapolate impurity power
+        if extrapolate:
+            pass
+
+        return power
 
     def build_impurity_tec(self, file, exc, rec, elem, ion):
 
