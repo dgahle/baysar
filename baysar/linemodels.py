@@ -429,8 +429,12 @@ class BalmerHydrogenLine(object):
         self.ems_te = dot(self.ems_profile, te) / ems_sum
 
         if self.plasma.thermalised:
-            self.exc_ti=self.exc_te
-            self.rec_ti=self.rec_te
+            if self.plasma.cold_neutrals:
+                self.exc_ti=0.01
+                self.rec_ti=0.01
+            else:
+                self.exc_ti=self.exc_te
+                self.rec_ti=self.rec_te
         else:
             self.exc_ti=self.plasma.plasma_state[self.species+'_Ti']
             self.rec_ti=self.plasma.plasma_state[self.species+'_Ti']

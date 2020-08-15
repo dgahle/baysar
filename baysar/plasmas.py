@@ -265,6 +265,7 @@ class PlasmaLine():
 
         self.no_sample_neutrals=True
         self.thermalised=True
+        self.cold_neutrals=True
 
         if 'zeeman' in self.input_dict:
             self.zeeman=self.input_dict['zeeman']
