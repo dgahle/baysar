@@ -5,15 +5,15 @@ adf11_dir="/home/adas/adas/adf11/"
 hydrogen_adf11_plt=adf11_dir+'plt12/plt12_h.dat'
 hydrogen_adf11_prb=adf11_dir+'prb12/prb12_h.dat'
 
-def radiated_power(n0, ni, ne, te, is1, adf11_plt=None, adf11_prb=None, elem='n', yr=96):
+def radiated_power(n0, ni, ne, te, is1, adf11_plt=None, adf11_prb=None, elem='N', yr=96, all=False):
     # get adf11 if not passed
     if adf11_plt is None:
         adf11_plt=get_adf11(elem, yr, type='plt')
     if adf11_prb is None:
         adf11_prb=get_adf11(elem, yr, type='prb')
 
-    plt=read_adf11(file=adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne) # , all=False, skipzero=False, unit_te='ev')
-    prb=read_adf11(file=adf11_prb, adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne) # , all=False, skipzero=False, unit_te='ev')
+    plt=read_adf11(file=adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
+    prb=read_adf11(file=adf11_prb, adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
 
     return (n0*ne*plt, ni*ne*prb)
 
@@ -127,11 +127,6 @@ class BolometryChord:
         self.signal=signal
         self.error=error
 
-        if fast:
-            self.fast=FastRunAdas406(rawdata=self.plasma.impurity_ion_bal, axis=self.plasma.adas_plasma_inputs)
-        else:
-            self.fast=None
-
         self.probtype=probtype
         self.check_init()
 
@@ -165,12 +160,7 @@ class BolometryChord:
         return prob
 
     def bolometry(self):
-        # build species dict
-        self.get_bolo_input_dict()
-        te=self.plasma.plasma_state['electron_temperature']
-        ne=self.plasma.plasma_state['electron_density']
-        self.plasma_power=plasma_power(self.bolo_input, te, ne, fast=self.fast)*np.diff(self.plasma.los).mean()
-        self.forward_model=self.plasma_power.sum()
+        self.forward_model=self.plasma.total_power() 
 
     def get_bolo_input_dict(self):
         self.bolo_input=get_bolo_input_dict(self.plasma)
