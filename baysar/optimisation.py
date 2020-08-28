@@ -534,8 +534,9 @@ def sample_around_theta(theta, num=11, pc=0.025, cal_pc=1e-4, cal_index=4):
 
     return s0
 
-def optimise(posterior, initial_population, pop_size=12, num_eras=3, generations=3, threads=12,
-             bounds=None, cal_index=None, perturbation=0.075, filename=None, maxiter=1000):
+def optimise(posterior, initial_population, pop_size=12, num_eras=3, generations=3,
+             threads=12, bounds=None, cal_index=None, perturbation=0.075, filename=None,
+             maxiter=1000, mutation_probability=0.7):
 
     big_out=[]
     print(' # gen s0 best prob: ', posterior(initial_population[0]))
@@ -547,7 +548,7 @@ def optimise(posterior, initial_population, pop_size=12, num_eras=3, generations
         # further informative print statements are produced by evolutionary_gradient_ascent
         out=evolutionary_gradient_ascent(posterior=posterior, initial_population=s0[:pop_size], generations=generations,
                                          threads=threads, maxiter=maxiter, perturbation=perturbation,
-                                         mutation_probability=0.5, bounds=bounds)
+                                         mutation_probability=mutation_probability, bounds=bounds)
         if era < (num_eras-1):
             s0=sample_around_theta(out['optimal_theta'], num=int(1e3), pc=0.1, cal_index=cal_index)
             while len(s0) < pop_size:
