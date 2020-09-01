@@ -71,7 +71,7 @@ class BaysarPosterior(object):
         if len(self.plasma.impurities)>0:
             self.posterior_components.append(AntiprotonCost(self.plasma))
             self.posterior_components.append(MainIonFractionCost(self.plasma))
-            self.posterior_components.append(TauPrior(self.plasma))
+            # self.posterior_components.append(TauPrior(self.plasma))
 
         self.posterior_components.extend(priors)
 
@@ -177,15 +177,25 @@ class BaysarPosterior(object):
                 cal_bounds=[-1, 1]
             else:
                 cal_bounds=[8, 15]
-            self.plasma.theta_bounds[self.plasma.slices['cal_'+str(chord_num)]]=cal_bounds
+
+            calems_tag='cal_'+str(chord_num)
+            if calems_tag in self.plasma.slices:
+                self.plasma.theta_bounds[self.plasma.slices[calems_tag]]=cal_bounds
+            else:
+                ...
 
             # build wavelenth bounds
             estimate_cwl=tmp_chord.x_data.mean()
             cwl_bounds=[estimate_cwl-dcwl, estimate_cwl+dcwl]
-            self.plasma.theta_bounds[self.plasma.slices['calwave_'+str(chord_num)]][0]=cwl_bounds
             estimate_disp=np.diff( tmp_chord.x_data ).mean()
             disp_bounds=[estimate_disp-ddisp, estimate_disp+ddisp]
-            self.plasma.theta_bounds[self.plasma.slices['calwave_'+str(chord_num)]][1]=disp_bounds
+
+            calwave_tag='calwave_'+str(chord_num)
+            if calwave_tag in self.plasma.slices:
+                self.plasma.theta_bounds[self.plasma.slices[calwave_tag]][0]=cwl_bounds
+                self.plasma.theta_bounds[self.plasma.slices[calwave_tag]][1]=disp_bounds
+            else:
+                ...
 
             # build background bounds
             estimate_background=tmp_chord.y_data_continuum.mean()
@@ -238,23 +248,29 @@ class BaysarPosterior(object):
             #     # np.log10(estemate_ems)-1+np.random.normal(0, 0.1)
         return np.array(start)
 
-    def _random_start(self, order=1, co=1):
+    def _random_start(self, order=1, co=1, spectra=False):
         seed=co*float(str(clock.time()).split('.')[-1])
         np.random.seed(int(seed))
         rs=[np.random.uniform(bounds[0], bounds[1], size=int(order)).mean() for bounds in self.plasma.theta_bounds]
         if not all(self.plasma.is_theta_within_bounds(rs)):
             raise ValueError("Error in rs shape. {} should be {}.".format(rs.shape, self.plasma.n_params))
-        return (self(rs), rs)
+        out=[self(rs), rs]
+        if spectra:
+            out.append(self.posterior_components[0].forward_model())
+        return out
 
-    def _random_sample(self, number=1, order=1, flat=False, num_processes=1):
+    def _random_sample(self, number=1, order=1, flat=False, spectra=False, num_processes=1):
         number=int(number)
         seed_coefficients=np.random.uniform(0, 1, number)
-        iterator=zip(np.zeros(number, dtype=int)+order, seed_coefficients)
+        iterator=zip(np.zeros(number, dtype=int)+order, seed_coefficients, [spectra for i in range(number)])
         with Pool(processes=num_processes) as pool:
             sample=pool.starmap(self._random_start, iterator) # outputs a list of outputs
 
         sample=sorted(sample, key=lambda x:-x[0])
-        return [s[1] for s in sample]
+        if spectra:
+            return [s[1:] for s in sample]
+        else:
+            return [s[1] for s in sample]
 
     def random_sample(self, number=1, order=1, flat=False):
         sample=[]

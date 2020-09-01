@@ -263,14 +263,25 @@ class PlasmaLine():
         else:
             self.include_doppler_shifts=True
 
-        self.no_sample_neutrals=True
-        self.thermalised=True
-        self.cold_neutrals=True
+        if 'calibrate_wavelength' in self.input_dict:
+            self.calibrate_wavelength=self.input_dict['calibrate_wavelength']
+        else:
+            self.calibrate_wavelength=False
+
+        if 'calibrate_intensity' in self.input_dict:
+            self.calibrate_intensity=self.input_dict['calibrate_intensity']
+        else:
+            self.calibrate_intensity=False
 
         if 'zeeman' in self.input_dict:
             self.zeeman=self.input_dict['zeeman']
         else:
             self.zeeman=False
+
+        self.no_sample_neutrals=True
+        self.thermalised=True
+        self.cold_neutrals=True
+        self.cold_ions=True
 
         self.get_impurities()
         self.get_impurity_ion_bal()
@@ -328,9 +339,11 @@ class PlasmaLine():
         calibration_tags=['cal', 'calwave', 'background']
         for calibration_tag, calibration_function in zip(calibration_tags, calibration_functions):
             for chord, chord_calibration_function in enumerate(calibration_function):
-                self.tags.append(calibration_tag+'_'+str(chord))
-                slice_lengths.append(chord_calibration_function.number_of_variables)
-                bounds=self.append_bounds_from_functional(bounds, chord_calibration_function)
+                checks=(calibration_tag is 'cal' and not self.calibrate_intensity) or (calibration_tag is 'calwave' and not self.calibrate_wavelength)
+                if not checks:
+                    self.tags.append(calibration_tag+'_'+str(chord))
+                    slice_lengths.append(chord_calibration_function.number_of_variables)
+                    bounds=self.append_bounds_from_functional(bounds, chord_calibration_function)
 
         self.tags.append('electron_density')
         self.tags.append('electron_temperature')
@@ -370,7 +383,7 @@ class PlasmaLine():
                     sion = s+tag
                     self.tags.append(sion)
                     slice_lengths.append(1)
-                    bounds.append([-6, -3]) # ([-7, -3])
+                    bounds.append([-6, -2]) # ([-7, -3])
                 elif (tag == '_dens' and is_h_isotope and self.no_sample_neutrals):
                     pass
                 else:
@@ -400,11 +413,13 @@ class PlasmaLine():
         res_not_apply = [not any([tag.endswith(t) for t in impurity_tags]) for tag in self.tags]
         velocity_resolution_check = [tag.endswith('_velocity') and velocity_resolved for tag in self.tags]
         ti_resolution_check = [tag.endswith('_Ti') and ti_resolved for tag in self.tags]
-        dens_tau_resolution_check = [(tag.endswith('_tau') or tag.endswith('_dens')) and tau_resolved for tag in self.tags]
+        dens_resolved=False
+        dens_resolution_check = [tag.endswith('_dens') and dens_resolved for tag in self.tags]
+        tau_resolution_check = [tag.endswith('_tau') and tau_resolved for tag in self.tags]
         # actually making dictionary to have flags for which parameters are resoloved
-        zip_list=[self.tags, velocity_resolution_check, ti_resolution_check, dens_tau_resolution_check, res_not_apply]
-        for tag, is_v_r, is_ti_r, is_tau_r, rna in zip(*zip_list):
-            self.is_resolved[tag] = is_v_r or is_ti_r or is_tau_r or rna
+        zip_list=[self.tags, velocity_resolution_check, ti_resolution_check, dens_resolution_check, tau_resolution_check, res_not_apply]
+        for tag, is_v_r, is_ti_r, is_dens_r, is_tau_r, rna in zip(*zip_list):
+            self.is_resolved[tag] = is_v_r or is_ti_r or is_dens_r or is_tau_r or rna
 
         # building the slices to map BaySAR input to model parameters
         slices = []
@@ -464,6 +479,7 @@ class PlasmaLine():
                 self.plasma_state[p]=values
         else:
             self.plasma_state = collections.OrderedDict(plasma_state)
+
 
         if not hasattr(self, 'reverse_electroneutrality'):
             self.reverse_electroneutrality=False
@@ -557,10 +573,17 @@ class PlasmaLine():
 
 
     def assign_theta_functions(self):
-        theta_functions = [self.cal_functions, self.calwave_functions, self.background_functions,
-                           [self.profile_function.electron_density, self.profile_function.electron_temperature],
-                           [power10 for tag in self.tags if any([(tag.startswith(s+'_') and ('_velocity' not in tag)) for s in self.species])]
-                           ]
+        theta_functions=[]
+        if self.calibrate_intensity:
+            theta_functions.append(self.cal_functions)
+        if self.calibrate_wavelength:
+            theta_functions.append(self.calwave_functions)
+
+
+        theta_functions.extend([  self.background_functions,
+                                  [self.profile_function.electron_density, self.profile_function.electron_temperature],
+                                  [power10 for tag in self.tags if any([(tag.startswith(s+'_') and ('_velocity' not in tag)) for s in self.species])]
+                               ])
 
         if self.include_doppler_shifts:
             theta_functions.append([kms_to_ms for tag in self.tags if '_velocity' in tag])
