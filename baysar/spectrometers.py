@@ -60,12 +60,12 @@ class SpectrometerChord(object):
         self.dot=False
 
         if not self.plasma.calibrate_intensity:
-            self.plasma.plasma_state['cal_'+str(self.chord_number)]=[1.]
+            self.plasma.plasma_state['cal_'+str(self.chord_number)]=np.array([1.])
 
         if not self.plasma.calibrate_wavelength:
             estimate_cwl=self.x_data.mean()
             estimate_disp=np.diff( self.x_data ).mean()
-            self.plasma.plasma_state['calwave_'+str(self.chord_number)]=[estimate_cwl, estimate_disp]
+            self.plasma.plasma_state['calwave_'+str(self.chord_number)]=np.array([estimate_cwl, estimate_disp])
 
         self.get_error()
         self.get_lines()
