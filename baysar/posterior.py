@@ -248,15 +248,23 @@ class BaysarPosterior(object):
             #     # np.log10(estemate_ems)-1+np.random.normal(0, 0.1)
         return np.array(start)
 
-    def _random_start(self, order=1, co=1, spectra=False):
+    def _random_start(self, order=1, co=1, spectra=False, inform=True):
         seed=co*float(str(clock.time()).split('.')[-1])
         np.random.seed(int(seed))
         rs=[np.random.uniform(bounds[0], bounds[1], size=int(order)).mean() for bounds in self.plasma.theta_bounds]
+
+        if inform:
+            chords=[chord for chord in self.posterior_components if type(chord)==SpectrometerChord]
+            for chord in chords:
+                rs[self.plasma.slices['background_'+str(chord.chord_number)].start]=np.log10(np.mean(chord.y_data_continuum))
+
         if not all(self.plasma.is_theta_within_bounds(rs)):
             raise ValueError("Error in rs shape. {} should be {}.".format(rs.shape, self.plasma.n_params))
+
         out=[self(rs), rs]
         if spectra:
             out.append(self.posterior_components[0].forward_model())
+
         return out
 
     def _random_sample(self, number=1, order=1, flat=False, spectra=False, num_processes=1):
