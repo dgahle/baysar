@@ -153,7 +153,7 @@ def check_input_dict_input(wavelength_axis, experimental_emission, instrument_fu
 def make_input_dict(wavelength_axis, experimental_emission, instrument_function,
                     emission_constant, noise_region,
                     species, line_data=adas_line_data, mystery_lines=None,
-                    refine=0.01, ion_resolved_temperatures=False, ion_resolved_tau=False):
+                    refine=0.01, ion_resolved_temperatures=False, ion_resolved_tau=False, **kwargs):
 
     '''
     Returns a dict that is needed to instantiate both BaysarPosterior and SpectrometerChord classes.
@@ -187,7 +187,7 @@ def make_input_dict(wavelength_axis, experimental_emission, instrument_function,
                            emission_constant, noise_region, species, ions, line_data, mystery_lines,
                            refine, ion_resolved_temperatures, ion_resolved_tau)
 
-    input_dict = {}
+    input_dict = {**kwargs}
 
     input_dict['species'] = []
 
