@@ -67,7 +67,7 @@ class ElectronDensityTDVCost:
         return gaussian_low_pass_cost(mean.sum()/self.threshold, 1, self.sigma)
 
 class NeutralFractionCost:
-    def __init__(self, plasma, threshold=[5e-3, 2e-1], sigma=1, species='D_ADAS_0'):
+    def __init__(self, plasma, threshold=[5e-3, 2e-1], sigma=0.1, species='D_ADAS_0'):
         self.plasma=plasma
         self.threshold=threshold
         self.sigma=sigma
@@ -322,6 +322,34 @@ class BowmanTeePrior:
         cost+=gaussian_low_pass_cost(sigma_diff, 0., self.sigma_err)
         # cost+=gaussian_low_pass_cost(nu_diff, 0., self.nu_err)
         return cost
+
+from numpy import diff
+
+class ChargeStateOrderPrior:
+    def __init__(self, posterior, scale=10):
+        self.posterior=posterior
+        self.scale=scale
+        self.impurity_indicies_dict={}
+        for i, l in enumerate(self.posterior.posterior_components[0].lines):
+            if 'species' in l.__dict__:
+                if l.species in self.posterior.plasma.impurity_species and not l.species in self.impurity_indicies_dict:
+                    self.impurity_indicies_dict[l.species]=i
+
+        print(self.impurity_indicies_dict)
+
+    def __call__(self):
+        self.history=[]
+        tmp=self.impurity_indicies_dict
+        tmp1=[]
+        cost=0
+        for elem in self.posterior.plasma.impurities:
+            for ion in sorted([ion for ion in tmp if ion.startswith(elem)], key=lambda x: tmp[x]):
+                tmp1.append(self.posterior.posterior_components[0].lines[tmp[ion]].ems_te)
+                self.history.append((elem, ion, tmp1[-1]))
+            cost+=sum([min(0, t) for t in diff(tmp1)])
+
+        return cost*self.scale
+
 
 from numpy import zeros, diag, eye, log, exp, subtract
 from scipy.linalg import solve_banded, solve_triangular, ldl

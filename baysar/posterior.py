@@ -66,7 +66,8 @@ class BaysarPosterior(object):
         self.posterior_components.append(StaticElectronPressureCost(self.plasma))
         # neutral fraction priors
         if self.plasma.contains_hydrogen:
-            self.posterior_components.append(NeutralFractionCost(self.plasma))
+            n0_prior=NeutralFractionCost(self.plasma, species=self.plasma.hydrogen_species[0])
+            self.posterior_components.append(n0_prior)
         # priors for impure plasmas (could use better phrasing)
         if len(self.plasma.impurities)>0:
             self.posterior_components.append(AntiprotonCost(self.plasma))
