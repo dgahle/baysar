@@ -278,10 +278,25 @@ class PlasmaLine():
         else:
             self.zeeman=False
 
-        self.no_sample_neutrals=True
-        self.thermalised=True
-        self.cold_neutrals=True
-        self.cold_ions=True
+        if 'no_sample_neutrals' in self.input_dict:
+            self.no_sample_neutrals=self.input_dict['zeeman']
+        else:
+            self.no_sample_neutrals=True
+
+        if 'thermalised' in self.input_dict:
+            self.thermalised=self.input_dict['thermalised']
+        else:
+            self.thermalised=True
+
+        if 'cold_neutrals' in self.input_dict:
+            self.cold_neutrals=self.input_dict['cold_neutrals']
+        else:
+            self.cold_neutrals=True
+
+        if 'cold_ions' in self.input_dict:
+            self.cold_ions=self.input_dict['cold_ions']
+        else:
+            self.cold_ions=True
 
         self.get_impurities()
         self.get_impurity_ion_bal()
@@ -383,7 +398,7 @@ class PlasmaLine():
                     sion = s+tag
                     self.tags.append(sion)
                     slice_lengths.append(1)
-                    bounds.append([-6, -2]) # ([-7, -3])
+                    bounds.append([-10, -2]) # ([-7, -3])
                 elif (tag == '_dens' and is_h_isotope and self.no_sample_neutrals):
                     pass
                 else:
