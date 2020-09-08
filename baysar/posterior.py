@@ -257,6 +257,15 @@ class BaysarPosterior(object):
             chords=[chord for chord in self.posterior_components if type(chord)==SpectrometerChord]
             for chord in chords:
                 rs[self.plasma.slices['background_'+str(chord.chord_number)].start]=np.log10(np.mean(chord.y_data_continuum))
+            # improved start for mystery_lines
+            for xline in [line for line in chord.lines if type(line)==XLine]:
+                estemate_ems=0
+                half_width_wave=np.diff(chord.x_data)[0]*2
+                for cwl, fraction in zip(xline.line.cwl, xline.line.fractions):
+                    _, y=clip_data(chord.x_data, chord.y_data, [cwl-half_width_wave, cwl+half_width_wave])
+                    estemate_ems+=sum(y*fraction)
+                rs[self.plasma.slices[xline.line_tag].start]=np.log10(estemate_ems)
+                # start[self.plasma.slices[xline.line_tag].start]=np.random.uniform(*(np.log10(estemate_ems)-1+1e1*half_width_range))
 
         if not all(self.plasma.is_theta_within_bounds(rs)):
             raise ValueError("Error in rs shape. {} should be {}.".format(rs.shape, self.plasma.n_params))
