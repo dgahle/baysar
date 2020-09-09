@@ -792,19 +792,20 @@ class PlasmaLine():
             self.plasma_state['power']={}
 
         # get neutral power
-        for species in self.hydrogen_species:
-            n0=self.plasma_state[species+'_dens']
-            plt=read_adf11(file=hydrogen_adf11_plt, adf11type='plt', is1=1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
-            exc_power=ne*n0*plt
-            self.plasma_state['power'][species+'_exc']=exc_power
-            power+=exc_power
+        if self.contains_hydrogen:
+            for species in self.hydrogen_species:
+                n0=self.plasma_state[species+'_dens']
+                plt=read_adf11(file=hydrogen_adf11_plt, adf11type='plt', is1=1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
+                exc_power=ne*n0*plt
+                self.plasma_state['power'][species+'_exc']=exc_power
+                power+=exc_power
 
-        prb=read_adf11(file=hydrogen_adf11_prb, adf11type='prb', is1=1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
-        rec_power=ne*ni*prb
-        self.plasma_state['power'][self.hydrogen_species[0]+'_rec']=rec_power
-        power+=rec_power
+            prb=read_adf11(file=hydrogen_adf11_prb, adf11type='prb', is1=1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
+            rec_power=ne*ni*prb
+            self.plasma_state['power'][self.hydrogen_species[0]+'_rec']=rec_power
+            power+=rec_power
 
-        power=np.trapz(power, self.los)
+            power=np.trapz(power, self.los)
 
         # get impurity power
         for species in self.impurity_species:
