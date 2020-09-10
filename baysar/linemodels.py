@@ -213,19 +213,17 @@ class ADAS406Lines(object):
         self.tec406_lhs=tec406_lhs
         self.tec406_lhs=tec406_lhs
         # tec = np.exp(tec406_lhs*i_weight+tec406_rhs*j_weight)
+        self.tec_weights=[i_weight, j_weight]
         tec = np.exp(tec406_lhs)*i_weight + np.exp(tec406_rhs)*j_weight
         tec = np.nan_to_num(tec) # todo - why? and fix!
         self.tec=tec
 
-        ems = n0 * tec * self.length_per_sr
-        ems = ems.clip(min=1)
-        ems_sum = ems.sum()
+        self.emission_profile = (n0*tec).clip(1) # why do negatives occur here?
+        self.emission_fitted=np.trapz(self.emission_profile, x=self.plasma.los) / (4*pi)
 
-        self.emission_profile = ems
-
-        self.ems_ne = dot(ems, ne) / ems_sum
+        self.ems_ne = dot(self.emission_profile , ne) / self.emission_profile.sum()
         self.ems_conc = n0 / self.ems_ne
-        self.ems_te = dot(ems, te) / ems_sum
+        self.ems_te = dot(self.emission_profile , te) / self.emission_profile.sum()
 
         if self.plasma.cold_ions:
             self.plasma.plasma_state[self.species+'_Ti']=0.01
@@ -234,13 +232,11 @@ class ADAS406Lines(object):
 
         self.ti=self.plasma.plasma_state[self.species+'_Ti']
 
-
-
-        peak=self.linefunction(self.ti, ems_sum)
+        peak=self.linefunction(self.ti, self.emission_fitted )
         if any(np.isnan(peak)):
-            raise TypeError('NaNs in peaks of {} (tau={}, ems_sum={})'.format(self.line, np.log10(tau), ems_sum))
+            raise TypeError('NaNs in peaks of {} (tau={}, ems_sum={})'.format(self.line, np.log10(tau), self.emission_fitted ))
         if any(np.isinf(peak)):
-            raise TypeError('infs in peaks of {} (tau={}, ems_sum={}))'.format(self.line, np.log10(tau), ems_sum))
+            raise TypeError('infs in peaks of {} (tau={}, ems_sum={}))'.format(self.line, np.log10(tau), self.emission_fitted ))
 
         return peak
 
@@ -376,15 +372,10 @@ class BalmerHydrogenLine(object):
         self.los = self.plasma.profile_function.electron_density.x
         self.dl_per_sr = diff(self.los)[0] / (4*pi)
 
-        # self.reduced_wavelength, self.reduced_wavelength_indicies = \
-        #     reduce_wavelength(wavelengths, cwl, half_range, return_indicies=True, power2=False)
-
         self.len_wavelengths = len(self.wavelengths)
         self.exc_pec = self.plasma.hydrogen_pecs[self.line+'_exc']
         self.rec_pec = self.plasma.hydrogen_pecs[self.line+'_rec']
 
-        # self.lineshape = HydrogenLineShape(self.cwl, self.reduced_wavelength, self.n_upper, n_lower=self.n_lower,
-        #                                    atomic_mass=self.atomic_mass, zeeman=zeeman)
         self.lineshape = HydrogenLineShape(self.cwl, self.wavelengths, self.n_upper, n_lower=self.n_lower,
                                            atomic_mass=self.atomic_mass, zeeman=zeeman)
 
@@ -411,26 +402,25 @@ class BalmerHydrogenLine(object):
         rec_pec = np.exp(self.rec_pec(ne, te))
         exc_pec = np.exp(self.exc_pec(ne, te))
         # set minimum number of photons to be 1
-        self.rec_profile = (n1*ne*self.dl_per_sr*rec_pec).clip(1.)
-        self.exc_profile = (n0*ne*self.dl_per_sr*nan_to_num(exc_pec)).clip(1.)
+        self.rec_profile = n1.clip(1)*ne*rec_pec # need to exclude antiprotons from emission!
+        self.exc_profile = n0*ne*exc_pec
 
-        rec_sum = self.rec_profile.sum()
-        exc_sum = self.exc_profile.sum()
-        ems_sum = rec_sum + exc_sum
+        rec_sum = np.trapz(self.rec_profile, x=self.plasma.los) / (4*pi)
+        exc_sum = np.trapz(self.exc_profile, x=self.plasma.los) / (4*pi)
+        self.ems_profile = self.rec_profile + self.exc_profile
+        self.emission_fitted=np.trapz(self.ems_profile, x=self.plasma.los) / (4*pi)
 
         # used for the emission lineshape calculation
-        self.ems_profile = self.rec_profile + self.exc_profile
+        self.exc_ne = dot(self.exc_profile, ne) / self.exc_profile.sum()
+        self.exc_te = dot(self.exc_profile, te) / self.exc_profile.sum()
 
-        self.exc_ne = dot(self.exc_profile, ne) / exc_sum
-        self.exc_te = dot(self.exc_profile, te) / exc_sum
-
-        self.rec_ne = dot(self.rec_profile, ne) / rec_sum
-        self.rec_te = dot(self.rec_profile, te) / rec_sum
+        self.rec_ne = dot(self.rec_profile, ne) / self.rec_profile.sum()
+        self.rec_te = dot(self.rec_profile, te) / self.rec_profile.sum()
 
         # just because there are nice to have
-        self.f_rec = rec_sum / ems_sum
-        self.ems_ne = dot(self.ems_profile, ne) / ems_sum
-        self.ems_te = dot(self.ems_profile, te) / ems_sum
+        self.f_rec = rec_sum / self.emission_fitted
+        self.ems_ne = dot(self.ems_profile, ne) / self.emission_fitted
+        self.ems_te = dot(self.ems_profile, te) / self.emission_fitted
 
         if self.plasma.cold_neutrals:
             self.plasma.plasma_state[self.species+'_Ti']=0.01
@@ -449,9 +439,6 @@ class BalmerHydrogenLine(object):
         self.rec_peak = nan_to_num( self.lineshape(self.rec_lineshape_input) )
 
         return self.rec_peak*rec_sum + self.exc_peak*exc_sum
-
-        # tmpline=DopplerLine(self.cwl, wavelengths=self.wavelengths, atomic_mass=2, fractions=None, half_range=50)
-        # return tmpline(ti, 1)*(rec_sum + exc_sum)
 
 
 
