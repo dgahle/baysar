@@ -227,10 +227,13 @@ class ADAS406Lines(object):
         self.ems_conc = n0 / self.ems_ne
         self.ems_te = dot(ems, te) / ems_sum
 
-        if self.plasma.thermalised:
-            self.ti=self.ems_te
-        else:
-            self.ti=self.plasma.plasma_state[self.species+'_Ti']
+        if self.plasma.cold_ions:
+            self.plasma.plasma_state[self.species+'_Ti']=0.01
+        elif self.plasma.thermalised:
+            self.plasma.plasma_state[self.species+'_Ti']=self.ems_te
+
+        self.ti=self.plasma.plasma_state[self.species+'_Ti']
+
 
 
         peak=self.linefunction(self.ti, ems_sum)
@@ -394,12 +397,13 @@ class BalmerHydrogenLine(object):
 
         self.n0_profile=n0
 
-        if self.plasma.zeeman:
-            bfield = self.plasma.plasma_state['b-field']
-            viewangle = self.plasma.plasma_state['viewangle']
-        else:
-            bfield=0
-            viewangle=0
+        if not self.plasma.zeeman:
+            self.plasma.plasma_state['b-field']=0
+            self.plasma.plasma_state['viewangle']=0
+
+        bfield = self.plasma.plasma_state['b-field']
+        viewangle = self.plasma.plasma_state['viewangle']
+
         if self.species+'_velocity' in self.plasma.plasma_state:
             self.velocity=self.plasma.plasma_state[self.species+'_velocity']
             doppler_shift_BalmerHydrogenLine(self, self.velocity)
@@ -428,16 +432,15 @@ class BalmerHydrogenLine(object):
         self.ems_ne = dot(self.ems_profile, ne) / ems_sum
         self.ems_te = dot(self.ems_profile, te) / ems_sum
 
-        if self.plasma.thermalised:
-            if self.plasma.cold_neutrals:
-                self.exc_ti=0.01
-                self.rec_ti=0.01
-            else:
-                self.exc_ti=self.exc_te
-                self.rec_ti=self.rec_te
-        else:
-            self.exc_ti=self.plasma.plasma_state[self.species+'_Ti']
-            self.rec_ti=self.plasma.plasma_state[self.species+'_Ti']
+        if self.plasma.cold_neutrals:
+            self.plasma.plasma_state[self.species+'_Ti']=0.01
+        elif self.plasma.thermalised:
+            thermalised_ti=(1-self.frec)*self.exc_te+self.frec*self.rec_te
+            self.plasma.plasma_state[self.species+'_Ti']=thermalised_ti
+
+
+        self.exc_ti=self.plasma.plasma_state[self.species+'_Ti']
+        self.rec_ti=self.plasma.plasma_state[self.species+'_Ti']
 
 
         self.exc_lineshape_input = [self.exc_ne, self.exc_te, self.exc_ti, bfield, viewangle]
