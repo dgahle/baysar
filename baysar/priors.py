@@ -350,6 +350,33 @@ class ChargeStateOrderPrior:
 
         return cost*self.scale
 
+class WavelengthCalibrationPrior:
+    def __init__(self, plasma, mean, std):
+        self.plasma_state=plasma.plasma_state
+        self.mean=mean
+        self.std=std
+
+    def __call__(self):
+        cost=0
+        if 'calwave_0' in self.plasma_state:
+            cwl, disp=self.plasma_state['calwave_0']
+            cost+=-0.5*np.square((self.mean-self.plasma_state['calwave_0'])/self.std)
+
+        return cost.sum()
+
+
+class CalibrationPrior:
+    def __init__(self, plasma):
+        self.plasma_state=plasma.plasma_state
+        self.mean=1
+        self.std=0.2
+
+    def __call__(self):
+        cost=0
+        if 'cal_0' in self.plasma_state:
+            cost+=-0.5*np.square((self.mean-self.plasma_state['cal_0'])/self.std)
+
+        return cost.sum()
 
 from numpy import zeros, diag, eye, log, exp, subtract
 from scipy.linalg import solve_banded, solve_triangular, ldl
