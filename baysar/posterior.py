@@ -13,7 +13,10 @@ import concurrent.futures
 from multiprocessing import Pool
 # from baysar.priors import gaussian_low_pass_cost
 
-from baysar.priors import CurvatureCost, AntiprotonCost, MainIonFractionCost, NeutralFractionCost, StaticElectronPressureCost, TauPrior, gaussian_low_pass_cost, gaussian_high_pass_cost
+from baysar.priors import CurvatureCost, AntiprotonCost, MainIonFractionCost
+from baysar.priors import NeutralFractionCost, StaticElectronPressureCost, TauPrior
+from baysar.priors import gaussian_low_pass_cost, gaussian_high_pass_cost
+from baysar.priors import WavelengthCalibrationPrior, CalibrationPrior
 from baysar.plasmas import PlasmaLine
 from baysar.spectrometers import SpectrometerChord
 from baysar.tools import within, progressbar, clip_data
@@ -62,6 +65,13 @@ class BaysarPosterior(object):
         if self.curvature is not None:
             self.posterior_components.append(CurvatureCost(self.plasma, self.curvature))
 
+        # calibration priors
+        inmean=self.posterior_components[0].x_data.mean()
+        indisp=np.diff(self.posterior_components[0].x_data).mean()
+        # calwave_prior=WavelengthCalibrationPrior(self.plasma, [inmean, indisp], [2, indisp*0.1])
+        # cal_prior=CalibrationPrior(self.plasma)
+        self.posterior_components.append(WavelengthCalibrationPrior(self.plasma, [inmean, indisp], [3*indisp, indisp*0.1]))
+        self.posterior_components.append(CalibrationPrior(self.plasma))
         # static Pe priors
         self.posterior_components.append(StaticElectronPressureCost(self.plasma))
         # neutral fraction priors
@@ -167,7 +177,7 @@ class BaysarPosterior(object):
             chord = SpectrometerChord(plasma=self.plasma, refine=refine, chord_number=chord_num)
             self.posterior_components.append(chord)
 
-    def set_sensible_bounds(self, dcwl=2, ddisp=0.02):
+    def set_sensible_bounds(self, dcwl=2, ddisp=0.005):
         import numpy as np
         # chordal bounds
         for chord_num in range(self.plasma.num_chords):
