@@ -230,7 +230,8 @@ class PlasmaLine():
     handler which handles the interface between the sampler and the forward model.
     """
 
-    def __init__(self, input_dict, profile_function=None, cal_functions=None, calwave_functions=None, background_functions=None):
+    def __init__(self, input_dict, profile_function=None, cal_functions=None, calwave_functions=None,
+                       calint_func_functions=None, background_functions=None):
 
         'input_dict input has been checked if created with make_input_dict'
 
@@ -312,7 +313,8 @@ class PlasmaLine():
         if self.contains_hydrogen:
             self.get_hydrogen_pecs()
 
-        self.get_theta_functions(profile_function, cal_functions, calwave_functions, background_functions)
+        self.get_theta_functions(profile_function, cal_functions, calwave_functions,
+                                 calint_func_functions, background_functions)
         self.build_tags_slices_and_bounds()
 
         self.los = self.profile_function.electron_density.x
@@ -358,11 +360,14 @@ class PlasmaLine():
         bounds = []
         slice_lengths = []
         calibration_functions=[self.cal_functions, self.calwave_functions,
-                               self.calintfun_functions,self.background_functions]
+                               self.calintfun_functions, self.background_functions]
         calibration_tags=['cal', 'calwave', 'calint_func', 'background']
         for calibration_tag, calibration_function in zip(calibration_tags, calibration_functions):
             for chord, chord_calibration_function in enumerate(calibration_function):
-                checks=(calibration_tag is 'cal' and not self.calibrate_intensity) or (calibration_tag is 'calwave' and not self.calibrate_wavelength)
+                int_check=(calibration_tag is 'cal' and not self.calibrate_intensity)
+                wave_check=(calibration_tag is 'calwave' and not self.calibrate_wavelength)
+                intfun_check=(calibration_tag is 'calint_func' and not self.calibrate_instrument_function)
+                checks=any([int_check, wave_check, intfun_check])
                 if not checks:
                     self.tags.append(calibration_tag+'_'+str(chord))
                     slice_lengths.append(chord_calibration_function.number_of_variables)
