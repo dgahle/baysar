@@ -145,7 +145,8 @@ class SpectrometerChord(object):
         calibrating_instrument_function=cif0 and cif1
         if calibrating_instrument_function:
             int_func_cal_theta=self.plasma.plasma_state['calint_func_'+str(self.chord_number)]
-            instrument_function_last_used=self.instrument_function_calibrator.calibrate(self.x_data_fm, *int_func_cal_theta)
+            pixels=np.arange( len(self.x_data_fm) )
+            instrument_function_last_used=self.instrument_function_calibrator.calibrate(pixels, *int_func_cal_theta)
         else:
             instrument_function_last_used=self.instrument_function_fm
 
