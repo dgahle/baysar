@@ -53,6 +53,7 @@ class SpectrometerChord(object):
         self.noise_region=self.input_dict['noise_region'][self.chord_number]
         self.a_cal=self.input_dict['emission_constant'][self.chord_number]
         self.anomalous_error=0.
+        self.instrument_function_calibrator=self.plasma.calintfun_functions[self.chord_number]
         self.wavelength_calibrator=self.plasma.calwave_functions[self.chord_number]
         self.radiance_calibrator=self.plasma.cal_functions[self.chord_number]
         self.background_function=self.plasma.background_functions[self.chord_number]
@@ -144,7 +145,7 @@ class SpectrometerChord(object):
         calibrating_instrument_function=cif0 and cif1
         if calibrating_instrument_function:
             int_func_cal_theta=self.plasma.plasma_state['calint_func_'+str(self.chord_number)]
-            instrument_function_last_used=self.instrument_function_calibrator.calibrate(int_func_cal_theta)
+            instrument_function_last_used=self.instrument_function_calibrator.calibrate(self.x_data_fm, *int_func_cal_theta)
         else:
             instrument_function_last_used=self.instrument_function_fm
 

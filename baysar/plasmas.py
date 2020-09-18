@@ -75,13 +75,19 @@ def calibrate(num_pixels, theta):
 
 # from baysar.tools import calibrate
 # instrument_function_calibrator.calibrate(int_func_cal_theta)
+from baysar.lineshapes import gaussian_norm
 class GaussianInstrumentFunctionCalibratior:
-    def __init__(self, bounds=[[-2, 2]]):
+    def __init__(self, bounds=[[-1, 1]]):
         self.number_of_variables=1
         self.bounds=bounds
 
-    def __call__():
-        pass
+    def __call__(self, theta):
+        return [np.power(10, t) for t in theta]
+
+    def calibrate(self, x, fwhm):
+        instrument_function=gaussian_norm(x, x.mean(), fwhm, 1)
+        return instrument_function
+
 
 # tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[-5, 5])
 class default_calwave_function(object):
@@ -99,10 +105,6 @@ class default_calwave_function(object):
         return args[0]
 
     def calibrate(self, x, theta):
-        # cwl, dispersion=theta
-        # num=len(x)
-        # cwl-=(num*dispersion)/2
-        # return cwl+np.arange(num)*dispersion
         return calibrate(len(x), theta)
 
 class default_cal_function(object):
@@ -273,6 +275,11 @@ class PlasmaLine():
         else:
             self.calibrate_intensity=False
 
+        if 'calibrate_instrument_function' in self.input_dict:
+            self.calibrate_instrument_function=self.input_dict['calibrate_instrument_function']
+        else:
+            self.calibrate_instrument_function=False
+
         if 'zeeman' in self.input_dict:
             self.zeeman=self.input_dict['zeeman']
         else:
@@ -350,8 +357,9 @@ class PlasmaLine():
         self.tags = []
         bounds = []
         slice_lengths = []
-        calibration_functions=[self.cal_functions, self.calwave_functions, self.background_functions]
-        calibration_tags=['cal', 'calwave', 'background']
+        calibration_functions=[self.cal_functions, self.calwave_functions,
+                               self.calintfun_functions,self.background_functions]
+        calibration_tags=['cal', 'calwave', 'calint_func', 'background']
         for calibration_tag, calibration_function in zip(calibration_tags, calibration_functions):
             for chord, chord_calibration_function in enumerate(calibration_function):
                 checks=(calibration_tag is 'cal' and not self.calibrate_intensity) or (calibration_tag is 'calwave' and not self.calibrate_wavelength)
@@ -552,7 +560,7 @@ class PlasmaLine():
     def print_plasma_state(self):
         print_plasma_state(self)
 
-    def get_theta_functions(self, profile_function=None, cal_functions=None, calwave_functions=None, background_functions=None):
+    def get_theta_functions(self, profile_function=None, cal_functions=None, calwave_functions=None, calintfun_functions=None, background_functions=None):
 
         if profile_function is None:
             x = np.linspace(1, 9, 5)
@@ -566,26 +574,30 @@ class PlasmaLine():
             self.profile_function = profile_function
 
         # tmp_func = arb_obj_single_log_input(number_of_variables=1, bounds=[-5, 20], power=10)
-        tmp_func=default_cal_function()
         if cal_functions is None:
+            tmp_func=default_cal_function()
             self.cal_functions = [tmp_func for num in np.arange(self.num_chords)]
         else:
             self.cal_functions = cal_functions
 
-        tmp_func=default_background_function()
         if background_functions is None:
+            tmp_func=default_background_function()
             self.background_functions = [tmp_func for num in np.arange(self.num_chords)]
         else:
             self.background_functions = background_functions
 
         # tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[-5, 5])
-        tmp_func=default_calwave_function()
         if calwave_functions is None:
+            tmp_func=default_calwave_function()
             self.calwave_functions = [tmp_func for num in np.arange(self.num_chords)]
         else:
             self.calwave_functions = calwave_functions
 
-
+        if calintfun_functions is None:
+            tmp_func=GaussianInstrumentFunctionCalibratior()
+            self.calintfun_functions = [tmp_func for num in np.arange(self.num_chords)]
+        else:
+            self.calintfun_functions = calwave_functions
 
     def assign_theta_functions(self):
         theta_functions=[]
@@ -593,7 +605,8 @@ class PlasmaLine():
             theta_functions.append(self.cal_functions)
         if self.calibrate_wavelength:
             theta_functions.append(self.calwave_functions)
-
+        if self.calibrate_instrument_function:
+            theta_functions.append(self.calintfun_functions)
 
         theta_functions.extend([  self.background_functions,
                                   [self.profile_function.electron_density, self.profile_function.electron_temperature],
