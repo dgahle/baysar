@@ -15,8 +15,9 @@ from multiprocessing import Pool
 
 from baysar.priors import CurvatureCost, AntiprotonCost, MainIonFractionCost
 from baysar.priors import NeutralFractionCost, StaticElectronPressureCost, TauPrior
+from baysar.priors import ChargeStateOrderPrior
+from baysar.priors import WavelengthCalibrationPrior, CalibrationPrior, GaussianInstrumentFunctionPrior
 from baysar.priors import gaussian_low_pass_cost, gaussian_high_pass_cost
-from baysar.priors import WavelengthCalibrationPrior, CalibrationPrior
 from baysar.plasmas import PlasmaLine
 from baysar.spectrometers import SpectrometerChord
 from baysar.tools import within, progressbar, clip_data
@@ -66,12 +67,16 @@ class BaysarPosterior(object):
             self.posterior_components.append(CurvatureCost(self.plasma, self.curvature))
 
         # calibration priors
-        inmean=self.posterior_components[0].x_data.mean()
-        indisp=np.diff(self.posterior_components[0].x_data).mean()
-        # calwave_prior=WavelengthCalibrationPrior(self.plasma, [inmean, indisp], [2, indisp*0.1])
-        # cal_prior=CalibrationPrior(self.plasma)
-        self.posterior_components.append(WavelengthCalibrationPrior(self.plasma, [inmean, indisp], [3*indisp, indisp*0.1]))
-        self.posterior_components.append(CalibrationPrior(self.plasma))
+        if self.plasma.calibrate_wavelength:
+            inmean=self.posterior_components[0].x_data.mean()
+            indisp=np.diff(self.posterior_components[0].x_data).mean()
+            wcp_input=[self.plasma, [inmean, indisp], [2*indisp, indisp*0.05]]
+            self.posterior_components.append(WavelengthCalibrationPrior(*wcp_input))
+        if self.plasma.calibrate_intensity:
+            self.posterior_components.append(CalibrationPrior(self.plasma))
+        if self.plasma.calibrate_instrument_function:
+            self.posterior_components.append(GaussianInstrumentFunctionPrior(self.plasma.plasma_state))
+
         # static Pe priors
         self.posterior_components.append(StaticElectronPressureCost(self.plasma))
         # neutral fraction priors
@@ -82,6 +87,7 @@ class BaysarPosterior(object):
         if len(self.plasma.impurities)>0:
             self.posterior_components.append(AntiprotonCost(self.plasma))
             self.posterior_components.append(MainIonFractionCost(self.plasma))
+            self.posterior_components.append(ChargeStateOrderPrior(self))
             # self.posterior_components.append(TauPrior(self.plasma))
 
         self.posterior_components.extend(priors)
@@ -185,7 +191,7 @@ class BaysarPosterior(object):
             # build new bounds
             # build cal bounds
             if tmp_chord.y_data.max() > 1e6:
-                cal_bounds=[-1, 1]
+                cal_bounds=[-0.3, 0.3]
             else:
                 cal_bounds=[8, 15]
 

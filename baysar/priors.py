@@ -378,6 +378,16 @@ class CalibrationPrior:
 
         return cost.sum()
 
+class GaussianInstrumentFunctionPrior:
+    def __init__(self, plasma, mean=0.8, std=0.1):
+        self.plasma_state=plasma
+        self.mean=mean
+        self.std=std
+
+    def __call__(self):
+        cost=-0.5*np.square( (self.plasma_state['calint_func_0'][0]-self.mean)/self.std )
+        return cost
+
 from numpy import zeros, diag, eye, log, exp, subtract
 from scipy.linalg import solve_banded, solve_triangular, ldl
 
