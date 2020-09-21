@@ -168,11 +168,18 @@ adas_line_data['N'] = {'atomic_mass': 14, 'atomic_charge': 7,
 
 adas_line_data['N']['0'] = {'default_pecs': adas_root+'adf15/pec96#n/pec96#n_pju#n1.dat'}
 
-wavelengths = [1200.00, 1160.20, 1134.70, 964.40, 959.70]
-jj_fraction = [[1], [1], [1], [1], [1]]
-pecs = [None, None, None, None, None]
-exc_block = [1, 2, 3, 4, 5]
-rec_block = [51, 52, 53, 54, 55]
+adf15_96_vsu_n0="/home/adas/adas/adf15/pec96#n/pec96#n_vsu#n0.dat"
+
+wavelengths = [1200.00, 1160.20, 1134.70, 964.40, 959.70,
+               4109.95, 4137.6]
+jj_fraction = [[1], [1], [1], [1], [1],
+               [1], [1]]
+pecs = [None, None, None, None, None,
+        adf15_96_vsu_n0, adf15_96_vsu_n0]
+exc_block = [1, 2, 3, 4, 5,
+             8, 4]
+rec_block = [51, 52, 53, 54, 55,
+             26, 22]
 
 adas_line_data['N']['0'] = add_ion_info(adas_line_data['N']['0'], wavelengths, jj_fraction,
                                         pecs, exc_block, rec_block)
