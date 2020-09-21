@@ -419,8 +419,8 @@ class BalmerHydrogenLine(object):
 
         # just because there are nice to have
         self.f_rec = rec_sum / self.emission_fitted
-        self.ems_ne = dot(self.ems_profile, ne) / self.emission_profile.sum()
-        self.ems_te = dot(self.ems_profile, te) / self.emission_profile.sum()
+        self.ems_ne = dot(self.ems_profile, ne) / self.ems_profile.sum()
+        self.ems_te = dot(self.ems_profile, te) / self.ems_profile.sum()
 
         if self.plasma.cold_neutrals:
             self.plasma.plasma_state[self.species+'_Ti']=0.01
