@@ -259,7 +259,9 @@ def bowman_tee_distribution(x, theta):
     z=np.power(abs(z), q)
     p1=np.power(1+z/nu, -(nu+1)*0.5)
 
-    return A*p1+b
+    peak=A*p1+b
+
+    return peak
 
 def bowman_tee_distribution_centred(x, theta):
     A, sigma0, q, nu, k, f, b = theta
@@ -490,7 +492,7 @@ class SimpleGaussianPlasma:
 
 class ReducedBowmanTProfile:
     def __init__(self, x, log_peak_bounds, centre=None, dr_bounds=None,
-                       sigma_bounds=None, asdex=False, **kwargs):
+                       sigma_bounds=None, asdex=False, asdex_c2=0.7, **kwargs):
 
         self.x=x
         self.bounds=[log_peak_bounds]
@@ -499,25 +501,38 @@ class ReducedBowmanTProfile:
         self.sigma_bounds=sigma_bounds
 
         self.asdex=asdex
-        self.asdex_c2=1
+        self.asdex_c2=asdex_c2
 
         self.get_bounds()
 
     def __call__(self, theta):
-        if self.centre is None and self.asdex:
-            A, c, sigma, f, A2=theta
-        elif self.centre is None:
-            A, c, sigma, f=theta
+        # if self.centre is None and self.asdex:
+        #     A, c, sigma, f, B=theta
+        # elif self.centre is None:
+        #     A, c, sigma, f=theta
+        # else:
+        #     A, sigma, f=theta
+        #     c=self.centre
+        if self.asdex:
+            if self.centre is None:
+                A, c, sigma, f, B=theta
+            else:
+                A, sigma, f, B=theta
+                c=self.centre
         else:
-            A, sigma, f=theta
-            c=self.centre
+            if self.centre is None:
+                A, c, sigma, f=theta
+            else:
+                A, sigma, f=theta
+                c=self.centre
 
         # btheta=[np.power(10, A), c, np.power(10, sigma), self.q, self.nu, self.k, f, 0]
-        btheta=[np.power(10, A), c, sigma, self.q, self.nu, self.k, f, 0]
-        peak=bowman_tee_distribution(self.x, btheta)
         if self.asdex:
-            b2theta=[np.power(10, A2), self.x.max()-self.asdex_c2, sigma, self.q, self.nu, self.k, f, 0]
-            peak+=bowman_tee_distribution(self.x, b2theta)
+            btheta=[np.power(10, A)-np.power(10, B), c, sigma, self.q, self.nu, self.k, f, np.power(10, B)]
+        else:
+            btheta=[np.power(10, A), c, sigma, self.q, self.nu, self.k, f, 0]
+
+        peak=bowman_tee_distribution(self.x, btheta)
 
         return peak
 
@@ -556,7 +571,7 @@ class ReducedBowmanTPlasma(object):
             self.x=x
 
         self.electron_density=ReducedBowmanTProfile(self.x, bounds_ne, centre=None, dr_bounds=dr_bounds, sigma_bounds=sigma_bounds, asdex=asdex)
-        self.electron_temperature=ReducedBowmanTProfile(self.x, bounds_te, centre=0, sigma_bounds=sigma_bounds)
+        self.electron_temperature=ReducedBowmanTProfile(self.x, bounds_te, centre=0, sigma_bounds=sigma_bounds, asdex=asdex)
 
 class LinearSeparatrix:
     def __init__(self, x, peak_bounds=[0, 1.7]):
