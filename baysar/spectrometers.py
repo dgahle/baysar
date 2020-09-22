@@ -45,8 +45,8 @@ class SpectrometerChord(object):
         else:
             self.x_data_fm=self.x_data
 
-        self.dispersion=diff(self.x_data).mean()
-        self.dispersion_fm=diff(self.x_data_fm).mean()
+        self.dispersion=diff(self.x_data)[0]
+        self.dispersion_fm=diff(self.x_data_fm)[0]
         self.dispersion_ratios=self.dispersion_fm/self.dispersion
         self.instrument_function=self.input_dict['instrument_function'][self.chord_number]
 
@@ -74,37 +74,18 @@ class SpectrometerChord(object):
         print("Built SpectrometerChord no. %d"%(chord_number))
 
     def __call__(self, *args, **kwargs):
-        """
-        Return the likelihood (logP) of the spectral fit.
-        """
-
         return self.likelihood()
 
     def get_noise_spectra(self):
-        """
-        Clips out the spectral region to calculate the random noise.
-        """
-
         self.x_data_continuum, self.y_data_continuum=clip_data(self.x_data, self.y_data, self.noise_region)
 
     def get_error(self, fake_cal=False):
-        """
-        Calculates the error on the spectra, accounting for random and shot noise
-        as well as "anomalous" error which can be used to "blackout" areas of
-        spectra that the user does not want to fit.
-        """
-
         self.get_noise_spectra()
         self.error = sqrt(   square(std(self.y_data_continuum)) +  # noise
                                         self.y_data * self.a_cal +  # poisson
                               self.anomalous_error*self.y_data    ) # annomolus
 
     def likelihood(self, cauchy=True):
-        """
-        Calculates the likelihood (logP) of the spectral fit being forward
-        modelled.
-        """
-
         fm = self.forward_model() # * calibration_fractor
         if len(fm) != len(self.y_data):
             raise ValueError('len(fm) != len(self.y_data)')
@@ -140,15 +121,6 @@ class SpectrometerChord(object):
         return likeli
 
     def forward_model(self):
-        """
-        The forward_model evaluates the lines models of the SpecrtometerChord and
-        applies the synthetic diagnostic applied in the diagnostic.
-
-        The is synthetic diagnostic is defined by a wavelength and intensity
-        calibration as well as the background level and instrument function.
-
-        Spectra outputs in units of  ph/cm2/sr/A/s.
-        """
         spectra = sum([l().flatten() for l in self.lines]) # TODO: This is what takes all the time?
 
         background_theta=self.plasma.plasma_state['background_'+str(self.chord_number)]
@@ -221,11 +193,6 @@ class SpectrometerChord(object):
 
 
     def get_lines(self):
-        """
-        Builds and collects line objects that make up the atomic transitions and
-        mystery lines being modelling in the spectral region.
-        """
-
         # print("Getting line objects")
         self.lines = []
         for species in self.input_dict['species']:
@@ -258,16 +225,9 @@ class SpectrometerChord(object):
                     self.lines.append(line)
 
     def int_func_sparce_matrix(self):
-        """
-        Pixel normalises and centres the instrument function and makes copies in
-        the resolution of the synthetic diagnostic, forward model and sparse
-        matrix form of the instrument function.
-        """
-
         # check that the instrument_function is centred and normalised
         self.instrument_function=centre_peak(self.instrument_function)
-        self.instrument_function/=np.trapz(self.instrument_function, np.arange(*self.instrument_function.shape))
-        # self.instrument_function=np.true_divide(self.instrument_function, self.instrument_function.sum())
+        self.instrument_function=np.true_divide(self.instrument_function, self.instrument_function.sum())
         # todo - set default to refine=1 not None
         len_instrument_function = len(self.instrument_function)
 
@@ -280,15 +240,11 @@ class SpectrometerChord(object):
 
         int_func_interp = interp1d(self.instrument_function_x, self.instrument_function, bounds_error=False, fill_value=0.)
 
-        if_x_fm_res=self.dispersion_ratios*np.diff(self.instrument_function_x).mean()
+        if_x_fm_res=self.dispersion_ratios*np.diff(self.instrument_function_x)[0]
         self.instrument_function_x_fm=arange(self.instrument_function_x.min(),
-                                             self.instrument_function_x.max(), if_x_fm_res)
+                                            self.instrument_function_x.max(), if_x_fm_res)
         self.instrument_function_fm=int_func_interp(self.instrument_function_x_fm)
-        # self.instrument_function_x_fm=np.arange(*self.instrument_function_x_fm.shape)
-        # self.instrument_function_fm/=np.trapz(self.instrument_function_fm, self.instrument_function_x_fm)
-        # pixel normalise instrument function fm
-        self.instrument_function_fm/=np.trapz(self.instrument_function_fm,
-                                              np.arange(*self.instrument_function_x_fm.shape))
+        self.instrument_function_fm/=np.trapz(self.instrument_function_fm, self.instrument_function_x_fm)
         self.instrument_function_fm=centre_peak(self.instrument_function_fm)
 
         fine_axis = linspace(0, len(self.x_data), len(self.x_data_fm))
@@ -297,6 +253,11 @@ class SpectrometerChord(object):
         for i in progressbar(np.arange(len(self.x_data)), 'Building convolution matrix: ', 30):
             matrix_i = int_func_interp(fine_axis - i)
             matrix[i, :] = matrix_i / sum(matrix_i)
+            # k = sum(matrix_i)
+            # if k == 0:
+            #     matrix[i, :] = matrix_i
+            # else:
+            #     matrix[i, :] = matrix_i / k
 
         self.instrument_function_matrix=sparse.csc_matrix(matrix) # *self.dispersion_ratios)
         self.instrument_function_matrix.eliminate_zeros()
@@ -304,12 +265,6 @@ class SpectrometerChord(object):
 
     @classmethod
     def check_instrument_function_matrix(self, matrix, accuracy=7):
-        """
-        Checks that the dot prduct with the instrument function matrix does
-        not change the centre of mass of an arrray. Default to an accuracy
-        of 7 decimal places.
-        """
-
         tmp0=np.ones(matrix.todense().shape[0])
         tmp1=np.ones(matrix.todense().shape[1])
         target=center_of_mass(tmp0)[0]
