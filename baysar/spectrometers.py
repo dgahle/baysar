@@ -74,18 +74,37 @@ class SpectrometerChord(object):
         print("Built SpectrometerChord no. %d"%(chord_number))
 
     def __call__(self, *args, **kwargs):
+        """
+        Return the likelihood (logP) of the spectral fit.
+        """
+
         return self.likelihood()
 
     def get_noise_spectra(self):
+        """
+        Clips out the spectral region to calculate the random noise.
+        """
+
         self.x_data_continuum, self.y_data_continuum=clip_data(self.x_data, self.y_data, self.noise_region)
 
     def get_error(self, fake_cal=False):
+        """
+        Calculates the error on the spectra, accounting for random and shot noise
+        as well as "anomalous" error which can be used to "blackout" areas of
+        spectra that the user does not want to fit.
+        """
+
         self.get_noise_spectra()
         self.error = sqrt(   square(std(self.y_data_continuum)) +  # noise
                                         self.y_data * self.a_cal +  # poisson
                               self.anomalous_error*self.y_data    ) # annomolus
 
     def likelihood(self, cauchy=True):
+        """
+        Calculates the likelihood (logP) of the spectral fit being forward
+        modelled.
+        """
+
         fm = self.forward_model() # * calibration_fractor
         if len(fm) != len(self.y_data):
             raise ValueError('len(fm) != len(self.y_data)')
@@ -121,6 +140,15 @@ class SpectrometerChord(object):
         return likeli
 
     def forward_model(self):
+        """
+        The forward_model evaluates the lines models of the SpecrtometerChord and
+        applies the synthetic diagnostic applied in the diagnostic.
+
+        The is synthetic diagnostic is defined by a wavelength and intensity
+        calibration as well as the background level and instrument function.
+
+        Spectra outputs in units of  ph/cm2/sr/A/s.
+        """
         spectra = sum([l().flatten() for l in self.lines]) # TODO: This is what takes all the time?
 
         background_theta=self.plasma.plasma_state['background_'+str(self.chord_number)]
@@ -193,6 +221,11 @@ class SpectrometerChord(object):
 
 
     def get_lines(self):
+        """
+        Builds and collects line objects that make up the atomic transitions and
+        mystery lines being modelling in the spectral region.
+        """
+
         # print("Getting line objects")
         self.lines = []
         for species in self.input_dict['species']:
@@ -225,6 +258,12 @@ class SpectrometerChord(object):
                     self.lines.append(line)
 
     def int_func_sparce_matrix(self):
+        """
+        Pixel normalises and centres the instrument function and makes copies in
+        the resolution of the synthetic diagnostic, forward model and sparse
+        matrix form of the instrument function.
+        """
+
         # check that the instrument_function is centred and normalised
         self.instrument_function=centre_peak(self.instrument_function)
         self.instrument_function=np.true_divide(self.instrument_function, self.instrument_function.sum())
@@ -265,6 +304,12 @@ class SpectrometerChord(object):
 
     @classmethod
     def check_instrument_function_matrix(self, matrix, accuracy=7):
+        """
+        Checks that the dot prduct with the instrument function matrix does
+        not change the centre of mass of an arrray. Default to an accuracy
+        of 7 decimal places.
+        """
+        
         tmp0=np.ones(matrix.todense().shape[0])
         tmp1=np.ones(matrix.todense().shape[1])
         target=center_of_mass(tmp0)[0]
