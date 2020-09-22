@@ -362,7 +362,7 @@ class BaysarPosterior(object):
 
         return s0
 
-    def optimise(self, pop_size=12, num_eras=3, generations=3, threads=12, initial_population=None,
+    def optimise(self, pop_size=12, num_eras=1, generations=3, threads=12, initial_population=None,
                  random_sample_size=int(1e3), random_order=3, perturbation=None, filename=None,
                  plot=False, plasma_reference=None, return_out=True, maxiter=100):
 
