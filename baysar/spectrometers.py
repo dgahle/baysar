@@ -45,8 +45,8 @@ class SpectrometerChord(object):
         else:
             self.x_data_fm=self.x_data
 
-        self.dispersion=diff(self.x_data).mean()
-        self.dispersion_fm=diff(self.x_data_fm).mean()
+        self.dispersion=diff(self.x_data)[0]
+        self.dispersion_fm=diff(self.x_data_fm)[0]
         self.dispersion_ratios=self.dispersion_fm/self.dispersion
         self.instrument_function=self.input_dict['instrument_function'][self.chord_number]
 
@@ -179,9 +179,8 @@ class SpectrometerChord(object):
             instrument_function_last_used=self.instrument_function_fm
 
         # TODO - BIG SAVINGS BOGOF
-        # TODO - centre of mass check?
+        self.preconv_integral=np.trapz(spectra, self.x_data_fm)
         if self.dot:
-            spectra*=self.dispersion_ratios
             spectra=self.instrument_function_matrix.dot(spectra)
 
             if len(self.x_data)!=len(spectra):
@@ -190,7 +189,6 @@ class SpectrometerChord(object):
             self.x_data_wavecal_interp=self.x_data
         else:
             spectra=fftconvolve(spectra, instrument_function_last_used, mode='same')
-            spectra*=self.dispersion_ratios
 
             if len(self.x_data_fm)!=len(spectra):
                 raise ValueError("len(self.x_data_fm)!=len(spectra). Lengths are {} and {}".format(len(self.x_data_fm), len(spectra)))
@@ -200,6 +198,11 @@ class SpectrometerChord(object):
                 raise TypeError("spectra contains NaNs")
 
             self.x_data_wavecal_interp=self.x_data_fm
+
+        self.postconv_integral=np.trapz(spectra, self.x_data_wavecal_interp)
+        self.conv_integral_ratio=self.postconv_integral/self.preconv_integral
+        if not np.isclose(self.conv_integral_ratio, 1):
+            raise ValueError(f"Area not conserved in convolution! ({self.conv_integral_ratio}!=1), {self.dispersion_ratios}, {instrument_function_last_used.sum()}")
 
         spectra+=background
         self.prewavecal_spectra=spectra
@@ -266,8 +269,7 @@ class SpectrometerChord(object):
 
         # check that the instrument_function is centred and normalised
         self.instrument_function=centre_peak(self.instrument_function)
-        self.instrument_function/=np.trapz(self.instrument_function, np.arange(*self.instrument_function.shape))
-        # self.instrument_function=np.true_divide(self.instrument_function, self.instrument_function.sum())
+        self.instrument_function=np.true_divide(self.instrument_function, self.instrument_function.sum())
         # todo - set default to refine=1 not None
         len_instrument_function = len(self.instrument_function)
 
@@ -280,15 +282,12 @@ class SpectrometerChord(object):
 
         int_func_interp = interp1d(self.instrument_function_x, self.instrument_function, bounds_error=False, fill_value=0.)
 
-        if_x_fm_res=self.dispersion_ratios*np.diff(self.instrument_function_x).mean()
+        if_x_fm_res=self.dispersion_ratios*np.diff(self.instrument_function_x)[0]
         self.instrument_function_x_fm=arange(self.instrument_function_x.min(),
-                                             self.instrument_function_x.max(), if_x_fm_res)
+                                            self.instrument_function_x.max(), if_x_fm_res)
         self.instrument_function_fm=int_func_interp(self.instrument_function_x_fm)
-        # self.instrument_function_x_fm=np.arange(*self.instrument_function_x_fm.shape)
         # self.instrument_function_fm/=np.trapz(self.instrument_function_fm, self.instrument_function_x_fm)
-        # pixel normalise instrument function fm
-        self.instrument_function_fm/=np.trapz(self.instrument_function_fm,
-                                              np.arange(*self.instrument_function_x_fm.shape))
+        self.instrument_function_fm=np.true_divide(self.instrument_function_fm, self.instrument_function_fm.sum())
         self.instrument_function_fm=centre_peak(self.instrument_function_fm)
 
         fine_axis = linspace(0, len(self.x_data), len(self.x_data_fm))
