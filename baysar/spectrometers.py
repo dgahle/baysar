@@ -292,11 +292,6 @@ class SpectrometerChord(object):
         for i in progressbar(np.arange(len(self.x_data)), 'Building convolution matrix: ', 30):
             matrix_i = int_func_interp(fine_axis - i)
             matrix[i, :] = matrix_i / sum(matrix_i)
-            # k = sum(matrix_i)
-            # if k == 0:
-            #     matrix[i, :] = matrix_i
-            # else:
-            #     matrix[i, :] = matrix_i / k
 
         self.instrument_function_matrix=sparse.csc_matrix(matrix) # *self.dispersion_ratios)
         self.instrument_function_matrix.eliminate_zeros()
@@ -309,7 +304,7 @@ class SpectrometerChord(object):
         not change the centre of mass of an arrray. Default to an accuracy
         of 7 decimal places.
         """
-        
+
         tmp0=np.ones(matrix.todense().shape[0])
         tmp1=np.ones(matrix.todense().shape[1])
         target=center_of_mass(tmp0)[0]
