@@ -188,7 +188,7 @@ class SpectrometerChord(object):
 
             self.x_data_wavecal_interp=self.x_data
         else:
-            spectra=fftconvolve(spectra, instrument_function_last_used, mode='same')
+            spectra=fftconvolve(spectra, instrument_function_last_used, mode='same').clip(spectra.min())
 
             if len(self.x_data_fm)!=len(spectra):
                 raise ValueError("len(self.x_data_fm)!=len(spectra). Lengths are {} and {}".format(len(self.x_data_fm), len(spectra)))
@@ -201,7 +201,7 @@ class SpectrometerChord(object):
 
         self.postconv_integral=np.trapz(spectra, self.x_data_wavecal_interp)
         self.conv_integral_ratio=self.postconv_integral/self.preconv_integral
-        if not np.isclose(self.conv_integral_ratio, 1):
+        if not np.isclose(self.conv_integral_ratio, 1, rtol=1e-2):
             raise ValueError(f"Area not conserved in convolution! ({self.conv_integral_ratio}!=1), {self.dispersion_ratios}, {instrument_function_last_used.sum()}")
 
         spectra+=background
