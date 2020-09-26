@@ -493,7 +493,8 @@ class SimpleGaussianPlasma:
 from scipy.interpolate import interp1d
 def centre_peak(x, y, centre=0):
     ycentre=x[y.argmax()]
-    return interp1d(x, y, fill_value="extrapolate")(x+ycentre-centre)
+    y=interp1d(x, y, fill_value="extrapolate")(x+ycentre-centre)
+    return y
 
 class ReducedBowmanTProfile:
     def __init__(self, x, log_peak_bounds, centre=None, dr_bounds=None,
@@ -538,7 +539,7 @@ class ReducedBowmanTProfile:
             btheta=[np.power(10, A), c, sigma, self.q, self.nu, self.k, f, 0]
 
         peak=bowman_tee_distribution(self.x, btheta)
-
+        peak=centre_peak(self.x, peak, centre=c)
         return peak
 
 
