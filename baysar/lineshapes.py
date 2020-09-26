@@ -490,6 +490,11 @@ class SimpleGaussianPlasma:
         self.electron_temperature=GaussianPlasma(x=self.x, cwl=0)
 
 
+from scipy.interpolate import interp1d
+def centre_peak(x, y, centre=0):
+    ycentre=x[y.argmax()]
+    return interp1d(x, y, fill_value="extrapolate")(x+ycentre-centre)
+
 class ReducedBowmanTProfile:
     def __init__(self, x, log_peak_bounds, centre=None, dr_bounds=None,
                        sigma_bounds=None, asdex=False, asdex_c2=0.7, **kwargs):
