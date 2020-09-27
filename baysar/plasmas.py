@@ -717,12 +717,14 @@ class PlasmaLine():
             power=np.zeros(shape_pow)
             meta_index=0
             meta=get_meta(elem, index=meta_index)
-            min_frac=1e-5
+            min_frac0=1e-5
+            min_frac1=1e-15
             for t_counter, t in enumerate(tau_exc):
                 print(t_counter, t)
                 with HiddenPrints():
                     out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
-                bal[t_counter, :, :, :]=out['ion'].clip(min_frac)
+                out['ion'][out['ion'] < min_frac0]=min_frac1
+                bal[t_counter, :, :, :]=out['ion']
                 for ion in range(power.shape[-1]):
                     is1=ion+1
                     plt=read_adf11(file=adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
@@ -740,7 +742,8 @@ class PlasmaLine():
             for t_counter, t in enumerate(tau_rec):
                 with HiddenPrints():
                     out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
-                bal[len(tau_exc)+t_counter, :, :, :]=out['ion'].clip(min_frac)
+                out['ion'][out['ion'] < min_frac0]=min_frac1
+                bal[len(tau_exc)+t_counter, :, :, :]=out['ion']
                 for ion in range(power.shape[-1]):
                     is1=ion+1
                     plt=read_adf11(file=adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
