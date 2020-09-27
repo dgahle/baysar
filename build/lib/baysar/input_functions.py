@@ -9,7 +9,7 @@ from numpy import random
 
 import os, sys, io, copy
 
-from baysar.line_data import adas_line_data
+from baysar.line_data import line_data_multiplet, adas_line_data
 
 def within(stuff, boxes):
 
@@ -66,7 +66,6 @@ def check_input_dict_input(wavelength_axis, experimental_emission, instrument_fu
     exp_len_check = [len(e)==len(exp_stuff[0]) for e in exp_stuff]
     if not all(exp_len_check):
         raise ValueError("[wavelength_axis, experimental_emission, instrument_function, noise_region, emission_constant] are not all the same length")
-
     # type check
     exp_type_check0 = [type(e) in (list, np.ndarray) for e in exp_stuff]
     if not all(exp_type_check0):
@@ -75,19 +74,11 @@ def check_input_dict_input(wavelength_axis, experimental_emission, instrument_fu
     if not all(exp_type_check1):
         raise TypeError("Contents of [wavelength_axis, experimental_emission, instrument_function, "
                         "noise_region] are not all lists or arrays")
-    exp_type_check2 = all([np.isreal(exp).all() for exp in exp_stuff[:-1]])
-    if not exp_type_check2:
+    exp_type_check2 = [type(e0) in (int, float, np.float64, np.int64) for exp in exp_stuff[:-1] for e in exp for e0 in e]
+    if not all(exp_type_check2):
         raise TypeError("Data given in [wavelength_axis, experimental_emission, instrument_function, noise_region] are not all ints or floats")
-    if not all([np.isreal(e) for e in emission_constant]):
+    if not all([type(e) in (int, float, np.float64, np.int64) for e in emission_constant]):
         raise TypeError("Emission constants type must be in (int, float, np.float64, np.int64)")
-
-    # check that the noise_regions are within the wavelength_axes
-    for region, axis in zip(noise_region, wavelength_axis):
-        if any([within(r, axis) for r in region]):
-            raise ValueError("Noise regions are not in the wavelength axes!")
-        if np.diff(region)<np.diff(axis).min():
-            raise ValueError("Noise regions is subpixel!")
-
 
     # species and ions must be the same lengths and only conatain strings
     if len(species)!=len(ions):
@@ -102,8 +93,6 @@ def check_input_dict_input(wavelength_axis, experimental_emission, instrument_fu
     # line_data must be a dictionary
     if type(line_data)!=dict:
         raise TypeError('type(line_data)!=dict. Input line_data must be a dict')
-
-    instrument_function=[np.array(i, dtype=float) for i in instrument_function]
 
     # All species and ions must be in the line_data dict
     check_emitters_in_line_data = []
@@ -120,17 +109,16 @@ def check_input_dict_input(wavelength_axis, experimental_emission, instrument_fu
         raise KeyError(emitter_fails, "not in given line_data")
 
     # mystery_lines must be a list of two lists of the same length which only contains lists
-    if mystery_lines is not None:
-        if type(mystery_lines)!=list:
-            raise TypeError("type(mystery_lines)!=list")
-        if len(mystery_lines[0])!=len(mystery_lines[1]):
-            raise ValueError("len(mystery_lines[0])!=len(mystery_lines[1]) each mystery line needs a branching ratio even is it is a singlet ([1])")
-        if not all([ len(mystery_lines)==2,
-                     all([type(ml)==list for ml in mystery_lines]),
-                     all([type(l)==list for ml in mystery_lines for l in ml]) ]):
-            raise TypeError("mystery_lines must be a list of two lists than only contain lists")
-        if not all([type(m) in (int, float) for ml in mystery_lines for l in ml for m in l]):
-            raise TypeError("Some of `the give mystery line central wavelengths and/or branching ratios are not ints or floats")
+    if type(mystery_lines)!=list:
+        raise TypeError("type(mystery_lines)!=list")
+    if len(mystery_lines[0])!=len(mystery_lines[1]):
+        raise ValueError("len(mystery_lines[0])!=len(mystery_lines[1]) each mystery line needs a branching ratio even is it is a singlet ([1])")
+    if not all([ len(mystery_lines)==2,
+                 all([type(ml)==list for ml in mystery_lines]),
+                 all([type(l)==list for ml in mystery_lines for l in ml]) ]):
+        raise TypeError("mystery_lines must be a list of two lists than only contain lists")
+    if not all([type(m) in (int, float) for ml in mystery_lines for l in ml for m in l]):
+        raise TypeError("Some of the give mystery line central wavelengths and/or branching ratios are not ints or floats")
 
     # refine must either a float or a list or array of the same length of all the other spectrometer input
     if type(refine) in (float, int):
@@ -152,8 +140,8 @@ def check_input_dict_input(wavelength_axis, experimental_emission, instrument_fu
 
 def make_input_dict(wavelength_axis, experimental_emission, instrument_function,
                     emission_constant, noise_region,
-                    species, line_data=adas_line_data, mystery_lines=None,
-                    refine=0.01, ion_resolved_temperatures=False, ion_resolved_tau=False, **kwargs):
+                    species, ions, line_data=adas_line_data, mystery_lines=None,
+                    refine=0.01, ion_resolved_temperatures=False, ion_resolved_tau=False):
 
     '''
     Returns a dict that is needed to instantiate both BaysarPosterior and SpectrometerChord classes.
@@ -173,21 +161,11 @@ def make_input_dict(wavelength_axis, experimental_emission, instrument_function,
     :return (dict) input_dict: Contains all the needed info instantiate both BaysarPosterior and SpectrometerChord classes.
     '''
 
-    # unpack species and ions
-    species_new=[]
-    ions=[]
-    for s in species:
-        species_new.append(s)
-        ions.append([str(ion) for ion in species[s]])
-
-    del species
-    species=species_new
-
     check_input_dict_input(wavelength_axis, experimental_emission, instrument_function,
                            emission_constant, noise_region, species, ions, line_data, mystery_lines,
                            refine, ion_resolved_temperatures, ion_resolved_tau)
 
-    input_dict = {**kwargs}
+    input_dict = {}
 
     input_dict['species'] = []
 

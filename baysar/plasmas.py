@@ -1,12 +1,225 @@
 import numpy as np
 
 import os, sys, io
-import copy
+import copy, warnings
+from itertools import product
 
-from baysar.lineshapes import Gaussian, Eich
-from baysar.linemodels import build_tec406
+import collections
+from baysar.lineshapes import MeshLine
+from baysar.tools import within
 
-from baysar.spectrometers import within
+from scipy.interpolate import RegularGridInterpolator, RectBivariateSpline
+from adas import run_adas406, read_adf11, read_adf15
+
+def power10(var):
+    return np.power(10, var)
+
+
+def check_bounds_order(bounds):
+    check=[b[0]<b[1] for b in bounds]
+    return all(check)
+
+
+class HiddenPrints:
+    def __enter__(self):
+        self._original_stdout = sys.stdout
+        self._original_stderr = sys.stderr
+        sys.stdout = open(os.devnull, 'w')
+        sys.stderr = open(os.devnull, 'w')
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout.close()
+        sys.stderr.close()
+        sys.stdout = self._original_stdout
+        sys.stderr = self._original_stderr
+
+
+class arb_obj(object):
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+    def __call__(self, *args):
+        return args
+
+
+class arb_obj_single_input(object):
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+    def __call__(self, theta):
+        if type(theta) not in (float, int):
+            theta = theta[0]
+        return theta
+
+
+class arb_obj_single_log_input(object):
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+        if 'power' not in self.__dict__:
+            self.power=1
+
+    def __call__(self, theta):
+        if type(theta) not in (float, int):
+            theta = theta[0]
+        return np.power(self.power, theta)
+
+def calibrate(num_pixels, theta):
+    cwl, dispersion=theta
+
+    pixel_array=np.arange(num_pixels, dtype=float)
+    pixel_array-=np.mean(pixel_array)
+    pixel_array*=dispersion
+    pixel_array+=cwl
+
+    return pixel_array
+
+# from baysar.tools import calibrate
+# instrument_function_calibrator.calibrate(int_func_cal_theta)
+from baysar.lineshapes import gaussian_norm
+class GaussianInstrumentFunctionCalibratior:
+    def __init__(self, bounds=[[-1, 1]]):
+        self.number_of_variables=1
+        self.bounds=bounds
+
+    def __call__(self, theta):
+        return [np.power(10, t) for t in theta]
+
+    def calibrate(self, x, fwhm):
+        instrument_function=gaussian_norm(x, x.mean(), fwhm, 1)
+        return instrument_function
+
+
+# tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[-5, 5])
+class default_calwave_function(object):
+    def __init__(self, number_of_variables=2, bounds=[ [1e2, 1e5], [0.01, 1.] ]):
+        self.number_of_variables=number_of_variables
+        self.bounds=bounds
+
+        self.check_init()
+
+    def check_init(self):
+        if self.number_of_variables!=len(self.bounds):
+            raise ValueError("self.number_of_variables!=len(self.bounds)")
+
+    def __call__(self, *args):
+        return args[0]
+
+    def calibrate(self, x, theta):
+        return calibrate(len(x), theta)
+
+class default_cal_function(object):
+    def __init__(self, number_of_variables=1, bounds=[ [-5, 20] ]):
+        self.number_of_variables=number_of_variables
+        self.bounds=bounds
+
+        self.check_init()
+
+    def check_init(self):
+        if self.number_of_variables!=len(self.bounds):
+            raise ValueError("self.number_of_variables!=len(self.bounds)")
+
+    def __call__(self, *args):
+        return np.power(10, args[0])
+
+    # def calibrate(self, x, theta):
+    #     m, c=theta
+    #     return m*x+c
+
+    def inverse_calibrate(self, y, theta):
+        m=theta[0]
+        return y/m
+
+
+class default_background_function(object):
+    def __init__(self, number_of_variables=1, bounds=[ [-5, 20] ]):
+        self.number_of_variables=number_of_variables
+        self.bounds=bounds
+
+        self.check_init()
+
+    def check_init(self):
+        if self.number_of_variables!=len(self.bounds):
+            raise ValueError("self.number_of_variables!=len(self.bounds)")
+
+    def __call__(self, *args):
+        return np.power(10, args[0])
+
+    def calculate_background(self, theta):
+        return theta
+
+
+atomic_number={'He':2, 'Li':3, 'Be':4, 'B':5, 'C':6, 'N':7, 'O':8, 'F':9, 'Ne':10}
+def get_number_of_ions(element):
+    return atomic_number[element]+1
+
+def get_meta(element, index=0):
+    num=get_number_of_ions(element)
+    meta=np.zeros(num)
+    meta[index]=1
+    return meta
+
+def kms_to_ms(velocity):
+    return 1e3*velocity
+
+from adas import read_adf11, run_adas406
+
+adf11_dir="/home/adas/adas/adf11/"
+hydrogen_adf11_plt=adf11_dir+'plt12/plt12_h.dat'
+hydrogen_adf11_prb=adf11_dir+'prb12/prb12_h.dat'
+
+def get_adf11(elem, yr, type, adf11_dir=adf11_dir):
+    return adf11_dir+type+str(yr)+'/'+type+str(yr)+'_'+elem.lower()+'.dat'
+
+def radiated_power(n0, ni, ne, te, is1, adf11_plt=None, adf11_prb=None, elem='N', yr=96, all=False):
+    # get adf11 if not passed
+    if adf11_plt is None:
+        adf11_plt=get_adf11(elem, yr, type='plt')
+    if adf11_prb is None:
+        adf11_prb=get_adf11(elem, yr, type='prb')
+
+    plt=read_adf11(file=adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
+    prb=read_adf11(file=adf11_prb, adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
+
+    return (n0*ne*plt, ni*ne*prb)
+
+def print_plasma_state(plasma, posterior_components=None):
+    # print headers
+    print('ions |    dens    |    tau    |     v     |    Ti    |')
+    print('     | 10^12 /cm3 |     ms    |    km/s   |    eV    |')
+    print('---------------------------------------------------------------')
+    # print neutral and ion data
+    for species in plasma.species:
+        if species[0] in plasma.hydrogen_isotopes:
+            states=[species]
+            states.append( np.round(plasma.plasma_state[species+'_dens'][0]*1e-12, 2) )
+            states.append( 'N/A' )
+            states.append( np.round(plasma.plasma_state[species+'_velocity'][0]*1e-3, 2) )
+            states.append( np.round(plasma.plasma_state[species+'_Ti'][0], 2) )
+            print(' {} |    {}    |   {}   |   {}   |   {}   | '.format(*states))
+        else:
+            states=[species]
+            states.append( np.round(plasma.plasma_state[species+'_dens'][0]*1e-12, 2) )
+            states.append( np.round(plasma.plasma_state[species+'_tau'][0]*1e3, 2) )
+            states.append( np.round(plasma.plasma_state[species+'_velocity'][0]*1e-3, 2) )
+            states.append( np.round(plasma.plasma_state[species+'_Ti'][0], 2) )
+            print(' {} |    {}    |   {}   |   {}   |   {}   | '.format(*states))
+
+    print()
+    # get peak Te and ne
+    peak_ni=np.round(plasma.plasma_state['main_ion_density'].max()*1e-12, 2)
+    peak_ne=np.round(plasma.plasma_state['electron_density'].max()*1e-12, 2)
+    peak_te=np.round(plasma.plasma_state['electron_temperature'].max(), 2)
+    peaks=[peak_te, peak_ne]
+    # print peak Te and ne
+    print('Peak Te {} eV'.format(peak_te))
+    print('Peak ne {} 10^12 /cm3'.format(peak_ne))
+    print('Peak ni {} 10^12 /cm3'.format(peak_ni))
+
+    if posterior_components is not None:
+        print()
+        for p in posterior_components:
+            print(p, p())
+
 
 class PlasmaLine():
 
@@ -17,852 +230,895 @@ class PlasmaLine():
     handler which handles the interface between the sampler and the forward model.
     """
 
-    def __init__(self, input_dict, profile_fucntion=None, conc=True, logte=False, netau=False):
+    def __init__(self, input_dict, profile_function=None, cal_functions=None, calwave_functions=None,
+                       calint_func_functions=None, background_functions=None):
 
-        self.netau = netau
-        self.conc = conc
-        self.logte = logte
+        'input_dict input has been checked if created with make_input_dict'
+
+        print("Building PlasmaLine object")
 
         self.input_dict = input_dict
-
-        self.plasma = input_dict
-
-        self.inference_resolution = self.input_dict['inference_resolution']
-
-        if profile_fucntion is None:
-            # TODO: x range for arange needs to be a top level variable
-            los_x = np.arange(-15., 15., 0.2)
-            self.profile_fucntion = Eich(x=los_x, reduced=True)
-            self.profile_fucntion.number_of_varriables = 3
-            self.profile_fucntion.dr = True
-
-            self.profile_fucntion_num_varriables = self.profile_fucntion.number_of_varriables
-
-            # self.profile_fucntion = Gaussian( x )
-            # self.profile_fucntion = Gaussian( x=np.arange(-30., 30., 3) )
-
-        else:
-            self.profile_fucntion = profile_fucntion # ...
-            self.profile_fucntion_num_varriables = self.profile_fucntion.number_of_varriables
-
-        self.count_species()
-
-        self.no_data_lines = self.where_the_no_data_lines()
-        self.build_impurity_average_charge()
-
-        self.plasma_state = {}
-
+        self.num_chords = len(self.input_dict['wavelength_axis'])
+        self.species = self.input_dict['species']
+        self.impurity_species = [s for s in self.species if not any(['H_' in s or 'D_' in s or 'T_' in s])]
+        self.hydrogen_species = [s for s in self.species if s not in self.impurity_species]
         self.hydrogen_isotopes = ['H', 'D', 'T']
-        self.hydrogen_isotope = any(['H' == t or 'D' == t or 'T' == t
-                                     for t in list(self.input_dict['physics'].keys())])
+        self.contains_hydrogen = (self.species!=self.impurity_species)
 
-        self.build_plasma()
-        # self.update_plasma(np.zeros(int(1e3)))
+        self.scdfile='/home/adas/adas/adf11/scd12/scd12_h.dat'
+        self.acdfile='/home/adas/adas/adf11/acd12/acd12_h.dat'
 
-        self.plasma_state['los'] = self.profile_fucntion.x
+        # tau_exc=np.logspace(-7, 1, 10)
+        # tau_rec=np.logspace(1, -5, 18)
+        # magical_tau=np.concatenate( ((np.log10(tau_exc)-np.log10(tau_exc).max()), (-np.log10(tau_rec)+2)) )
+        tau_exc=np.logspace(-7, 2, 10)
+        tau_rec=np.logspace(1, -4, 12)
+        magical_tau=np.concatenate( ((np.log10(tau_exc)), (-np.log10(tau_rec)+4)) )
+        self.adas_plasma_inputs = {'te': np.logspace(-1, 2, 48), # TODO can we get the raw data instead?
+                                   'ne': np.logspace(12, 15, 15),
+                                   'tau_exc': tau_exc,
+                                   'tau_rec': tau_rec,
+                                   'magical_tau': magical_tau}
+        self.adas_plasma_inputs['big_ne'] = np.array([self.adas_plasma_inputs['ne'] for t in self.adas_plasma_inputs['te']]).T
 
-        # self.theta_bounds = self.chain_bounds()
-        self.chain_bounds()
+        if 'doppler_shifts' in self.input_dict:
+            self.include_doppler_shifts=self.input_dict['doppler_shifts']
+        else:
+            self.include_doppler_shifts=True
+
+        if 'calibrate_wavelength' in self.input_dict:
+            self.calibrate_wavelength=self.input_dict['calibrate_wavelength']
+        else:
+            self.calibrate_wavelength=False
+
+        if 'calibrate_intensity' in self.input_dict:
+            self.calibrate_intensity=self.input_dict['calibrate_intensity']
+        else:
+            self.calibrate_intensity=False
+
+        if 'calibrate_instrument_function' in self.input_dict:
+            self.calibrate_instrument_function=self.input_dict['calibrate_instrument_function']
+        else:
+            self.calibrate_instrument_function=False
+
+        if 'zeeman' in self.input_dict:
+            self.zeeman=self.input_dict['zeeman']
+        else:
+            self.zeeman=False
+
+        if 'no_sample_neutrals' in self.input_dict:
+            self.no_sample_neutrals=self.input_dict['zeeman']
+        else:
+            self.no_sample_neutrals=True
+
+        if 'thermalised' in self.input_dict:
+            self.thermalised=self.input_dict['thermalised']
+        else:
+            self.thermalised=True
+
+        if 'cold_neutrals' in self.input_dict:
+            self.cold_neutrals=self.input_dict['cold_neutrals']
+        else:
+            self.cold_neutrals=True
+
+        if 'cold_ions' in self.input_dict:
+            self.cold_ions=self.input_dict['cold_ions']
+        else:
+            self.cold_ions=True
+
+        self.get_impurities()
+        self.get_impurity_ion_bal()
+        self.build_impurity_average_charge()
+        self.get_impurity_tecs()
+        if self.contains_hydrogen:
+            self.get_hydrogen_pecs()
+
+        self.get_theta_functions(profile_function, cal_functions, calwave_functions,
+                                 calint_func_functions, background_functions)
+        self.build_tags_slices_and_bounds()
+
+        self.los = self.profile_function.electron_density.x
+
+        self(np.random.rand(self.n_params))
 
     def __call__(self, theta):
+        self.update_plasma_state(theta)
 
-        return self.update_plasma(theta)
+    def get_impurities(self):
+        self.impurities = []
+        for species in self.impurity_species:
+            split_index = np.where([p == '_' for p in species])[0][0]
+            elem = species[:split_index]
+            if elem not in self.impurities:
+                self.impurities.append(elem)
 
-    def build_plasma(self):
-
-        self.all_the_indicies = {}
-
-        # check is the chords are calibrated
-        self.calibration_constants = []
-
-        for tmp_key in self.input_dict['chords']:
-
-            tmp_a_cal = self.input_dict['chords'][tmp_key]['data']['emission_constant']
-
-            self.calibration_constants.append(tmp_a_cal)
-
-        cc_condition = np.array([(cc == 1) for cc in self.calibration_constants])
-
-        self.is_chord_not_calibrated = cc_condition
-
-        if any(cc_condition):
-
-            self.all_the_indicies['calibration_index'] = 0
-
-            intercept_index = len( np.where(cc_condition == True)[0] )
-
+    def append_bounds_from_functional(self, bounds, functional):
+        if type(functional.bounds[0])==list:
+            if len(functional.bounds)!=functional.number_of_variables:
+                raise ValueError(type(functional), "len(functional.bounds)!=functional.number_of_variables")
+            [bounds.append(b) for b in functional.bounds]
+        elif np.isreal(functional.bounds[0]):
+            [bounds.append(functional.bounds) for num in np.arange(functional.number_of_variables)]
         else:
-            intercept_index = 0
+            raise TypeError("functional.bounds must be a list of len 2 or a list of shape (num_var, 2)")
 
-        self.all_the_indicies['intercept_index'] = intercept_index
-
-        # defining indicies for electron density and temperature profiles
-        self.all_the_indicies['ne_index'] = intercept_index + 1
-        self.all_the_indicies['te_index'] = self.all_the_indicies['ne_index'] + \
-                                            self.profile_fucntion_num_varriables
-
-
-        # defining indicies for viewing-angle, b-field and concentration
-        if self.hydrogen_isotope:
-            if self.profile_fucntion.dr:
-                k_dr = 1
-            else:
-                k_dr = 0
-
-            self.all_the_indicies['b_index'] = self.all_the_indicies['te_index'] + \
-                                               self.profile_fucntion_num_varriables - k_dr
-
-            self.all_the_indicies['view_angle_index'] = self.all_the_indicies['b_index'] + 1
-            self.all_the_indicies['conc_index'] = self.all_the_indicies['view_angle_index'] + 1
-
-            self.all_the_indicies['upper_te_index'] = self.all_the_indicies['b_index']
-
-            self.plasma_state['B-field'] = None # theta[b_index]
-            self.plasma_state['view_angle'] = None # theta[view_angle_index]
+        if functional.number_of_variables==1 and type(functional.bounds[0]) is not list:
+            check=[functional.bounds]
         else:
-            if self.profile_fucntion.dr:
-                k_dr = 1
-            else:
-                k_dr = 0
+            check=functional.bounds
+        if check!=bounds[-functional.number_of_variables:]:
+            raise ValueError("functional.bounds!=bounds[-functional.number_of_variables:]",
+                             check!=bounds[-functional.number_of_variables:],
+                             type(functional), type(check), check,
+                             type(bounds[-functional.number_of_variables:]),
+                             bounds[-functional.number_of_variables:])
 
-            self.all_the_indicies['conc_index'] = self.all_the_indicies['te_index'] + \
-                                                  self.profile_fucntion_num_varriables - k_dr
+        return bounds
 
-            self.all_the_indicies['upper_te_index'] = self.all_the_indicies['conc_index']
+    def build_tags_slices_and_bounds(self):
+        self.tags = []
+        bounds = []
+        slice_lengths = []
+        calibration_functions=[self.cal_functions, self.calwave_functions,
+                               self.calintfun_functions, self.background_functions]
+        calibration_tags=['cal', 'calwave', 'calint_func', 'background']
+        for calibration_tag, calibration_function in zip(calibration_tags, calibration_functions):
+            for chord, chord_calibration_function in enumerate(calibration_function):
+                int_check=(calibration_tag is 'cal' and not self.calibrate_intensity)
+                wave_check=(calibration_tag is 'calwave' and not self.calibrate_wavelength)
+                intfun_check=(calibration_tag is 'calint_func' and not self.calibrate_instrument_function)
+                checks=any([int_check, wave_check, intfun_check])
+                if not checks:
+                    self.tags.append(calibration_tag+'_'+str(chord))
+                    slice_lengths.append(chord_calibration_function.number_of_variables)
+                    bounds=self.append_bounds_from_functional(bounds, chord_calibration_function)
 
-        # defining indicies for taus and ion temperatures
-        if self.inference_resolution['ion_resolved_tau']:
-            self.all_the_indicies['ti_index'] = self.all_the_indicies['conc_index'] + \
-                                                self.number_of_ions
+        self.tags.append('electron_density')
+        self.tags.append('electron_temperature')
+
+        slice_lengths.append(self.profile_function.electron_density.number_of_variables)
+        slice_lengths.append(self.profile_function.electron_temperature.number_of_variables)
+
+        bounds=self.append_bounds_from_functional(bounds, self.profile_function.electron_density)
+        bounds=self.append_bounds_from_functional(bounds, self.profile_function.electron_temperature)
+
+        hydrogen_shape_tags = ['b-field', 'viewangle']
+        hydrogen_shape_bounds = [[0, 1], [0, 2]]
+
+        if self.contains_hydrogen and self.zeeman:
+            for tag, b in zip(hydrogen_shape_tags, hydrogen_shape_bounds):
+                self.tags.append(tag)
+                slice_lengths.append(1)
+                bounds.append(b)
+
+        n_bounds=[11, 14]
+        ti_bounds=[-1, 2]
+        tau_bounds=[-6, 4]
+        if self.thermalised:
+            impurity_tags = ['_dens', '_tau']
+            impurity_bounds = [n_bounds, tau_bounds]
         else:
-            self.all_the_indicies['ti_index'] = self.all_the_indicies['conc_index'] + \
-                                                self.number_of_isotopes
-
-        if self.inference_resolution['ion_resolved_temperatures']:
-            self.all_the_indicies['tau_index'] =  self.all_the_indicies['ti_index'] + \
-                                                  self.number_of_ions
-        else:
-            self.all_the_indicies['tau_index'] =  self.all_the_indicies['ti_index'] + \
-                                                  self.number_of_isotopes
-
-        # defining indicies for no data lines
-        if 'D' in list(self.input_dict['physics'].keys()):
-            k_d_exists = 1
-        else:
-            k_d_exists = 0
-
-        if self.inference_resolution['ion_resolved_tau']:
-            num_taus = self.number_of_ions
-        else:
-            num_taus = self.number_of_isotopes
-
-        self.all_the_indicies['no_data_index'] = self.all_the_indicies['tau_index'] + \
-                                                 num_taus - k_d_exists
-
-        self.all_the_indicies['x_index'] = self.all_the_indicies['no_data_index'] + \
-                                           self.number_of_no_data_lines
-
-        if any(cc_condition):
-            self.plasma_state['a_cal'] = []
-
-        self.plasma_state['intercept'] = []
-
-        self.plasma_state['electron_density'] = None
-        self.plasma_state['electron_temperature'] = None
-
-        x_param = 'conc*tec*jj_frac'
-
-        for tmp_isotope in self.input_dict['physics'].keys():
-
-            if tmp_isotope == 'X':
-                self.plasma_state[tmp_isotope] = {}
-                for countx, tmpx in enumerate(self.plasma['physics'][tmp_isotope].keys()): # ['lines']:
-                    self.plasma_state[tmp_isotope][tmpx] = {}
-                    self.plasma_state[tmp_isotope][tmpx][x_param] = None
-
-            elif any([tmp_isotope == iso for iso in self.hydrogen_isotopes]):
-                self.plasma_state[tmp_isotope] = {'0' : {'conc': None, 'ti': None} }
-
-            else:
-                self.plasma_state[tmp_isotope] = {}
-                for tmp_ion in self.input_dict['physics'][tmp_isotope]['ions']:
-                    self.plasma_state[tmp_isotope] = {tmp_ion: {'conc': None, 'ti': None, 'tau': None} }
-
-            # update non-physics parameters
-            #
-            # check if the species has a nodata line
-            if tmp_isotope in self.no_data_lines.keys():
-
-                # check if the ion has a nodata line
-                for tmp_ion in self.no_data_lines[tmp_isotope].keys():
-
-                    # check that the ion has a subdict
-                    if tmp_ion not in self.plasma_state[tmp_isotope].keys():
-                        self.plasma_state[tmp_isotope][tmp_ion] = {}
-
-                    # update the 'conc*tec*jj_frac' parameter
-                    for tmp_line in self.no_data_lines[tmp_isotope][tmp_ion].keys():
-                        self.plasma_state[tmp_isotope][tmp_ion][tmp_line] = {'conc*tec*jj_frac': None}
-
-            pass
-
-        self.total_impurity_electrons = None
-        self.plasma_state['main_ion_density'] = None
-
-        pass
-
-    def update_plasma(self, theta):
-
-        theta = copy.copy(theta) # avoids theta changing external varriables
-
-        # check is the chords are calibrated
-        if any(self.is_chord_not_calibrated):
-            tmp_a_cal_array = theta[self.all_the_indicies['calibration_index']:
-                                    self.all_the_indicies['intercept_index']]
-
-            self.plasma_state['a_cal'] = np.power(10, tmp_a_cal_array)
-
-        self.plasma_state['intercept'] = np.power(10, theta[self.all_the_indicies['intercept_index']])
-
-        if self.hydrogen_isotope:
-            self.plasma_state['B-field'] = theta[self.all_the_indicies['b_index']]
-            self.plasma_state['view_angle'] = theta[self.all_the_indicies['view_angle_index']] * 180
-
-        ne_theta = theta[self.all_the_indicies['ne_index']:
-                         self.all_the_indicies['te_index']]
-
-        te_theta = []
-
-        if self.profile_fucntion.dr:
-            te_theta.append([0])
-
-        for tmp in theta[self.all_the_indicies['te_index']:
-                         self.all_the_indicies['upper_te_index']]:
-
-            te_theta.append(tmp)
-
-        self.plasma_state['electron_density'] = np.power(10., self.profile_fucntion(ne_theta))
-
-        if self.logte:
-            self.plasma_state['electron_temperature'] = np.power(10., self.profile_fucntion(te_theta))
-        else:
-            self.plasma_state['electron_temperature'] = self.profile_fucntion(te_theta)
-
-        x_param = 'conc*tec*jj_frac'
-        x_index = self.all_the_indicies['x_index']
-        no_data_index = self.all_the_indicies['no_data_index']
-
-        tmp_shift = 0
-        tmp_shift_ti = 0
-        tmp_shift_tau = 0
-        tmp_nodata_shift = 0
-
-        # for tmp_isotope in self.input_dict['isotopes']:
-        for tmp_isotope in self.input_dict['physics'].keys():
-
-            if tmp_isotope == 'X':
-                try:
-                    for countx, tmpx in enumerate(self.plasma['physics'][tmp_isotope].keys()): # ['lines']:
-                        self.plasma_state[tmp_isotope][tmpx][x_param] = np.power(10, theta[ x_index + countx ])
-                except:
-
-                    print(x_index, countx, tmpx)
-                    print(len(theta))
-
-                    raise
-
-            elif any([tmp_isotope == h for h in self.hydrogen_isotopes]):
-
-                if self.conc:
-                    tmp_log_conc = theta[ self.all_the_indicies['conc_index'] + tmp_shift ] + \
-                                       theta[self.all_the_indicies['te_index'] - 1]
+            impurity_tags = ['_dens', '_Ti', '_tau']
+            impurity_bounds = [n_bounds, ti_bounds, tau_bounds]
+            # impurity_bounds = [[10, 15], [-2, 2], [-8, 2]] # including magical tau
+        if self.include_doppler_shifts:
+            impurity_tags.append('_velocity')
+            impurity_bounds.append([-10, 10])
+        for tag in impurity_tags:
+            for s in self.species:
+                is_h_isotope = any([s[0:2]==h+'_' for h in self.hydrogen_isotopes])
+                if (tag == '_tau' and is_h_isotope):
+                    sion = s+tag
+                    self.tags.append(sion)
+                    slice_lengths.append(1)
+                    bounds.append([-10, -2]) # ([-7, -3])
+                elif (tag == '_dens' and is_h_isotope and self.no_sample_neutrals):
+                    pass
                 else:
-                    tmp_log_conc = theta[self.all_the_indicies['conc_index'] + tmp_shift]
+                    sion = s+tag
+                    tmp_b = impurity_bounds[np.where([t in sion for t in impurity_tags])[0][0]]
 
-                tmp_ti = np.power(10., theta[ self.all_the_indicies['ti_index'] + tmp_shift_ti ] )
+                    self.tags.append(sion)
+                    slice_lengths.append(1)
+                    bounds.append(tmp_b)
 
-                self.plasma_state[tmp_isotope]['0'] = {'conc': np.power(10., tmp_log_conc), 'ti': tmp_ti}
+        if 'X_lines' in self.input_dict:
+            for line in self.input_dict['X_lines']:
+                line = str(line)[1:-1].replace(', ', '_')
+                self.tags.append('X_' + line)
+                slice_lengths.append(1)
+                bounds.append([0, 20])
 
-                tmp_shift += 1
-                tmp_shift_ti += 1
+        # building dictionary to have flags for which parameters are resoloved
+        self.is_resolved = collections.OrderedDict()
+        ti_resolved = self.input_dict['ion_resolved_temperatures']
+        tau_resolved = self.input_dict['ion_resolved_tau']
+        if 'ion_resolved_velocity' in self.input_dict:
+            velocity_resolved = self.input_dict['ion_resolved_velocity']
+        else:
+            velocity_resolved = False
+        # checking if Ti and tau is resolved
+        res_not_apply = [not any([tag.endswith(t) for t in impurity_tags]) for tag in self.tags]
+        velocity_resolution_check = [tag.endswith('_velocity') and velocity_resolved for tag in self.tags]
+        ti_resolution_check = [tag.endswith('_Ti') and ti_resolved for tag in self.tags]
+        dens_resolved=False
+        dens_resolution_check = [tag.endswith('_dens') and dens_resolved for tag in self.tags]
+        tau_resolution_check = [tag.endswith('_tau') and tau_resolved for tag in self.tags]
+        # actually making dictionary to have flags for which parameters are resoloved
+        zip_list=[self.tags, velocity_resolution_check, ti_resolution_check, dens_resolution_check, tau_resolution_check, res_not_apply]
+        for tag, is_v_r, is_ti_r, is_dens_r, is_tau_r, rna in zip(*zip_list):
+            self.is_resolved[tag] = is_v_r or is_ti_r or is_dens_r or is_tau_r or rna
 
+        # building the slices to map BaySAR input to model parameters
+        slices = []
+        keep_theta_bound = []
+        for p, L, b, n in zip( self.tags, slice_lengths, bounds, np.arange(len(bounds)) ):
+            [keep_theta_bound.append(self.is_resolved[p]) for counter in np.arange(L)]
+            if len(slices) is 0:
+                slices.append( (p, slice(0, L)) )
+            elif self.is_resolved[p]:
+                last = slices[-1][1].stop
+                slices.append((p, slice(last, last+L)))
+            # if the parameter is not resolved there is a check for previous tags that it will share a slice with
             else:
+                current_imp_tag = [imp_tag for imp_tag in impurity_tags if p.endswith(imp_tag)]
+                slc = [s for tag, s in slices if (tag.startswith(p[:1]) and tag.endswith(current_imp_tag[0]))]
+                if len(slc) != 0:
+                    slices.append((p, slc[0]))
+                else:
+                    last = slices[-1][1].stop
+                    slices.append((p, slice(last, last+L)))
+                    keep_theta_bound[-1] = True
 
-                # tmp_number_of_ions = len(self.input_dict['physics'][tmp_isotope]['ions'])
-                # TODO: Need to add functionality for ion resolution
-                for tmp_ion_counter, tmp_ion in enumerate(self.input_dict['physics'][tmp_isotope]['ions']):
+        self.n_params = slices[-1][1].stop
+        self.slices = collections.OrderedDict(slices)
+        theta_bounds = np.array([np.array(b) for n, b in enumerate(bounds) if keep_theta_bound[n]], dtype=float)
+        self.theta_bounds=np.array([theta_bounds.min(1), theta_bounds.max(1)]).T
+        # self.bounds = bounds
 
-                    if self.conc:
-                        tmp_log_conc = theta[self.all_the_indicies['conc_index'] + tmp_shift] + \
-                                   theta[self.all_the_indicies['te_index'] - 1]
-                    else:
-                        tmp_log_conc = theta[self.all_the_indicies['conc_index'] + tmp_shift]
+        if self.n_params!=len(self.theta_bounds):
+            raise ValueError('self.n_params!=len(self.theta_bounds)')
 
-                    if self.netau:
-                        tmp_log_tau = theta[self.all_the_indicies['tau_index'] + tmp_shift_tau] - \
-                                      theta[self.all_the_indicies['te_index'] - 1]
-                    else:
-                        tmp_log_tau = theta[self.all_the_indicies['tau_index'] + tmp_shift_tau]
-                        pass
+        self.assign_theta_functions()
 
-                    self.plasma_state[tmp_isotope][tmp_ion] = \
-                        {'conc': np.power(10., tmp_log_conc),
-                         'ti': np.power(10., theta[ self.all_the_indicies['ti_index'] + tmp_shift_ti ] ),
-                         'tau': np.power( 10.,  tmp_log_tau )}
+    def update_plasma_theta(self, theta):
+        plasma_theta=[]
+        for p in self.slices.keys():
+            plasma_theta.append((p, theta[self.slices[p]]))
+        self.plasma_theta = collections.OrderedDict(plasma_theta)
 
-                    if self.inference_resolution['ion_resolved_tau']:
-                        tmp_shift += 1
-                        tmp_shift_tau += 1
+    def update_plasma_state(self, theta):
+        if not len(theta)==self.n_params:
+            raise ValueError('len(theta)!=self.n_params')
 
-                    if self.inference_resolution['ion_resolved_temperatures']:
-                        tmp_shift_ti += 1
+        self.update_plasma_theta(theta)
 
-                if not self.inference_resolution['ion_resolved_tau']:
-                    tmp_shift += 1
-                    tmp_shift_tau += 1
+        plasma_state = []
+        for p in self.slices:
+            values = np.array(theta[self.slices[p]]).flatten()
+            # print(p, values)
+            if p in self.theta_functions:
+                values = self.theta_functions[p](values)
+                # print(p, values, self.theta_functions[p])
+            plasma_state.append((p, values))
 
-                if not self.inference_resolution['ion_resolved_temperatures']:
-                    tmp_shift_ti += 1
-
-
-            # update non-physics parameters
-            #
-            # check if the species has a nodata line
-            if tmp_isotope in self.no_data_lines.keys():
-
-                # check if the ion has a nodata line
-                for tmp_ion in self.no_data_lines[tmp_isotope].keys():
-
-                    # check that the ion has a subdict
-                    if tmp_ion not in self.plasma_state[tmp_isotope].keys():
-                        self.plasma_state[tmp_isotope][tmp_ion] = {}
-
-                    # update the 'conc*tec*jj_frac' parameter
-                    for tmp_line in self.no_data_lines[tmp_isotope][tmp_ion].keys():
-
-                        try:
-                            self.plasma_state[tmp_isotope][tmp_ion][tmp_line] = {}
-                            self.plasma_state[tmp_isotope][tmp_ion][tmp_line]['conc*tec*jj_frac'] = \
-                                theta[no_data_index + tmp_nodata_shift]
-                        except KeyError:
-                            print(tmp_isotope, tmp_ion, tmp_line)
-                            raise
-                        except IndexError:
-                            print(tmp_isotope, tmp_ion, tmp_line)
-                            print(len(theta), no_data_index, tmp_nodata_shift)
-                            raise
-                        except:
-                            raise
+        if hasattr(self, 'plasma_state'):
+            for (p, values) in plasma_state:
+                self.plasma_state[p]=values
+        else:
+            self.plasma_state = collections.OrderedDict(plasma_state)
 
 
-                        tmp_nodata_shift += 1
+        if not hasattr(self, 'reverse_electroneutrality'):
+            self.reverse_electroneutrality=False
 
-            pass
+        self.calc_total_impurity_electrons(True)
+        if self.reverse_electroneutrality:
+            self.plasma_state['main_ion_density']=self.plasma_state['electron_density'].copy()
+            self.plasma_state['electron_density']+=self.total_impurity_electrons
+        else:
+            self.plasma_state['main_ion_density']=self.plasma_state['electron_density']-self.total_impurity_electrons
 
+        if self.contains_hydrogen:
+            species=self.hydrogen_species[0]
+            # if self.reverse_electroneutrality:
+            #     self.plasma_state[species+'_dens']=self.plasma_state['main_ion_density'].copy()
+            # else:
+            #     self.plasma_state[species+'_dens']=self.plasma_state['electron_density'].copy()
+            # self.plasma_state[species+'_dens']=self.plasma_state['electron_density'].copy()
+            if not species+'_dens' in self.slices:
+                self.plasma_state[species+'_dens']=self.plasma_state['main_ion_density'].copy()
+            self.update_neutral_profile()
 
-        self.calc_total_impurity_electrons()
-        self.plasma_state['main_ion_density'] = self.plasma_state['electron_density'] - self.total_impurity_electrons
+        self.total_power()
 
-        pass
+    def update_neutral_profile(self):
+        species=self.hydrogen_species[0]
+        ne = self.plasma_state['electron_density']
+        te = self.plasma_state['electron_temperature']
+        n0 = self.plasma_state[species+'_dens'] # [0]
+        n1 = self.plasma_state['main_ion_density']
 
-    def calc_total_impurity_electrons(self, set=True):
+        if not self.no_sample_neutrals:
+            n0 = n0[0]
 
-        total_impurity_electrons = 0
+        scd = read_adf11(file=self.scdfile, adf11type='scd', is1=1, index_1=-1, index_2=-1,
+                         te=te, dens=ne, all=False, skipzero=False, unit_te='ev')
+        acd = read_adf11(file=self.acdfile, adf11type='acd', is1=1, index_1=-1, index_2=-1,
+                         te=te, dens=ne, all=False, skipzero=False, unit_te='ev')
+
+        # n0_time=self.plasma_state['n0_time']
+        n0_time=self.plasma_state[species+'_tau'][0]
+        n0-=n0*ne*scd*n0_time
+        if hasattr(self, 'recombining'):
+            if self.recombining is True:
+                n0+=n1*ne*acd*n0_time
+
+        n0=n0.clip(1)
+        self.plasma_state[species+'_dens']=n0
+
+        self.scd=scd
+        self.acd=acd
+        self.ion_source=n0*ne*scd
+        self.ion_sink=n1*ne*acd
+
+    def print_plasma_state(self):
+        print_plasma_state(self)
+
+    def get_theta_functions(self, profile_function=None, cal_functions=None, calwave_functions=None, calintfun_functions=None, background_functions=None):
+
+        if profile_function is None:
+            x = np.linspace(1, 9, 5)
+            profile_function = MeshLine(x=x, zero_bounds=-2, bounds=[0, 10], log=True)
+            self.profile_function = arb_obj(electron_density=profile_function,
+                                            electron_temperature=profile_function,
+                                            number_of_variables_ne=len(x),
+                                            number_of_variables_te=len(x),
+                                            bounds_ne=[11, 16], bounds_te=[-1, 2])
+        else:
+            self.profile_function = profile_function
+
+        # tmp_func = arb_obj_single_log_input(number_of_variables=1, bounds=[-5, 20], power=10)
+        if cal_functions is None:
+            tmp_func=default_cal_function()
+            self.cal_functions = [tmp_func for num in np.arange(self.num_chords)]
+        else:
+            self.cal_functions = cal_functions
+
+        if background_functions is None:
+            tmp_func=default_background_function()
+            self.background_functions = [tmp_func for num in np.arange(self.num_chords)]
+        else:
+            self.background_functions = background_functions
+
+        # tmp_func = arb_obj_single_input(number_of_variables=1, bounds=[-5, 5])
+        if calwave_functions is None:
+            tmp_func=default_calwave_function()
+            self.calwave_functions = [tmp_func for num in np.arange(self.num_chords)]
+        else:
+            self.calwave_functions = calwave_functions
+
+        if calintfun_functions is None:
+            tmp_func=GaussianInstrumentFunctionCalibratior()
+            self.calintfun_functions = [tmp_func for num in np.arange(self.num_chords)]
+        else:
+            self.calintfun_functions = calwave_functions
+
+    def assign_theta_functions(self):
+        theta_functions=[]
+        if self.calibrate_intensity:
+            theta_functions.append(self.cal_functions)
+        if self.calibrate_wavelength:
+            theta_functions.append(self.calwave_functions)
+        if self.calibrate_instrument_function:
+            theta_functions.append(self.calintfun_functions)
+
+        theta_functions.extend([  self.background_functions,
+                                  [self.profile_function.electron_density, self.profile_function.electron_temperature],
+                                  [power10 for tag in self.tags if any([(tag.startswith(s+'_') and ('_velocity' not in tag)) for s in self.species])]
+                               ])
+
+        if self.include_doppler_shifts:
+            theta_functions.append([kms_to_ms for tag in self.tags if '_velocity' in tag])
+
+        theta_functions.append([power10 for tag in self.tags if 'X_' in tag])
+
+        theta_functions = np.concatenate(theta_functions).tolist()
+        # theta_functions = np.concatenate( [f if type(f)!=list else f for f in theta_functions] ).tolist()
+
+        theta_functions_tuples = []
+        function_tags = ['cal', 'back', 'electron_density', 'electron_temperature']
+        function_tags_full = [tag for tag in self.tags if (any([check in tag for check in function_tags]) or \
+                                                          any([tag.startswith(s+'_') for s in self.species]) or \
+                                                          'X_' in tag)]
+
+        self.function_check = [any([check in tag for check in function_tags]) or
+                               any([tag.startswith(s+'_') for s in self.species]) or
+                               ('X_' in tag) for tag in self.tags]
+        # self.function_check = [any([check in tag for check in function_tags]) for tag in plasma.tags]
+
+        if len(function_tags_full)!=len(theta_functions):
+            print(theta_functions)
+            print(function_tags_full)
+            raise ValueError('len(function_tags_full)!=len(theta_functions) ({}!={})'.format(len(function_tags_full), len(theta_functions)))
+
+        for tag, func in zip(function_tags_full, theta_functions):
+            theta_functions_tuples.append((tag, func))
+
+        self.theta_functions = collections.OrderedDict(theta_functions_tuples)
+
+    def calc_total_impurity_electrons(self, set_attribute=True):
+        total_impurity_electrons=0
 
         ne = self.plasma_state['electron_density']
         te = self.plasma_state['electron_temperature']
 
-        for tmp_element in list(self.input_dict['physics'].keys()):
+        for species in self.impurity_species:
+            tau_tag = species+'_tau'
+            dens_tag = species+'_dens'
 
-            if any([tmp_element == t for t in ('D', 'H', 'X')]):
-                pass
-            else:
-                try:
-                    tau = self.plasma_state[tmp_element]['tau']
-                    conc = self.plasma_state[tmp_element]['conc']
-                except KeyError:
-                    tmp_key = min( list( self.plasma_state[tmp_element].keys() ) )
-                    tau = self.plasma_state[tmp_element][tmp_key]['tau']
-                    conc = self.plasma_state[tmp_element][tmp_key]['conc']
-                    pass
-                except:
-                    raise
+            tau = self.plasma_state[tau_tag]
+            conc = self.plasma_state[dens_tag]
+            tau = np.zeros(len(ne)) + tau
 
-                tau = np.zeros(len(ne)) + tau
+            tmp_in = (tau, ne, te)
+            # average_charge = np.exp(self.impurity_average_charge[species](tmp_in))
+            average_charge = self.impurity_average_charge[species](tmp_in).clip(min=0) /2 #TODO: ...
 
-                tmp_in = np.array([tau, ne, te]).T
+            total_impurity_electrons+=average_charge*conc
 
-                average_charge = self.impurity_average_charge[tmp_element](tmp_in)
-
-                total_impurity_electrons += average_charge * conc
-
-                pass
-
-        if set:
+        if set_attribute:
             self.total_impurity_electrons = np.nan_to_num(total_impurity_electrons)
-        else:
-            return np.nan_to_num( total_impurity_electrons )
+
+        return np.nan_to_num(total_impurity_electrons)
 
     def build_impurity_average_charge(self):
-
-        tmp_impurity_average_charge = {}
-
-        for tmp_element in list(self.input_dict['physics'].keys()):
-
-            if any([tmp_element == t for t in ('D', 'H', 'X')]):
-                pass
-            else:
-                try:
-                    tmp_file = self.input_dict['physics'][tmp_element]['effective_charge_406']
-                except KeyError:
-                    print(self.input_dict['physics'][tmp_element].keys())
-                    raise
-                except:
-                    raise
-
-                tmp_impurity_average_charge[tmp_element] = build_tec406(tmp_file)
-
-        self.impurity_average_charge = tmp_impurity_average_charge
-
-    # TODO: Need to add functionality for no data lines and mystery lines
-    def chain_bounds(self):
-
-        '''
-        self.all_the_indicies = [intercept_index,
-                                 ne_index, te_index,
-                                 conc_index, tau_index, ti_index,
-                                 x_index, no_data_index]
-
-        e.g. theta = [1e0
-                      -2 10 1e13 8 4
-                      1.0 0.1
-                      1e-1 1e-1
-                      10 20]
-
-        :return:
-        '''
-
-        # print(self.all_the_indicies)
-
-        theta_bounds = []
-        theta_widths = []
-
-        self.default_start = []
-
-        # Bounds
-        cal_bounds = [0, 17]
-        cal_widths = 1
-
-        intercept_bounds = [0, 17]
-        intercept_widths = 2
-
-        dr_bounds = [-10, 10]
-        fwhm_bounds = [0.05, 5.0]
-
-        dr_widths = 0.5
-        fwhm_widths = 1
-
-        ne_bounds = [12, 16]
-        # te_bounds = [11, 18] # if log(Pe)
-
-        if self.logte:
-            te_bounds = [-1, 3]
-        else:
-            te_bounds = [0.5, 50]
-
-        ne_widths = 2
-        te_widths = 5
-
-        b_field_bounds = [0, 3] # 5]
-        viewangle_bounds = [0, 2]
-
-        b_field_widths = 0.1
-        viewangle_widths = 10
-
-        if self.conc:
-            conc_bounds = [-5, 0]
-        else:
-            conc_bounds = [0, 15]
-
-        if self.netau:
-            tau_bounds = [8.7, 17] # sampled as log10(ne*tau)
-        else:
-            tau_bounds = [-7, 0]
-
-        ti_bounds = [-1, 2]
-
-        conc_widths = 0.5
-        tau_widths = 2
-        ti_widths = 1
-
-        ems_bounds = [0, 20]
-
-        ems_widths = 1
-
-        atomic_bounds = [conc_bounds, ti_bounds, tau_bounds]
-        atomic_widths = [conc_widths, ti_widths, tau_widths]
-
-        # Structuring theta_bounds and widths
-
-        num_not_calibrated = len( np.where(self.is_chord_not_calibrated == True)[0] )
-
-        if num_not_calibrated > 0:
-
-            for counter in np.arange( num_not_calibrated ):
-
-                theta_bounds.append(cal_bounds)
-                theta_widths.append(cal_widths)
-
-                self.default_start.append( 10 )
-
-            self.default_start.append(1)
-        else:
-            self.default_start.append(11)
-
-        theta_bounds.append(intercept_bounds)
-        theta_widths.append(intercept_widths)
-
-        if self.profile_fucntion.dr:
-            theta_bounds.append(dr_bounds)
-            theta_widths.append(dr_widths)
-
-            self.default_start.append(-0.1)
-
-            for counter in np.arange(self.profile_fucntion.number_of_varriables-2):
-                theta_bounds.append(fwhm_bounds)
-                theta_widths.append(fwhm_widths)
-
-                self.default_start.append(1)
-
-            theta_bounds.append(ne_bounds)
-            theta_widths.append(ne_widths)
-
-            self.default_start.append(13.7)
-
-            for counter in np.arange(self.profile_fucntion.number_of_varriables-2):
-                theta_bounds.append(fwhm_bounds)
-                theta_widths.append(fwhm_widths)
-
-                self.default_start.append(1)
-
-            theta_bounds.append(te_bounds)
-            theta_widths.append(te_widths)
-
-            self.default_start.append(10)
-            # self.default_start.append(15) # if log(Pe)
-        else:
-            for counter in np.arange(self.profile_fucntion.number_of_varriables-1):
-                theta_bounds.append(fwhm_bounds)
-                theta_widths.append(fwhm_widths)
-
-                self.default_start.append(1)
-
-            theta_bounds.append(ne_bounds)
-            theta_widths.append(ne_widths)
-
-            self.default_start.append(13.7)
-
-            for counter in np.arange(self.profile_fucntion.number_of_varriables-1):
-                theta_bounds.append(fwhm_bounds)
-                theta_widths.append(fwhm_widths)
-
-                self.default_start.append(1)
-
-            theta_bounds.append(te_bounds)
-            theta_widths.append(te_widths)
-
-            self.default_start.append(10)
-            # self.default_start.append(15) # if log(Pe)
-
-        if self.hydrogen_isotope:
-
-            theta_bounds.append(b_field_bounds)
-            theta_bounds.append(viewangle_bounds)
-
-            theta_widths.append(b_field_widths)
-            theta_widths.append(viewangle_widths)
-
-            for tmp in [1, 1]:
-
-                self.default_start.append(tmp)
-
-            # conc bounds
-            if self.inference_resolution['ion_resolved_tau']:
-                number_of_things_tc = self.number_of_ions
-            else:
-                number_of_things_tc = self.number_of_isotopes
-
-            counter = 0
-            while counter < (number_of_things_tc):
-                theta_bounds.append(atomic_bounds[0])
-                theta_widths.append(atomic_widths[0])
-
-                self.default_start.append(-1)
-
-                counter += 1
-
-            # ti bounds
-            if self.inference_resolution['ion_resolved_temperatures']:
-                number_of_things_ti = self.number_of_ions
-            else:
-                number_of_things_ti = self.number_of_isotopes
-
-            counter = 0
-            while counter < (number_of_things_ti):
-                theta_bounds.append(ti_bounds) # atomic_bounds[-1])
-                theta_widths.append(ti_widths) # atomic_widths[-1])
-
-                self.default_start.append(1)
-
-                counter += 1
-
-            # tau bounds
-            if self.inference_resolution['ion_resolved_tau']:
-                number_of_things_tau = self.number_of_ions
-            else:
-                number_of_things_tau = self.number_of_isotopes
-
-            counter = 0
-            while counter < (number_of_things_tau-1):
-                theta_bounds.append(tau_bounds) # atomic_bounds[1])
-                theta_widths.append(tau_widths) # atomic_widths[1])
-
-                self.default_start.append(11.5)
-
-                counter += 1
-
-        else:
-            if self.netau:
-                default_tau = 11.5
-            else:
-                default_tau = -1
-
-            atomic_default_start = [-1, 1, default_tau]
-
-            key_checks = ['ion_resolved_tau', 'ion_resolved_temperatures', 'ion_resolved_tau']
-
-            for counter, tmp_atomic_bounds in enumerate(atomic_bounds):
-
-                if self.inference_resolution[key_checks[counter]]:
-                    number_of_things = self.number_of_ions
-                else:
-                    number_of_things = self.number_of_isotopes
-
-                counter1 = 0
-                while counter1 < number_of_things:
-
-                    theta_bounds.append(tmp_atomic_bounds)
-                    theta_widths.append(atomic_widths[counter])
-
-                    self.default_start.append(atomic_default_start[counter])
-
-                    counter1 += 1
-
-                if self.inference_resolution['ion_resolved_tau']: pass
-                if self.inference_resolution['ion_resolved_temperatures']: pass
-
-        num_of_ems = self.number_of_xlines + self.number_of_no_data_lines
-
-        if num_of_ems > 0:
-            counter = 0
-
-            while counter < num_of_ems:
-
-                self.default_start.append(11)
-
-                theta_bounds.append(ems_bounds)
-                theta_widths.append(ems_widths)
-
-                counter += 1
-
-        self.theta_bounds = np.array(theta_bounds)
-        self.theta_widths = np.array(theta_widths)
-
-    def count_species(self):
-
-        nun_species = len( self.input_dict['physics'].keys() )
-        num_ions = 0
-        num_xlines = 0
-        num_no_data_lines = 0
-
-        for tmp_species in self.input_dict['physics'].keys():
-
-            if tmp_species == 'X':
-                num_xlines = len(self.input_dict['physics'][tmp_species].keys())
-                nun_species -= 1
-            else:
-                num_ions += len(self.input_dict['physics'][tmp_species]['ions'])
-
-        self.number_of_isotopes, self.number_of_ions, \
-        self.number_of_xlines, self.number_of_no_data_lines = \
-            nun_species, num_ions, num_xlines, num_no_data_lines
-
-    def where_the_no_data_lines(self):
-
-        no_data_lines = {}
-
-        for counter0, species in enumerate(self.plasma['physics'].keys()):
-
-            if species != 'X':
-
-                for counter1, ion in enumerate(self.plasma['physics'][species]['ions']):
-
-                    for counter2, line in enumerate(self.plasma['physics'][species][ion]['lines']):
-
-                        # print(species, ion, line)
-
-                        if not any([k=='tec' for k in self.plasma['physics'][species][ion][line].keys()]):
-
-                            # check if there is a species subdict in the first places
-                            # then if there are species there is the one wanted there
-                            if not any([t == species for t in no_data_lines.keys()]):
-                                no_data_lines[species] = {}
-                                no_data_lines[species][ion] = {}
-                                no_data_lines[species][ion][line] = 0
-                            # so now we have accounted for not have the species
-                            #
-                            # what if the the species doesn't have any ion subdicts
-                            # what if the the species doesn't have the wanted ion
-                            elif not any([t == ion for t in no_data_lines[species].keys()]):
-                                no_data_lines[species][ion] = {}
-                                no_data_lines[species][ion][line] = 0
-                            # so now we have accounted for not having the ions of a species
-                            #
-                            # what if the ion does not have any lines - then we shall add it
-                            else:
-                                no_data_lines[species][ion][line] = 0
-
-                            # print(species, ion, line)
-
-        return no_data_lines
+        interps = []
+        for species in self.impurity_species:
+            interps.append( (species, self.build_impurity_electron_interpolator(species)) )
+
+        self.impurity_average_charge = dict(interps)
+
+    def build_impurity_electron_interpolator(self, species):
+
+        te = self.adas_plasma_inputs['te']
+        ne = self.adas_plasma_inputs['ne']
+        tau = self.adas_plasma_inputs['magical_tau']
+        # tau = self.adas_plasma_inputs['tau_exc']
+
+        elem, ion = self.species_to_elem_and_ion(species)
+        ionp1 = ion + 1
+
+        z_bal=self.impurity_ion_bal[elem][:, :, :, ion]
+        zp1_bal=self.impurity_ion_bal[elem][:, :, :, ionp1]
+        z_eff=(ion*z_bal+ionp1*zp1_bal) # /(z_bal+zp1_bal)
+
+        # return RegularGridInterpolator((tau, ne, te), np.log(z_eff), bounds_error=False, fill_value=None)
+        return RegularGridInterpolator((tau, ne, te), z_eff, bounds_error=False, fill_value=None)
+
+    def get_impurity_ion_bal(self):
+
+        ion_bals = []
+        rad_power = []
+
+        te = self.adas_plasma_inputs['te']
+        ne = self.adas_plasma_inputs['ne']
+        tau_exc = self.adas_plasma_inputs['tau_exc']
+        tau_rec = self.adas_plasma_inputs['tau_rec']
+
+        for elem in self.impurities:
+            adf11_plt=get_adf11(elem, yr=96, type='plt')
+            adf11_prb=get_adf11(elem, yr=96, type='prb')
+            num_ions=get_number_of_ions(elem)
+            shape=(len(tau_exc)+len(tau_rec), len(ne), len(te), num_ions)
+            shape_pow=(len(tau_exc)+len(tau_rec), len(ne), len(te), num_ions-1)
+            # shape=(len(tau_exc), len(ne), len(te), num_ions)
+            bal=np.zeros(shape)
+            power=np.zeros(shape_pow)
+            meta_index=0
+            meta=get_meta(elem, index=meta_index)
+            min_frac0=1e-5
+            min_frac1=1e-15
+            for t_counter, t in enumerate(tau_exc):
+                print(t_counter, t)
+                with HiddenPrints():
+                    out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
+                out['ion'][out['ion'] < min_frac0]=min_frac1
+                bal[t_counter, :, :, :]=out['ion']
+                for ion in range(power.shape[-1]):
+                    is1=ion+1
+                    plt=read_adf11(file=adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+                    prb=read_adf11(file=adf11_prb, adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+
+                    ni=bal[t_counter, :, :, ion]
+                    nr=bal[t_counter, :, :, is1]
+                    tmppower=(ni*plt.T +nr*prb.T)
+                    tmppower*=self.adas_plasma_inputs['big_ne']
+                    power[t_counter, :, :, ion]=tmppower
+
+            # downstream transport
+            meta_index=-1
+            meta=get_meta(elem, index=meta_index)
+            for t_counter, t in enumerate(tau_rec):
+                with HiddenPrints():
+                    out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
+                out['ion'][out['ion'] < min_frac0]=min_frac1
+                bal[len(tau_exc)+t_counter, :, :, :]=out['ion']
+                for ion in range(power.shape[-1]):
+                    is1=ion+1
+                    plt=read_adf11(file=adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+                    prb=read_adf11(file=adf11_prb, adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+
+                    ni=bal[t_counter, :, :, ion]
+                    nr=bal[t_counter, :, :, is1]
+                    tmppower=(ni*plt.T +nr*prb.T)
+                    tmppower*=self.adas_plasma_inputs['big_ne']
+                    power[t_counter, :, :, ion]=tmppower
+
+            ion_bals.append((elem, bal))
+            rad_power.append((elem, power))
+
+        self.impurity_ion_bal=dict(ion_bals)
+        self.impurity_raditive_power_dict=dict(rad_power)
+        self.build_impurity_raditive_power_splines()
+
+    def build_impurity_raditive_power_splines(self):
+        ne=self.adas_plasma_inputs['ne']
+        te=self.adas_plasma_inputs['te']
+        self.impurity_raditive_power={}
+        rad_power=[]
+        for elem in self.impurities:
+            for ion in range(self.impurity_raditive_power_dict[elem].shape[-1]):
+                elem_ion=elem+'_'+str( int(ion) )
+                for tnum, tau in enumerate(self.adas_plasma_inputs['magical_tau']):
+                    rates=self.impurity_raditive_power_dict[elem][tnum, :, :, ion]
+                    tmpspline=RectBivariateSpline(ne, te, np.log( rates.clip(1e-30) ))
+                    rad_power.append((tau, tmpspline))
+
+                self.impurity_raditive_power[elem_ion]=dict(rad_power)
+
+    def impurity_power(self, species):
+        nz=self.plasma_state[species+'_dens']
+        tau=np.log10(self.plasma_state[species+'_tau'])
+        ne=self.plasma_state['electron_density']
+        te=self.plasma_state['electron_temperature']
+
+        upper_index=self.adas_plasma_inputs['magical_tau'].searchsorted(tau)
+        lower_index=upper_index-1
+        upper_tau=self.adas_plasma_inputs['magical_tau'][upper_index][0]
+        lower_tau=self.adas_plasma_inputs['magical_tau'][lower_index][0]
+        dtau=abs(upper_tau-lower_tau)
+        upper_wieght=abs(upper_tau-tau)/dtau
+        lower_wieght=abs(lower_tau-tau)/dtau
+
+        upper_power=np.exp( self.impurity_raditive_power[species][upper_tau].ev(ne, te) )
+        lower_power=np.exp( self.impurity_raditive_power[species][lower_tau].ev(ne, te) )
+
+        power=nz*0.5*(upper_wieght*upper_power + upper_wieght*upper_power)
+        if 'power' not in self.plasma_state:
+            self.plasma_state['power']={}
+
+        self.plasma_state['power'][species]=power.copy()
+
+        power=np.trapz(power, self.los)
+
+        return power
+
+    def total_power(self, extrapolate=False):
+        power=0
+        ni=self.plasma_state['main_ion_density']
+        te=self.plasma_state['electron_temperature']
+        ne=self.plasma_state['electron_density']
+        if 'power' not in self.plasma_state:
+            self.plasma_state['power']={}
+
+        # get neutral power
+        if self.contains_hydrogen:
+            for species in self.hydrogen_species:
+                n0=self.plasma_state[species+'_dens']
+                plt=read_adf11(file=hydrogen_adf11_plt, adf11type='plt', is1=1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
+                exc_power=ne*n0*plt
+                self.plasma_state['power'][species+'_exc']=exc_power
+                power+=exc_power
+
+            prb=read_adf11(file=hydrogen_adf11_prb, adf11type='prb', is1=1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
+            rec_power=ne*ni*prb
+            self.plasma_state['power'][self.hydrogen_species[0]+'_rec']=rec_power
+            power+=rec_power
+
+            power=np.trapz(power, self.los)
+
+        # get impurity power
+        for species in self.impurity_species:
+            power+=self.impurity_power(species)
+        # extrapolate impurity power
+        if extrapolate:
+            pass
+
+        self.plasma_state['power']['total']=power
+
+        return power
+
+    def build_impurity_tec(self, file, exc, rec, elem, ion):
+
+        te = self.adas_plasma_inputs['te']
+        ne = self.adas_plasma_inputs['ne']
+        tau = self.adas_plasma_inputs['magical_tau']
+        # tau = self.adas_plasma_inputs['tau_exc']
+        big_ne = self.adas_plasma_inputs['big_ne']
+
+        with HiddenPrints():
+            pecs_exc, info_exc = read_adf15(file, exc, te, ne, all=True)  # (te, ne), _
+            pecs_rec, info_rec = read_adf15(file, rec, te, ne, all=True)  # (te, ne), _
+
+        print(file, exc, elem, ion, info_exc['wavelength'], info_rec['wavelength'])
+
+        tec406 = np.zeros((len(tau), len(ne), len(te)))
+
+        tec_splines=[]
+        for t_counter, t in enumerate(tau):
+            # ionbal = self.impurity_ion_bal[elem]
+            z_bal=self.impurity_ion_bal[elem][t_counter, :, :, ion]
+            zp1_bal=self.impurity_ion_bal[elem][t_counter, :, :, ion+1]
+            rates = big_ne*(pecs_exc.T*z_bal+pecs_rec.T*zp1_bal) # /(z_bal+zp1_bal)
+            # rates_exc=pecs_exc.T*z_bal
+            # rates_rec=pecs_rec.T*zp1_bal
+            # rates=np.nan_to_num( np.log10(rates_exc+rates_rec) )
+            # rates+=np.log10(big_ne)
+            # tec406[t_counter, :, :] = big_ne*(pecs_exc.T*ionbal[t_counter, :, :, ion] +
+            #                                   pecs_rec.T*ionbal[t_counter, :, :, ion+1])
+            # tec_splines.append(RectBivariateSpline(ne, te, np.log(rates.clip(1e-50))).ev)
+            tec_splines.append(RectBivariateSpline(ne, te, np.log(rates.clip(1e-30))))
+            # tec_splines.append(RectBivariateSpline(ne, te, rates).ev)
+
+        # # log10 is spitting out errors ::( but it still runs ::)
+        # # What about scipy.interpolate.Rbf ? # TODO - 1e40 REEEEEEEEEEEE
+        # return RegularGridInterpolator((tau, ne, te), np.log(tec406.clip(1e-40)), bounds_error=False)
+        return tec_splines
+
+    def get_impurity_tecs(self):
+        tecs = []
+        for species in self.impurity_species:
+            for line in self.input_dict[species].keys():
+                print("Building impurity TEC splines: {} {}".format(species, line, end="\r"))
+                line_str = str(line).replace(', ', '_')
+                for bad_character in ['[', ']', '(', ')']:
+                    line_str=line_str.replace(bad_character, '')
+                line_tag = species + '_' + line_str
+                file = self.input_dict[species][line]['pec']
+                exc = self.input_dict[species][line]['exc_block']
+                rec = self.input_dict[species][line]['rec_block']
+                elem, ion = self.species_to_elem_and_ion(species)
+                print(line, self.input_dict[species][line])
+                tec = self.build_impurity_tec(file, exc, rec, elem, ion)
+                tecs.append((line_tag, tec))
+
+        self.impurity_tecs = dict(tecs)
+
+    @staticmethod
+    def species_to_elem_and_ion(species):
+        split_index_array = np.where([t=='_' for t in species])[0]
+        split_index = split_index_array[0]
+        assert len(split_index_array)==1, species+' does not have the correct format: elem_ionstage'
+        return species[:split_index], int(species[split_index+1:])
+
+    def get_hydrogen_pecs(self):
+        te = self.adas_plasma_inputs['te']
+        ne = self.adas_plasma_inputs['ne']
+
+        pecs = []
+        for species in self.hydrogen_species:
+            for line in self.input_dict[species].keys():
+                print("Building hydrogen PEC splines: {} {}".format(species, line, end="\r"))
+                line_tag = species+'_'+str(line).replace(', ', '_')
+                file = self.input_dict[species][line]['pec']
+                exc = self.input_dict[species][line]['exc_block']
+                rec = self.input_dict[species][line]['rec_block']
+
+                for block, r_tag in zip([exc, rec], ['exc', 'rec']):
+                    rates, _ = read_adf15(file, block, te, ne, all=True)  # (te, ne), _# TODO - 1e50 alarm
+                    pecs.append( (line_tag+'_'+r_tag, RectBivariateSpline(ne, te, np.log(rates.T.clip(1e-50))).ev) )
+                # return
+
+        self.hydrogen_pecs = dict(pecs)
 
     def is_theta_within_bounds(self, theta):
-
-        out = []
-
-        for counter, bound in enumerate(self.theta_bounds):
-
-            out.append( within(theta[counter], bound) )
-
-        return out
+        if not check_bounds_order(self.theta_bounds):
+            print('Not all bounds are correctly ordered. Reordering bounds. Please check bounds!')
+            self.theta_bounds=np.array([self.theta_bounds.min(1), self.theta_bounds.max(1)]).T
+            if not check_bounds_order(self.theta_bounds):
+                raise ValueError('Bounds could not be reordered!')
+        return [((bound[0]<r) and (r<bound[1])) or any([b==r for b in bound]) for bound, r in zip(self.theta_bounds, theta)]
 
 
+class PlasmaSimple2D:
+    def __init__(self, chords, plasmas, profile_function=None):
+        self.chords=np.array(chords)
+        self.plasmas=plasmas
+        self.profile_function=profile_function
+
+        self.get_species()
+        self.build_tags_slices_and_bounds()
+        self.get_theta_functions()
+
+    def __call__(self):
+        pass
+
+    def get_species(self):
+        self.species=[]
+        for plasma in self.plasmas:
+            for species0 in plasma.species:
+                k=1+len(species0.split('_')[-1])
+                species1=species0[:-k]
+                if species1 not in self.species:
+                    self.species.append(species1)
+
+
+    def build_tags_slices_and_bounds(self):
+        self.plasma_state=collections.OrderedDict()
+        self.plasma_theta=collections.OrderedDict()
+
+        tags=[]
+        slices=[]
+        bounds=[]
+        # global/2D parameters
+        # emission calibration
+        tags.append('cal')
+        bounds.append([-1, 1])
+        slices.append(slice(0, 1))
+        # wave calibration
+        tags.append('calwave')
+        bounds.extend([[4037.5, 4042.5], [0.19, 0.20]])
+        slices.append(slice(slices[-1].stop, slices[-1].stop+2))
+        # background
+        tags.append('background')
+        bounds.extend([[11, 13]])
+        slices.append(slice(slices[-1].stop, slices[-1].stop+1))
+        # separatrix varriables
+        # electron density
+        tags.append('electron_density_separatrix')
+        ne_sep_bounds=[[13, 14], [12, 13], [18, 20], [1, 10]]
+        bounds.extend(ne_sep_bounds)
+        slices.append(slice(slices[-1].stop, slices[-1].stop+len(ne_sep_bounds)))
+        tags.append('electron_density_radial')
+        ne_radial_bounds=[[-1, 1], [0.7, 1.0], [0., 2.]]
+        bounds.extend(ne_radial_bounds)
+        slices.append(slice(slices[-1].stop, slices[-1].stop+len(ne_radial_bounds)))
+        # electron temperature
+        tags.append('electron_temperature_separatrix')
+        te_sep_bounds=[[0, 1.7], [0.8, 1.0]]
+        bounds.extend(te_sep_bounds)
+        slices.append(slice(slices[-1].stop, slices[-1].stop+len(te_sep_bounds)))
+        tags.append('electron_temperature_radial')
+        te_radial_bounds=[[0.3, 0.5], [0., 2.]]
+        bounds.extend(te_radial_bounds)
+        slices.append(slice(slices[-1].stop, slices[-1].stop+len(te_radial_bounds)))
+        # species
+        species_attributes=['dens', 'Ti', 'velocity', 'tau']
+        species_attributes_bounds=[[-2, 0], [0, 2], [-30, 30], [-6, 1]]
+        for elem, (att, att_bounds) in product(self.species, zip(species_attributes, species_attributes_bounds)):
+            # print(elem, att, att_bounds)
+            att_check=(att is 'tau')
+            elem_check=(elem[0] in ('H', 'D'))
+            # check=att_check+elem_check
+            # print(elem, att, elem_check, att_check, check)
+            if not (elem_check and att_check):
+                tags.append(elem+'_'+att)
+                bounds.append(att_bounds)
+                slices.append(slice(slices[-1].stop, slices[-1].stop+1))
+
+        self.tags=tags
+        self.theta_bounds=bounds
+        self.slices=collections.OrderedDict( ((a, b) for a,b in zip(tags, slices)) )
+
+    def get_theta_functions(self):
+        self.theta_functions=collections.OrderedDict()
+        if self.profile_function is not None:
+            self.theta_functions['electron_density_separatrix']=self.profile_function.electron_density
+            self.theta_functions['electron_temperature_separatrix']=self.profile_function.electron_temperature
+
+    def update_plasma_state(self, theta):
+        self.last_theta=theta
+        for tag in self.tags:
+            tmp_slice=self.slices[tag]
+            self.plasma_theta[tag]=theta[tmp_slice]
+            if tag in self.theta_functions:
+                self.plasma_state[tag]=self.theta_functions[tag](theta[tmp_slice])
+            else:
+                self.plasma_state[tag]=theta[tmp_slice]
+
+    def get_1d_thetas(self):
+        plasmas=self.plasmas
+        fan_numbers=self.chords
+        # if chord_numbers is None:
+        chord_numbers=[0 for n in fan_numbers]
+
+        thetas1d=[]
+        for plasma, fan_num, chord_num in zip(plasmas, fan_numbers, chord_numbers):
+            # print(plasma, fan_num, chord_num)
+            thetas1d.append( self.get_1d_theta(plasma, fan_num, chord_num) )
+
+        return thetas1d
+
+    def get_1d_theta(self, plasma, fan_num, chord_num=0):
+        new_theta=np.zeros(plasma.n_params)
+        fan_num_index=np.where(fan_num==self.chords)[0][0]
+
+        calibration_tags=['cal', 'calwave', 'background']
+        for ctag in calibration_tags:
+            tmp_tag=ctag+'_'+str(chord_num)
+            new_theta[plasma.slices[tmp_tag]]=self.plasma_state[ctag]
+
+        for ptag in ['electron_density', 'electron_temperature']:
+            new_theta[plasma.slices[ptag].start]=self.plasma_state[ptag+'_separatrix'][fan_num_index]
+            new_theta[plasma.slices[ptag]][1:]=self.plasma_state[ptag+'_radial']
+
+        species_attributes=['dens', 'Ti', 'velocity', 'tau']
+        for species, att in product(plasma.species, species_attributes):
+            # print(species, att)
+            tmp_tag=species+'_'+att
+            split_species=species.split('_')
+            elem, charge=species[:-(1+len(species.split('_')[-1]))], int(split_species[-1])
+            if tmp_tag in plasma.slices:
+                # density
+                if att is 'dens':
+                    if charge > 0:
+                        dk=np.log10(charge)
+                    else:
+                        dk=0
+                    new_theta[plasma.slices[tmp_tag]]=self.plasma_state['electron_density_separatrix'][fan_num_index]
+                    fraction=self.plasma_state[elem+'_'+att][0]
+                    new_theta[plasma.slices[tmp_tag]]-=(fraction+dk)
+                # Ti
+                if att is 'Ti':
+                    new_theta[plasma.slices[tmp_tag]]=self.plasma_state[elem+'_'+att]
+                # velocity
+                if att is 'velocity':
+                    new_theta[plasma.slices[tmp_tag]]=self.plasma_state[elem+'_'+att]
+                # tau
+                if att is 'tau':
+                    new_theta[plasma.slices[tmp_tag]]=self.plasma_state[elem+'_'+att]
+                pass
+
+        if plasma.zeeman:
+            new_theta[plasma.slices['b-field']]=0.
+            new_theta[plasma.slices['viewangle']]=0.
+
+        return new_theta
 
 if __name__ == '__main__':
 
-    input_dict = {}
+    from baysar.input_functions import make_input_dict
 
     num_chords = 1
+    wavelength_axis = [np.linspace(3900, 4300, 512)]
+    experimental_emission = [np.array([1e12*np.random.rand() for w in wavelength_axis[0]])]
+    instrument_function = [np.array([0, 1, 0])]
+    emission_constant = [1e11]
+    species = ['D_ADAS', 'N']
+    ions = [ ['0'], ['1', '2', '3'] ]
+    noise_region = [[4040, 4050]]
+    # mystery_lines = [ [[4070], [4001, 4002]],
+    #                    [[1], [0.4, 0.6]]]
+    mystery_lines = None
 
-    input_dict['number_of_chords'] = num_chords
+    input_dict = make_input_dict(wavelength_axis=wavelength_axis, experimental_emission=experimental_emission,
+                                instrument_function=instrument_function, emission_constant=emission_constant,
+                                noise_region=noise_region, species=species, ions=ions,
+                                mystery_lines=mystery_lines, refine=[0.01],
+                                ion_resolved_temperatures=False, ion_resolved_tau=True)
 
-    input_dict['chords'] = {}
+    from baysar.lineshapes import ReducedBowmanTPlasma
 
-    wavelength_axes = [[]]
-    experimental_emission = [[]]
+    x=np.linspace(-15, 35, 100)
+    profile_function=ReducedBowmanTPlasma(x=x, dr_bounds=[-5, 1], bounds_ne=[13, 15], bounds_te=[0, 1.7])
+    plasma = PlasmaLine(input_dict, profile_function=profile_function)
 
-    instrument_function = [[]]
-    emission_constant = [...]
-    noise_region = [[]]
+    chords=[0, 1]
+    from baysar.lineshapes import SimpleSeparatrix
+    profile_function=SimpleSeparatrix(chords)
+    plasma2d = PlasmaSimple2D(chords=chords, plasmas=[plasma, plasma], profile_function=profile_function)
+    plasma2d.update_plasma_state([np.random.uniform(b[0], b[1]) for b in plasma2d.theta_bounds])
 
-    for counter0, chord in enumerate(np.arange(num_chords)):
-        # tmp = 'chord' + str(counter0)
-        tmp = counter0
-
-        input_dict['chords'][tmp] = {}
-        input_dict['chords'][tmp]['meta'] = {}
-
-        input_dict['chords'][tmp]['meta']['wavelength_axis'] = wavelength_axes[counter0]
-        input_dict['chords'][tmp]['meta']['experimental_emission'] = experimental_emission[counter0]
-
-        input_dict['chords'][tmp]['meta']['instrument_function'] = instrument_function[counter0]
-        input_dict['chords'][tmp]['meta']['emission_constant'] = emission_constant[counter0]
-        input_dict['chords'][tmp]['meta']['noise_region '] = noise_region[counter0]
-
-        pass
-
-    '''
-    n_ii_cwls = [3995., 4026.09, 4039.35, 4041.32, 4035.09, 4043.54, 4044.79, 4056.92]
-    n_ii_jjr = [1, 0.92, 0.08, 0.456, 0.211, 0.197, 0.026, 0.022]
-    # n_ii_pec_keys = [0, 2, 2, 3, 3, 3, 3, 3]
-    n_ii_pec_keys = [3, 6, 6, 7, 7, 7, 7, 7]
-
-    # n_iii_cwls = [3998.63, 4003.58, 4097.33, 4103.34]
-    # n_iii_jjr = [0.375, 0.625, 0.665, 0.335]
-    # n_iii_pec_keys = [1, 1, 4, 4]    
-    '''
-
-    chord0_dict = {}
-
-    species = ['D', 'N', 'X']
-    ions = [['0'], ['1', '2']]
-
-    cwl = [[[3968.99, 4100.58]],
-           [[3995., 4026.09, 4039.35, 4041.32, 4035.09, 4043.54, 4044.79, 4056.92],
-            [3998.63, 4003.58, 4097.33, 4103.34]]]
-    n_pec = [[[3968.99, 4100.58]],
-             [[3995., 4026.09, 4039.35, 4041.32, 4035.09, 4043.54, 4044.79, 4056.92],
-              [3998.63, 4003.58, 4097.33, 4103.34]]]
-    f_jj = [[[3968.99, 4100.58]],
-            [[3995., 4026.09, 4039.35, 4041.32, 4035.09, 4043.54, 4044.79, 4056.92],
-             [3998.63, 4003.58, 4097.33, 4103.34]]]
-
-    atomic_charge = [1, 7]
-    ma = [2, 14]
-
-    for counter0, isotope in enumerate(species):
-
-        # if counter0 == 0:
-        #     input_dict['isotopes'] = species
-
-        chord0_dict[isotope] = {}
-        chord0_dict[isotope]['atomic_mass'] = ma[counter0]
-        chord0_dict[isotope]['atomic_charge'] = atomic_charge[counter0]
-
-        for counter1, ion in enumerate(ions[counter0]):
-
-            if counter1 == 0:
-                chord0_dict[isotope]['ions'] = ions[counter0]
-
-            chord0_dict[isotope][ion] = {}
-
-            for counter2, line in enumerate(cwl[counter0][counter1]):
-
-                if counter2 == 0:
-                    chord0_dict[isotope][ion]['lines'] = []
-
-                chord0_dict[isotope][ion]['lines'].append(str(line))
-
-                chord0_dict[isotope][ion][str(line)] = {}
-
-                chord0_dict[isotope][ion][str(line)]['wavelength'] = line
-                chord0_dict[isotope][ion][str(line)]['pec_key'] = n_pec[counter0][counter1][counter2]
-                chord0_dict[isotope][ion][str(line)]['jj_frac'] = f_jj[counter0][counter1][counter2]
-
-                pass
-
-            pass
-
-        pass
-
-    input_dict['chords'][0]['physics'] = chord0_dict
-
-    profile_funciton = Gaussian( x=np.arange(-50., 50., 3) )
-
-    plasma = PlasmaLine(input_dict=input_dict['chords'][0]['physics'],
-                        profile_fucntion=profile_funciton, profile_fucntion_num_varriables=3)
-
-    theta = [1e12,
-             -5, 30, 1e13,
-                  5, 10,
-             0.8, 0.2,
-             1e-4, 1e-4,
-             5, 10]
-
-    plasma(theta)
-
-    print( plasma.plasma_state )
-
-
-
-    pass
+    thetas1d=plasma2d.get_1d_thetas()
+    print(thetas1d)

@@ -7,631 +7,715 @@ from scipy.constants import pi
 from scipy.integrate import trapz
 from scipy.interpolate import interp1d
 
+from scipy import interpolate
+from scipy.interpolate import UnivariateSpline # , BSpline
+
+def reduce_wavelength_check_input(wavelengths, cwl, half_range, return_indicies, power2):
+    # :param 1D ndarray wavelengths: Input array to be reduced
+    if type(wavelengths) is not np.ndarray:
+        raise TypeError("type(wavelengths) is not np.ndarray")
+    if not any(np.isreal(wavelengths)):
+        raise TypeError("wavelengths must only contain real scalars") # this also checks that the array is 1D
+    # :param list or real scalar cwl: Point in the array which will be the centre of the new reduced array
+    if not any([np.isreal(cwl), type(cwl) is not list]):
+        raise TypeError("cwl must be a list or a real scalar")
+    # :param real scalar half_range: Half the range of the new array.
+    if not np.isreal(half_range):
+        raise TypeError("half_range must be a real scalar")
+    # :param boul return_indicies: Boulean (False by default) which when True the function returns the indicies
+    #                              of 'wavelengths' that match the beginning and end of the reduced array
+    if type(return_indicies) is not bool:
+        raise TypeError("return_indicies must be a Boolean")
+    if type(power2) is not bool:
+        raise TypeError("power2 must be a Boolean")
 
 
-
-class Eich(object):
-
-    def __init__(self, x=None, cwl=None, vectorise=1, height_norm=True, reduced=False, centre=True):
-
-         # Useful constants
-        # self.fwhm_to_sigma = 1 / np.sqrt(8 * np.log(2))
-
-        self.vectorise = vectorise
-
-        if self.vectorise > 1:
-            self.x = np.tile(x, (vectorise, 1))
-        else:
-            self.x = x
-
-        self.cwl = cwl
-
-        self.height_norm = height_norm
-        self.reduced = reduced
-        self.centre = centre
-
-    def __call__(self, theta, *args, **kwargs):
-
-        if self.reduced:
-            if self.cwl is not None:
-                spreding, hieght = theta
-                lambda_q, s_factor, flux_expansion = spreding, spreding, 1 # spreding
-
-                centre = self.cwl
-            else:
-                centre, spreding, hieght = theta
-                lambda_q, s_factor, flux_expansion = spreding, spreding, 1 # spreding
-                pass
-        else:
-            if self.cwl is not None:
-                lambda_q, s_factor, hieght = theta
-                centre = self.cwl
-                flux_expansion = 1
-                pass
-            else:
-                centre, lambda_q, s_factor, hieght = theta
-                flux_expansion = 1
-
-        if self.centre:
-            exp_in = np.square(s_factor / (2 * lambda_q)) - \
-                     (0 - self.x) / (lambda_q * flux_expansion)
-            exp_part = np.exp(exp_in)
-
-            erfc_in = s_factor / (2 * lambda_q) - (0 - self.x) / (s_factor * flux_expansion)
-            erfc_part = special.erfc(erfc_in)
-
-            tmp_eich = exp_part * erfc_part
-
-            try:
-                centre_index = np.where(tmp_eich==max(tmp_eich))
-            except:
-                print(tmp_eich)
-                raise
-
-            dr = centre - self.x[centre_index]
-
-            try:
-                x_prime = self.x + dr
-            except:
-                print(dr, centre_index, any(np.isnan(tmp_eich)))
-
-            eich_interp1d = interp1d(x_prime, tmp_eich, fill_value='extrapolate')
-
-            tmp_eich = eich_interp1d(self.x)
-
-            # old_centre = self.x[]
-
-        else:
-            exp_in = np.square(s_factor / (2 * lambda_q)) - \
-                     (centre - self.x) / (lambda_q * flux_expansion)
-            exp_part = np.exp(exp_in)
-
-            erfc_in = s_factor / (2 * lambda_q) - (centre - self.x) / (s_factor * flux_expansion)
-            erfc_part = special.erfc(erfc_in)
-
-            tmp_eich = exp_part * erfc_part
+def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False, power2=False):
 
 
-        if self.height_norm:
-            return hieght * tmp_eich / max(tmp_eich)
-        else:
-            # This is area normalised
-            return hieght * tmp_eich / sum(tmp_eich)
+    """
+    This function returns an array which contains a subsection of input array ('wavelengths') which is
+    between and inclucing the points 'cwl' +- 'half_range'. If the end of this range is outside of the
+    'wavelength' array then the end of the reduced array is the end of the 'wavelength'.
 
-        ...
+    :param 1D ndarray wavelengths: Input array to be reduced
+    :param list or real scalar cwl: Point in the array which will be the centre of the new reduced array
+    :param real scalar half_range: Half the range of the new array.
+    :param boul return_indicies: Boulean (False by default) which when True the function returns the indicies
+                            of 'wavelengths' that match the beginning and end of the reduced array
+    :return: Returns an subset of 'wavelengths' which is centred around 'cwl' with a range of 'cwl' +-
+             'half_range'
+    """
 
+    reduce_wavelength_check_input(wavelengths, cwl, half_range, return_indicies, power2)
+
+    if type(cwl) is list:
+        cwl=cwl[0]
+
+    upper_cwl = cwl + half_range
+    lower_cwl = cwl - half_range
+
+    if upper_cwl > max(wavelengths):
+        upper_index = len(wavelengths)
+    else:
+        tmp_wave = abs(wavelengths - upper_cwl)
+        upper_index = np.where(tmp_wave == min(tmp_wave))[0][0]+1
+
+    if lower_cwl < min(wavelengths):
+        lower_index = 0
+    else:
+        tmp_wave = abs(wavelengths - lower_cwl)
+        lower_index = np.where(tmp_wave == min(tmp_wave))[0][0]
+
+    new_waves_slice=slice(lower_index, upper_index)
+    new_waves=wavelengths[new_waves_slice]
+
+    if return_indicies:
+        return new_waves, new_waves_slice
+    else:
+        return new_waves
+
+def gaussian_check_input(x, cwl, fwhm, intensity):
+    # :param 1D np.ndarray x: Axis to evaluate gaussian
+    if type(x) is not np.ndarray:
+        raise TypeError("type(x) is not np.ndarray")
+    if not any(np.isreal(x)):
+        print('x =', x)
+        raise TypeError("x must only contain real scalars") # this also checks that the array is 1D
+    # :param scalar cwl: Mean of the gaussian
+    if not np.isreal(cwl):
+        raise TypeError("cwl must be a real scalar")
+    # :param non-negative scalar fwhm: FWHM of the gaussian
+    if not np.isreal(fwhm):
+        raise TypeError("fwhm must be a real scalar")
+    if fwhm<=0:
+        raise ValueError("fwhm must be a positive scalar")
+    # :param scalar intensity: Height of the gaussian
+    if not np.isreal(intensity):
+        raise TypeError("fwhm must be a real scalar")
+    if intensity<=0:
+        raise ValueError("fwhm must be a positive scalar")
+
+fwhm_to_sigma=1/np.sqrt(8*np.log(2))
+def gaussian(x, cwl, fwhm, intensity):
+    '''
+    Function for calculating a height normalised gaussian
+    :param 1D np.ndarray x: Axis to evaluate gaussian
+    :param scalar cwl: Mean of the gaussian
+    :param positive scalar fwhm: FWHM of the gaussian
+    :param scalar intensity: Height of the gaussian
+    :return: 1D np.ndarray containing the gaussian
+    '''
+    gaussian_check_input(x, cwl, fwhm, intensity)
+    sigma = fwhm*fwhm_to_sigma
+    return intensity*np.exp(-0.5*((x-cwl)/sigma)**2)
+
+root_half_steradian=np.sqrt(2*np.pi)
+def gaussian_norm(x, cwl, fwhm, intensity):
+    gaussian_check_input(x, cwl, fwhm, intensity)
+    sigma=fwhm*fwhm_to_sigma
+    k= intensity/(root_half_steradian*sigma)
+    peak=np.exp(-0.5*((x-cwl)/sigma)**2)
+    return k*peak
+
+# def gaussian_norm(x, cwl, fwhm, intensity):
+#     k = np.sqrt(half_steradian*np.square(fwhm*fwhm_to_sigma))
+#     return gaussian(x, cwl, fwhm, intensity)/k
+
+def put_in_iterable(input):
+    if type(input) not in (tuple, list, np.ndarray):
+        return [input]
+    else:
+        return input
 
 class Gaussian(object):
+    def __init__(self, x=None, cwl=None, fwhm=None, fractions=None, normalise=True, reduced_range=None):
+        self.x=x
+        self.cwl=np.array(put_in_iterable(cwl))
+        self.fwhm=fwhm
+        self.normalise=normalise
 
-    def __init__(self, x=None, cwl=None, vectorise=1):
-
-        # Useful constants
-        self.fwhm_to_sigma = 1 / np.sqrt(8 * np.log(2))
-
-        self.vectorise = vectorise
-
-        if self.vectorise > 1:
-            self.x = np.tile(x, (vectorise, 1))
+        if reduced_range is None:
+            self.reducedx = [x for c in self.cwl]
+            self.reducedx_indicies = [slice(0, len(x)) for c in self.cwl] # TODO: here
         else:
-            self.x = x
+            self.reducedx = []
+            self.reducedx_indicies = []
+            for c in self.cwl:
+                rx, rxi = reduce_wavelength(x, c, reduced_range/2, return_indicies=True)
+                self.reducedx.append(rx)
+                self.reducedx_indicies.append(rxi)
 
-        self.cwl = cwl
-
-
-
-    def __call__(self, theta, *args, **kwargs):
-
-        if self.cwl is not None:
-            fwhm, intensity = theta
-            cwl = self.cwl
-            pass
+        if fractions is None:
+            self.fractions = [1/len(self.cwl) for c in self.cwl]
         else:
-            try:
-                cwl, fwhm, intensity = theta
-            except ValueError:
-                print(theta)
-                raise
-            except:
-                raise
+            self.fractions = fractions
 
-        # try:
-        #     fwhm /= 2
-        # except:
-        #     fwhm = [f/2 for f in fwhm]
-
-
-        if self.vectorise > 1:
-
-            if any([tmp_fwhm != np.mean(fwhm) for tmp_fwhm in fwhm]):
-                # tiling
-                fwhm = np.array([np.zeros(len(self.x[0])) + t for t in fwhm])
-
-                try:
-                    intensity = np.array([np.zeros(len(self.x[0])) + t for t in intensity])
-                except ValueError:
-                    intensity = np.array([np.zeros(len(self.x[0])) + t for t in intensity[0]])
-                except:
-
-                    print(intensity)
-
-                    raise
-
-                # print(self.x.shape)
-                # print(self.x)
-                #
-                # intensity = np.array([np.zeros(len(self.x[0])) + t for t in intensity])
-
-            else:
-
-                # print( len(intensity), len(intensity[0]) )
-
-                intensity = sum(intensity)
-
-                sigma = np.mean(fwhm) * self.fwhm_to_sigma
-
-                peak = np.exp(-0.5 * ( (self.x[0] - cwl) / sigma) ** 2)
-
-                # print('hello')
-
-                try:
-                    final_peak = intensity * peak.flatten() # np.array([ peak for counter in np.arange(self.vectorise) ])
-                    return final_peak # .flatten()
-                except ValueError:
-                    final_peak = sum(intensity) * peak.flatten() # np.array([peak for counter in np.arange(self.vectorise)])
-                    return final_peak# .flatten()
-                except:
-                    raise
-
-        else: pass
-
-        # guassian function
-        try:
-            sigma = fwhm * self.fwhm_to_sigma
-        except TypeError:
-            sigma = np.array(fwhm) * self.fwhm_to_sigma
-        except TypeError:
-            print('fwhm', fwhm)
-            print('self.fwhm_to_sigma', self.fwhm_to_sigma)
-            raise
-        except:
-            print("Unexpected error:", sys.exc_info())  # [0])
-            raise
-
-        with warnings.catch_warnings():
-
-            warnings.simplefilter("ignore")
-
-            peak = np.exp(-0.5 * ( (self.x - cwl) / sigma) ** 2)
-
-        try:
-            return intensity * peak
-        except ValueError:
-            print( len(intensity), len(peak) )
-            raise
-        except:
-            raise
-
-    def grad(self, theta):
-
-        if self.cwl is not None:
-            fwhm, intensity = theta
-            cwl = self.cwl
-            pass
+        if self.normalise:
+            self.func = gaussian_norm
         else:
-            try:
-                cwl, fwhm, intensity = theta
-            except ValueError:
-                print(theta)
-                raise
-            except:
-                raise
+            self.func = gaussian
 
-        sigma = fwhm * self.fwhm_to_sigma
-
-        d_by_d_sigm = -2 * np.square(self.x)
-
-        pass
-
-
-class Gaussians(object):
-
-    def __init__(self, x=None, cwl=None, vectorise=1):
-
-        self.cwl = cwl
-
-        self.peaks = []
-
-        try:
-            self.many = True
-            for centre in cwl:
-                self.peaks.append(Gaussian(x, centre, vectorise=vectorise))
-        except TypeError:
-            self.peaks.append(Gaussian(x, cwl, vectorise=vectorise))
-        except:
-            raise
-
-    def __call__(self, theta, give_list=False, *args, **kwargs):
-
-        try:
-            if self.many:
-                # if not give_list:
-                #     return [t(theta) for t in self.peaks]
-                # else:
-                #     return sum([t(theta) for t in self.peaks])
-                return sum([t(theta) for t in self.peaks])
-        except NameError:
-            return self.peaks[0](theta)
-        except:
-            raise
-
-
-class GaussianNorm(Gaussian): # TODO: Needs fixing/making ?
-
-    def __init__(self, x=None, cwl=None, vectorise=1, scaler=1):
-
-        self.x = x
-        self.cwl = cwl
-
-        self.scaler = scaler
-        self.vectorise = vectorise
-
-        if self.vectorise > 1:
-            self.x = np.tile(x, (vectorise, 1))
+        if self.cwl is not None and self.fwhm is not None:
+            self.peak=self.peak_1d
+        elif self.cwl is not None:
+            self.peak=self.peak_2d
         else:
-            self.x = x
-
-        super(GaussianNorm, self).__init__(x, cwl, vectorise=self.vectorise)
-
-        self.fwhm_to_sigma = 1 / (2 * np.sqrt(2 * np.log(2)))
-
-        self.sigma_to_norm_k = np.sqrt(2 * np.pi)
-
-    def __call__(self, theta, *args, **kwargs):
-
-        peak = super(GaussianNorm, self).__call__(theta) * self.scaler #, give_list=True)
-
-        if self.cwl is not None:
-            fwhm = theta[0]
-        else:
-            fwhm = theta[1]
-
-        # tiling
-        if self.vectorise > 1:
-            fwhm = np.array([np.zeros(len(self.x[0])) + t for t in fwhm])
-
-        try:
-            const = np.sqrt(2 * np.pi * np.square(fwhm * self.fwhm_to_sigma) )
-        except TypeError:
-            fwhm = fwhm[0]
-            const = np.sqrt(2 * np.pi * np.square(fwhm * self.fwhm_to_sigma) )
-            # print( *fwhm, self.fwhm_to_sigma )
-            # raise
-        except:
-            raise
-
-        try:
-            return peak / const
-        except ValueError:
-            print(self.x.shape)
-            print(peak.shape)
-            print(fwhm.shape)
-            raise
-        except:
-            raise
-
-
-class GaussiansNorm(object): # TODO: Needs fixing/making
-
-    def __init__(self, x=None, cwl=None, fwhm=None, fractions=[], vectorise=1):
-
-        if type(cwl) == list:
-            self.cwl = cwl
-        else:
-            self.cwl = [cwl]
-
-        self.fwhm = fwhm
-
-        self.fractions = fractions
-
-        self.peaks = []
-
-        self.vectorise = vectorise
-
-        try:
-            self.many = True
-            for counter, centre in enumerate(self.cwl):
-                self.peaks.append( GaussianNorm( x, centre, vectorise=self.vectorise,
-                                                 scaler=self.fractions[counter] ) )
-        except IndexError:
-            org_sum_fractions = sum(self.fractions)
-            if all([ (len(self.fractions) == 0) and (len(self.cwl) > 1) ]):
-                for tmp in self.cwl:
-                    self.fractions.append( 1 / len(self.cwl) )
-            elif all([ (len(self.fractions) < len(self.cwl)) and (org_sum_fractions < 1) ]):
-                len_extra_fractions = len(self.cwl) - len(self.fractions)
-                while len(self.fractions) < len(self.cwl):
-                    self.fractions.append( ( 1 - org_sum_fractions ) / len_extra_fractions )
-            else:
-                self.fractions = np.zeros( len(self.cwl) ) + ( 1 / len(self.cwl) )
-
-            try:
-                self.many = True
-
-                self.peaks = []
-                for counter, centre in enumerate(self.cwl):
-                    self.peaks.append(GaussianNorm(x, centre, vectorise=vectorise,
-                                                   scaler=self.fractions[counter]))
-            except:
-                raise
-        except TypeError:
-            self.many = False
-            self.peaks = []
-            self.peaks.append(GaussianNorm(x, self.cwl, vectorise=vectorise))
-        except:
-            raise
-
-        if all([type(self.cwl) != t for t in (int, float)]):
-            assert len(self.cwl) == len(self.peaks), str(len(self.cwl)) + ' ' + str(len(self.peaks))
-
-    def __call__(self, theta, give_list=False, *args, **kwargs):
-
-        try:
-            if self.many:
-                if give_list:
-                    return [t(theta) for t in self.peaks]
-                else:
-                    return sum([t(theta) for t in self.peaks])
-            else: pass
-        except NameError:
-            return self.peaks[0](theta)
-        except:
-            raise
-
-
-class Lorentzian(object): # TODO: This has not been thuroughly debugged
-
-
-    def __init__(self, x, cwl):
-
-        self.x = x
-
-        self.x_shape = x.shape
-
-        self.cwl = np.tile(cwl, self.x_shape[1])
-
-    def __call__(self, fwhm, intensity):
-
-        # tiling
-        fwhm = np.tile(fwhm, self.x_shape[1])
-        intensity = np.tile(intensity, self.x_shape[1])
-
-        hwhm = fwhm / 2.0
-
-        return intensity / (pi * hwhm * (1 + ((self.x - self.cwl) / hwhm) ** 2))
-
-
-class LorentzianNorm(Lorentzian):
-
-    def __init__(self, x, cwl):
-
-        super(LorentzianNorm, self).__init__(x, cwl)
-
-    def __call__(self, fwhm, intesity):
-
-        peak = super(LorentzianNorm, self).__call__(fwhm, intesity)
-
-        norm_k = trapz(peak, self.x)
-
-        return peak / norm_k
-
-
-class TmpLorentzian(object):
-
-    def __init__(self, x, cwl=None, fwhm=None):
-
-        self.x = x
-
-        self.cwl = cwl
-        self.fwhm = fwhm
-
-        pass
+            self.peak=self.peak_3d
 
     def __call__(self, theta):
+        return self.peak(theta)
 
-        if all([ c == None for c in [self.fwhm, self.cwl] ]):
+    def peak_1d(self, intensity):
+        return self.make_peak(self.cwl, self.fwhm, intensity)
 
-            cwl, fwhm, intensity = theta
+    def peak_2d(self, theta):
+        fwhm, intensity = theta
+        return self.make_peak(self.cwl, fwhm, intensity)
 
-        elif self.fwhm is not None and self.cwl is None:
+    def peak_3d(self, theta):
+        cwl, fwhm, intensity = theta
+        cwl = list(cwl)
+        return self.make_peak(cwl, fwhm, intensity)
 
-            cwl, intensity = theta
+    def make_peak(self, cwl, fwhm, intensity):
+        fwhm = put_in_iterable(fwhm)
+        if len(fwhm)<len(cwl) and len(fwhm)==1:
+            fwhm = [fwhm[0] for c in cwl]
 
-            fwhm = self.fwhm
+        peak = np.zeros(len(self.x))
+        for f, c, fw, rx, rxi in zip(self.fractions, cwl, fwhm, self.reducedx, self.reducedx_indicies):
+            peak[rxi] += self.func(rx, c, fw, f)
 
-        elif self.cwl is not None and self.fwhm is None:
+        return intensity*peak
 
-            fwhm, intensity = theta
-
-            cwl = self.cwl
-
-        else:
-            intensity = theta
-
-            fwhm = self.fwhm
-
-        try:
-            hwhm = fwhm / 2.0
-        except:
-            print(fwhm)
-            raise
-
-        peak = 1 / (pi * hwhm * (1 + ((self.x - cwl) / (hwhm)) ** 2))
-
-        return (intensity / max(peak)) * peak
-
-
-class TmpLorentzianNorm(TmpLorentzian):
-
-    def __call__(self, theta):
-
-        peak = super().__call__(theta)
-
-        k = trapz(peak, self.x)
-
-        peak_norm = peak / k
-
-        return theta[1] * peak_norm
-
-
-class DoubleTmpLorentzian(TmpLorentzian):
-
-    def __call__(self, theta):
-
-        if self.cwl is None:
-            cwl, w0, w1, tune, h = theta
-
-            l0_theta = [cwl, w0, h]
-            l1_theta = [cwl, w1, h]
-        else:
-            w0, w1, tune, h = theta
-
-            l0_theta = [w0, h]
-            l1_theta = [w1, h]
-
-        peak0 = super().__call__(l0_theta)
-        peak1 = super().__call__(l1_theta)
-
-        return (peak0 + tune*peak1) / (1 + tune)
 
 class SuperGaussian(object):
-
     def __init__(self, mean, sigma, half_power):
-
         self.mean = mean
         self.sigma = sigma
-
         self.half_power = half_power
 
     def __call__(self, theta, log=True):
-
         inside = (theta - self.mean) / self.sigma
-
         log_peak = -0.5 * np.power(inside, 2*self.half_power)
-
         if log:
             return log_peak
         else:
             return np.exp(log_peak)
 
-def supergaussian(x, theta):
-
-    mean, sigma, half_power = theta
-
-    inside = (x - mean) / sigma
-
-    log_peak = -0.5 * np.power(inside, 2 * half_power)
-
-    return np.exp(log_peak)
-
-from scipy import interpolate
-
-from scipy.interpolate import InterpolatedUnivariateSpline
-
 
 class MeshLine(object):
-
-    def __init__(self, x, bounds=[-10, 10], zero_bounds=None, resolution=0.1, kind='quadratic'):
-
-        self.x_points = x
-        self.x = np.arange(min(bounds), max(bounds), resolution)
-
+    def __init__(self, x, x_ends=[-10, 10], zero_bounds=None, resolution=0.1,
+                       log=False, kind='linear', **kwargs):
+        self.__dict__.update(kwargs)
+        self.log = log
         self.kind = kind
         self.zero_bounds = zero_bounds
+        if self.zero_bounds is None:
+            self.empty_theta = np.zeros(len(x))
+            self.slice=slice(0, len(self.empty_theta))
+            self.x_points=x
+        else:
+            self.slice=slice(1, -1)
+            self.empty_theta=np.zeros(len(x)+2)
+            self.empty_theta[0]=zero_bounds
+            self.empty_theta[-1]=zero_bounds
+            self.x_points=np.concatenate([np.array([min(x_ends)]), x, np.array([max(x_ends)])])
+        self.x_points=self.x_points.astype(float)
+        self.x = np.arange(min(x_ends), max(x_ends), resolution)
 
+        self.check_init()
+
+    def check_init(self):
+        if len(self.x_points) != len(self.empty_theta):
+            print('self.x_points', self.x_points)
+            print('self.empty_theta', self.empty_theta)
+            raise ValueError("len(self.x_points) != len(self.empty_theta)")
+        if any([t==0 for t in np.diff(self.x_points)]):
+            raise ValueError("Some of self.x_points are the same. Zero bounds = {}".format(self.zero_bounds))
+
+    def __call__(self, theta, *args, **kwargs):
+        self.empty_theta[self.slice]=theta
+        if self.log:
+            get_new_profile = interp1d(self.x_points, np.power(10, self.empty_theta), self.kind, bounds_error=False, fill_value='extrapolate')
+            return get_new_profile(self.x)
+        else:
+            get_new_profile = interp1d(self.x_points, self.empty_theta, self.kind, bounds_error=False, fill_value='extrapolate')
+            return get_new_profile(self.x)
+
+
+class MeshPlasma(object):
+    def __init__(self, x=None, bounds=None, zero_bounds_ne=11, zero_bounds_te=-2, bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        self.electron_density=MeshLine(x=x, zero_bounds=zero_bounds_ne, x_ends=bounds, log=True, number_of_variables=len(x), bounds=[bounds_ne for n in np.arange(len(x))])
+        self.electron_temperature=MeshLine(x=x, zero_bounds=zero_bounds_te, x_ends=bounds, log=True, number_of_variables=len(x), bounds=[bounds_te for n in np.arange(len(x))])
+
+def bowman_tee_distribution(x, theta):
+    A, x0, sigma0, q, nu, k, f, b = theta
+
+    p0=f*np.tanh(k*(x-x0))
+    sigma=sigma0*np.exp(p0)
+    z=(x-x0)/sigma
+    z=np.power(abs(z), q)
+    p1=np.power(1+z/nu, -(nu+1)*0.5)
+
+    peak=A*p1+b
+
+    return peak
+
+def bowman_tee_distribution_centred(x, theta):
+    A, sigma0, q, nu, k, f, b = theta
+    return bowman_tee_distribution(x, [A, 0, sigma0, q, nu, k, f, b])
+
+from copy import copy
+
+class BowmanTeeNe:
+    def __init__(self, x, background=True):
+        self.x=x
+        self.background=background
+
+    def __call__(self, theta):
+        theta=copy(theta)
+        if self.background:
+            for i in [0, -1]:
+                theta[i]=np.power(10, theta[i])
+        else:
+            theta[0]=np.power(10, theta[0])
+            theta=np.concatenate((theta, np.zeros(1)))
+        return self.profile(theta)
+
+    def profile(self, theta):
+        return bowman_tee_distribution(self.x, theta)
+
+class BowmanTeeTe(BowmanTeeNe):
+    def profile(self, theta):
+        return bowman_tee_distribution_centred(self.x, theta)
+
+from itertools import product
+
+class BowmanTeePlasma(object):
+    def __init__(self, x=None, bounds=None, dr_bounds=[-2, 2], bounds_ne=[11, 16], bounds_te=[-1, 2], background=False):
+        if x is None:
+            self.x=np.linspace(-15, 25, 500)
+        else:
+            self.x=x
+
+        if bounds is None:
+            self.bounds=[[1e-1, 10], [1.2, 3], [1, 5],
+                         [1, 50],  [0, 2]]
+        else:
+            self.bounds=bounds
+
+        self.background=background
+
+        self.electron_density=BowmanTeeNe(self.x, background=self.background)
+        self.electron_temperature=BowmanTeeTe(self.x, background=self.background)
+
+        self.electron_density.number_of_variables=7
+        self.electron_temperature.number_of_variables=6
+
+        if self.background:
+            self.electron_density.number_of_variables+=1
+            self.electron_temperature.number_of_variables+=1
+
+        self.construct_bounds(dr_bounds, bounds_ne, bounds_te)
+
+    def construct_bounds(self, dr_bounds,bounds_ne, bounds_te):
+        """
+        A > 0
+        sigma0 > 0
+        1.2 < q < 3
+        nu > 1
+        1 < k < 50
+        0 < f < 2
+        0 < b
+        """
+
+        self.bounds_ne=[bounds_ne, dr_bounds]
+        self.bounds_te=[bounds_te]
+
+        for param, bound in product([self.bounds_ne, self.bounds_te], self.bounds):
+            param.append(bound)
+
+        if self.background:
+            for param, bound in zip([self.bounds_ne, self.bounds_te], [[bounds_ne[0], 13.], [bounds_te[0], 0]]):
+                param.append(bound)
+
+        self.electron_density.bounds=self.bounds_ne
+        self.electron_temperature.bounds=self.bounds_te
+
+
+class SimplePlasma:
+    def __init__(self, x=None): # , bounds=None, dr_bounds=[0, 2], bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        if x is None:
+            self.x=np.linspace(0, 60, 100)
+        else:
+            self.x=x
+
+        self.electron_density=Poisson(self.x)
+        self.electron_temperature=ExpDecay(self.x)
+
+class SimplePlasma:
+    def __init__(self, x=None): # , bounds=None, dr_bounds=[0, 2], bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        if x is None:
+            self.x=np.linspace(0, 60, 100)
+        else:
+            self.x=x
+
+        self.electron_density=ExpDecay(self.x)
+        self.electron_density.bounds[0]=[12, 16]
+        self.electron_temperature=ExpDecay(self.x)
+
+class ExpDecay:
+    def __init__(self, x):
+        self.x=x
+        self.x_len=len(self.x)
+        self.number_of_variables=2
+        self.bounds=[ [-1, 2], # peak range
+                      [-2, 1] ] # base range
+
+    def __call__(self, theta):
+        a, b=[np.power(10., t) for t in theta]
+        base=np.ones(self.x_len)+b
+
+        return (a*np.power(base, -self.x)).clip(0.01)
+
+class ExpDecay:
+    def __init__(self, x):
+        self.x=x
+        self.x_len=len(self.x)
+        self.number_of_variables=2
+        self.bounds=[ [-1, 2], # peak range
+                      [-2, 1] ] # base range
+
+    def __call__(self, theta):
+        a, b=[np.power(10., t) for t in theta]
+        base=np.ones(self.x_len)+b
+
+        return (a*np.power(base, -self.x)).clip(0.01)
+
+class ADoubleExpDecay:
+    def __init__(self, x):
+        self.x=x
+        self.x_len=len(self.x)
+        self.number_of_variables=5
+        self.bounds=[ [12, 16], # peak range
+                      [-2, 1], # base range
+                      [0, 50], # peak center
+                      [-3, 1], # asymmetry size
+                      [-5, 5] ] # asymmetry gradient ()
+
+    def __call__(self, theta):
+        # a, b=[np.power(10., t) for t in theta]
+        a, b, x0, f, k=theta
+
+        base=np.ones(self.x_len)+np.power(10., b)
+        base*=np.exp( np.power(10., f)*np.tanh(k*(self.x-x0)) )
+
+        return (np.power(10., a)*np.power(base, x0-self.x)).clip(0.01)
+
+class LessSimplePlasma:
+    def __init__(self, x=None): # , bounds=None, dr_bounds=[0, 2], bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        if x is None:
+            self.x=np.linspace(0, 60, 100)
+        else:
+            self.x=x
+
+        self.electron_density=ADoubleExpDecay(self.x)
+        self.electron_temperature=ExpDecay(self.x)
+
+from scipy.special import factorial
+class Poisson:
+    def __init__(self, x):
+        self.x=x
+        self.x_len=len(self.x)
+        self.number_of_variables=2
+        self.bounds=[ [12, 16], # peak range
+                      [-3, 2] ] # base range
+
+    def __call__(self, theta):
+        a, nu=[np.power(10., t) for t in theta]
+        peak=np.power(np.zeros(self.x_len)+nu, self.x)
+        peak*=np.exp(-nu)/factorial(self.x)
+        peak*=(a/peak.max())
+
+        return peak
+
+    # def __call__(self, theta):
+    #     a, nu=theta
+
+class GaussianPlasma:
+    def __init__(self, x=None, cwl=None): # , bounds=None, dr_bounds=[0, 2], bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        self.x=x
+        self.cwl=cwl
+
+        self.get_attributes()
+
+    def __call__(self, theta):
+        if self.cwl is None:
+            intensity, fwhm, cwl=theta
+        else:
+            intensity, fwhm=theta
+            cwl=self.cwl
+
+        intensity=np.power(10, intensity)
+        fwhm=np.power(10, fwhm)
+        peak=gaussian(self.x, cwl, fwhm, intensity)
+        return peak.clip(0.01)
+
+    def get_attributes(self):
+        x_bounds0=[self.x.min(), self.x.max()]
+        x_bounds1=[-1, np.log10(self.x.max()/2)]
+        if self.cwl is None:
+            self.number_of_variables=3
+            self.bounds=[ [12, 16], # peak range
+                           x_bounds1, # fwhm range
+                           x_bounds0 ] # cwl range
+        else:
+            self.number_of_variables=2
+            self.bounds=[ [12, 16], # peak range
+                          x_bounds1 ] # fwhm range
+
+
+
+
+class SimpleGaussianPlasma:
+    def __init__(self, x=None): # , bounds=None, dr_bounds=[0, 2], bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        if x is None:
+            self.x=np.linspace(0, 60, 100)
+        else:
+            self.x=x
+
+        self.electron_density=GaussianPlasma(x=self.x)
+        self.electron_temperature=GaussianPlasma(x=self.x, cwl=0)
+
+
+from scipy.interpolate import interp1d
+def centre_peak(x, y, centre=0):
+    ycentre=x[y.argmax()]
+    y=interp1d(x, y, fill_value="extrapolate")(x+ycentre-centre)
+    return y
+
+class ReducedBowmanTProfile:
+    def __init__(self, x, log_peak_bounds, centre=None, dr_bounds=None,
+                       sigma_bounds=None, asdex=False, asdex_c2=0.7, **kwargs):
+
+        self.x=x
+        self.bounds=[log_peak_bounds]
+        self.centre=centre
+        self.dr_bounds=dr_bounds
+        self.sigma_bounds=sigma_bounds
+
+        self.asdex=asdex
+        self.asdex_c2=asdex_c2
+
+        self.get_bounds()
+
+    def __call__(self, theta):
+        # if self.centre is None and self.asdex:
+        #     A, c, sigma, f, B=theta
+        # elif self.centre is None:
+        #     A, c, sigma, f=theta
+        # else:
+        #     A, sigma, f=theta
+        #     c=self.centre
+        if self.asdex:
+            if self.centre is None:
+                A, c, sigma, f, B=theta
+            else:
+                A, sigma, f, B=theta
+                c=self.centre
+        else:
+            if self.centre is None:
+                A, c, sigma, f=theta
+            else:
+                A, sigma, f=theta
+                c=self.centre
+
+        # btheta=[np.power(10, A), c, np.power(10, sigma), self.q, self.nu, self.k, f, 0]
+        if self.asdex:
+            btheta=[np.power(10, A)-np.power(10, B), c, sigma, self.q, self.nu, self.k, f, np.power(10, B)]
+        else:
+            btheta=[np.power(10, A), c, sigma, self.q, self.nu, self.k, f, 0]
+
+<<<<<<< HEAD
+    def __init__(self, x, bounds=[-10, 10], zero_bounds=None, resolution=0.1, kind='quadratic'):
+=======
+        peak=bowman_tee_distribution(self.x, btheta)
+        peak=centre_peak(self.x, peak, centre=c)
+        return peak
+>>>>>>> dev
+
+
+    def get_bounds(self):
+
+<<<<<<< HEAD
         if self.zero_bounds is not None:
             tmp_x = np.zeros(len(self.x_points)+2)
             tmp_x[0] = min(bounds)
             tmp_x[-1] = max(bounds)
+=======
+        if self.centre is None:
+            if self.dr_bounds is None:
+                self.bounds.append([-5, 5])
+            else:
+                self.bounds.append(self.dr_bounds)
+>>>>>>> dev
 
-            tmp_x[1:-1] = self.x_points
-            self.x_points = tmp_x
 
+<<<<<<< HEAD
             self.empty_theta = np.zeros(len(self.x_points))
             self.empty_theta[0] = self.zero_bounds
             self.empty_theta[-1] = self.zero_bounds
+=======
+        if self.sigma_bounds is None:
+            self.bounds.append([1, 10])
+        else:
+            self.bounds.append(self.sigma_bounds)
+>>>>>>> dev
 
-    def __call__(self, theta, *args, **kwargs):
+        if self.asdex:
+            self.bounds.extend([[-2, 0], self.bounds[0]])
+        else:
+            self.bounds.append([0, 2])
 
+<<<<<<< HEAD
         if self.zero_bounds is not None:
+=======
+>>>>>>> dev
 
-            self.empty_theta[1:-1] = theta
+        self.number_of_variables=len(self.bounds)
 
-            theta = self.empty_theta
+        self.q=2. # gaussian setting
+        self.nu=1.
+        self.k=1.
 
+<<<<<<< HEAD
         assert len(theta) == len(self.x_points), 'len(theta) != len(self.x) ' + \
                                              str(len(theta)) + ' ' + str(len(self.x_points))
+=======
+class ReducedBowmanTPlasma(object):
+    def __init__(self, x=None, sigma_bounds=[1, 10], dr_bounds=[-5, 5], bounds_ne=[11, 16], bounds_te=[-1, 2], asdex=False):
+        if x is None:
+            self.x=np.linspace(-15, 35, 50)
+        else:
+            self.x=x
+>>>>>>> dev
 
-        # get_new_profile = InterpolatedUnivariateSpline(self.x, theta)
-        get_new_profile = interp1d(self.x_points, theta, self.kind)
+        self.electron_density=ReducedBowmanTProfile(self.x, bounds_ne, centre=None, dr_bounds=dr_bounds, sigma_bounds=sigma_bounds, asdex=asdex)
+        self.electron_temperature=ReducedBowmanTProfile(self.x, bounds_te, centre=0, sigma_bounds=sigma_bounds, asdex=asdex)
 
-        return get_new_profile(self.x)
+class LinearSeparatrix:
+    def __init__(self, x, peak_bounds=[0, 1.7]):
+        self.x=x
+        self.bounds=[peak_bounds]
+        self.bounds.append([0.5, 1.5])
+        self.number_of_variables=len(self.bounds)
 
-class PlasmaMeshLine(object):
+    def __call__(self, theta):
+        Te, grad=theta
+        profile=np.power(10, Te)-grad*self.x
+        profile=profile.clip(0.1)
+        return np.log10(profile)
 
-    def __init__(self, x, separatix_index, bounds=[-10, 10], zero_bounds=False, resolution=0.1, kind='quadratic'):
 
-        self.meshprofile = MeshLine(x, bounds, zero_bounds, resolution, kind)
+class CauchySeparatrix:
+    def __init__(self, x, peak_bounds=[12.7, 16], centre=None):
+        self.x=x
+        self.centre=centre
+        # build bounds
+        self.bounds=[peak_bounds, [12.7, 14]]
+        if self.centre is None:
+            self.bounds.append([-5, 5])
+        self.bounds.append([0.5, 1.5])
 
-        self.separatix_index = separatix_index
+    def __call__(self, theta):
+        if self.centre is None:
+            ne, ne_min, centre, sigma=theta
+        else:
+            ne, ne_min, sigma=theta
+            centre=self.centre
 
-    def electron_temperature(self, theta):
+        chi_squared=np.square( (centre-self.x)/sigma )
+        profile=np.power(10, ne_min)+np.power(10, ne)/(1+chi_squared)
+        profile.clip(1e11)
+        return np.log10(profile)
 
-        meshin = np.zeros(len(theta)) + theta[self.separatix_index]
+class SimpleSeparatrix(object):
+    def __init__(self, chords, bounds_ne=[11, 16], bounds_te=[-1, 2]):
+        self.x=np.array(chords)
 
-        theta[self.separatix_index] = 1
+        self.electron_density=CauchySeparatrix(self.x, bounds_ne) # , centre=self.x[-1])
+        self.electron_temperature=LinearSeparatrix(self.x, bounds_te)
 
-        if type(theta) == list:
-            theta = np.array(theta)
+def esymmtric_gaussian(x, ems, cwl, sigma, efactor):
+    dx=cwl-x
+    sigma+=efactor/(1+np.exp(-dx))
+    mean_square=np.square(dx/sigma)
 
-        meshin = theta * meshin
+    return ems*np.exp(-0.5*mean_square)
 
-        return self.meshprofile(meshin)
+def esymmtric_cauchy(x, ems, cwl, sigma, efactor):
+    dx=x-cwl
+    sigma+=efactor/(1+np.exp(-dx))
+    mean_square=np.square(dx/sigma)
 
-    def electron_density(self, theta):
+    return ems/(1+mean_square)
 
-        return self.meshprofile(theta)
+class EsymmtricProfile:
+    def __init__(self, x, log_peak_bounds, centre=None, ptype='cauchy'):
+
+        self.x=x
+        self.bounds=[log_peak_bounds]
+        self.centre=centre
+
+        self.get_bounds()
+
+        if ptype not in ('cauchy', 'gaussian'):
+            raise ValueError("ptype not in ('cauchy', 'gaussian')")
+
+        if ptype is 'cauchy':
+            self.peak=esymmtric_cauchy
+        if ptype is 'gaussian':
+            self.peak=esymmtric_gaussian
+
+    def __call__(self, theta):
+        if self.centre is None:
+            A, c, sigma, f=theta
+        else:
+            A, sigma, f=theta
+            c=self.centre
+
+        btheta=[np.power(10, A), c, sigma, f]
+        return self.peak(self.x, *btheta).clip(1e-3)
+
+    def get_bounds(self):
+
+        if self.centre is None:
+            self.bounds.append([-5, 2])
+
+        shape_bounds=[[1., 10.],
+                      [0, 10]] # asymmetry bounds
+
+        self.bounds.extend(shape_bounds)
+        self.number_of_variables=len(self.bounds)
+
+class EsymmtricCauchyPlasma:
+    def __init__(self, x=None, dr_bounds=[-5, 2], bounds_ne=[13, 15], bounds_te=[0., 1.7], ptype='cauchy', **args):
+        if x is None:
+            self.x=np.linspace(-10, 25, 50)
+        else:
+            self.x=x
+
+        self.electron_density=EsymmtricProfile(self.x, bounds_ne, centre=None, ptype='cauchy')
+        self.electron_temperature=EsymmtricProfile(self.x, bounds_te, centre=0, ptype='cauchy')
 
 
 if __name__=='__main__':
 
-    from tulasa import general
+    from tulasa.general import close_plots, plot
 
-    import time as clock
-
-    x = [-5, -2, -1, -0.6, 0, 1, 3]
-
-    linear = MeshLine(x, zero_bounds=True, kind='linear')
-    quad = MeshLine(x, zero_bounds=True, kind='quadratic')
-
-    theta = np.ones(len(x))
-
-    start_time = clock.time()
-
-    i = 0
-    while i < 100:
-        linear(theta)
-        i+=1
-
-    second_time = clock.time()
-
-    i = 0
-    while i < 100:
-        quad(theta)
-        i += 1
-
-    third_time = clock.time()
-
-    lin_time = second_time - start_time
-    quad_time = third_time - second_time
-
-    print(lin_time, quad_time)
+    x=np.linspace(-20, 50, 50)
+    l=ReducedBowmanTPlasma(x=x)
+    peaks=[l.electron_temperature([0, 0, 1]), l.electron_density([0, -2, .5, 1.5])]
+    plot(peaks, x=[x, x], multi='fake')

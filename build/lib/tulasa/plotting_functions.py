@@ -474,11 +474,6 @@ def plot_posterior_components(posterior, sample, alpha=1, reference=None):
     plt.tight_layout()
     plt.show()
 
-<<<<<<< HEAD
-def plot_fit_old(posterior, sample, size=100, alpha=0.1, ylim=(1e10, 1e16)):
-
-    fig, ax = plt.subplots(2, 1, sharex=True)
-=======
 import numpy as np
 def plot_fit(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
              error_norm=True, plasma_ref=None, filename=None):
@@ -511,7 +506,6 @@ def plot_fit(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
     ax_te2 = ax_plasma2.twinx()  # instantiate a second axes that shares the same x-axis
     ax_te2.set_ylabel(r'$T_{e} \ / \ eV$', color=te_color)  # we already handled the x-label with ax1
     ax_te2.tick_params(axis='y', labelcolor=te_color)
->>>>>>> dev
 
     # ax[0] plot data and fit
     spectra = posterior.posterior_components[0].y_data
@@ -589,136 +583,9 @@ def plot_fit(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
     leg = ax_fit.legend()
     leg.draggable()
 
-<<<<<<< HEAD
-    fig.show()
-
-
-def plot_fit(posterior, sample, size=100, alpha=0.1,
-             ylim=(1e10, 1e16), error_norm=False,
-             plasma_ref=None, filename=None, nitrogen=None, deuterium=None):
-
-    # fig, ax = plt.subplots(2, 1, sharex=True)
-    fig = plt.figure()
-
-    ax_fit = fig.add_axes([.15, .57, .32, .39]) # [x0, y0, width, height]
-    ax_res = fig.add_axes([.15, .125, .32, .39]) # [x0, y0, width, height]
-    ax_plasma = fig.add_axes([.6, .125, .32, .825]) # [x0, y0, width, height]
-
-    plasma_color = 'tab:red'
-    ax_plasma.set_xlabel(r'$LOS \ / \ cm$')
-    ax_plasma.set_ylabel(r'$n_{e} \ / \ cm^{-3}$', color=plasma_color)
-    # ax_plasma.set_ylim([0, 10e14])
-    # ax_plasma.plot(los, ne, color=color, label=r'$n_{e}$')
-    # ax_plasma.plot(los, n0, linestyle='--', color=color, label=r'$n_{0}$')
-    ax_plasma.tick_params(axis='y', labelcolor=plasma_color)
-
-    ax_te = ax_plasma.twinx()  # instantiate a second axes that shares the same x-axis
-
-    te_color = 'tab:blue'
-    ax_te.set_ylabel(r'$T_{e} \ / \ eV$', color=te_color)  # we already handled the x-label with ax1
-    # ax_te.set_ylim([0, int(max(te)) + 2])  # we already handled the x-label with ax1
-    # ax_te.plot(los, te, color=color)
-    ax_te.tick_params(axis='y', labelcolor=te_color)
-
-
-    # ax[0] plot data and fit
-    spectra = posterior.posterior_components[0].y_data
-    error = posterior.posterior_components[0].error
-
-    try:
-        waves = posterior.posterior_components[0].x_data_exp
-    except AttributeError:
-        waves = posterior.posterior_components[0].x_data
-    except:
-        raise
-
-    ax_fit.plot(waves, spectra, label='Data')
-    ax_res.plot(waves, spectra/max(spectra), color='C0', label='Data')
-    ax_fit.fill_between(waves, spectra-error, spectra+error, alpha=0.2)
-
-    ax_fit.plot(np.zeros(10), 'pink', label='Fit')
-
-    ax_fit.set_ylim(ylim)
-
-    ax_fit.set_yscale('log')
-
-    # ax_fit.set_ylabel(r'$ph/ cm^{2}/ sr^{1}/A^{1}/ s^{1}$')
-
-    # ax[1] plot normalies data and error normalised residuals
-    ax_res.plot(waves, spectra/max(spectra))
-    ax_res.plot(np.zeros(10), 'bx')
-
-    error_lims = [1e-3, 1e-2, 1e-1, 2e-1, 5e-1, 1e0]
-    for el in error_lims:
-        ax_res.fill_between(waves, np.zeros(len(waves)), np.zeros(len(waves))+el,
-                            color='k', alpha=0.1)
-
-    # ax_plasma.set_ylim(bottom=0)
-    # ax_te.set_ylim(bottom=0)
-
-    ax_res.set_ylim([1e-3, 1e1])
-    ax_res.set_yscale('log')
-    ax_res.set_xlim([min(waves), max(waves)])
-
-    ax_fit.set_xticklabels([])
-    ax_fit.set_xlim([min(waves), max(waves)])
-
-    # ax[1].set_ylabel(r'$\sigma - Normalised \ Residuals$')
-    ax_res.set_xlabel(r'$Wavelength \ / \ \AA$')
-
-    los = posterior.plasma.plasma_state['los']
-
-    ax_plasma.set_xlim([min(los), max(los)])
-
-    if plasma_ref is not None:
-        te = plasma_ref['electron_temperature']
-        ne = plasma_ref['electron_density']
-
-        ax_plasma.plot(los, ne, 'x--', color=plasma_color)
-        ax_te.plot(los, te, 'x--', color=te_color)
-
-
-    if error_norm:
-        k_res = error
-    else:
-        k_res = spectra
-
-
-    for counter0 in np.linspace(0, len(sample)-1, size, dtype=int):
-
-        posterior(sample[counter0])
-
-        if posterior.posterior_components[0].calibrated:
-            tmp_fit = posterior.posterior_components[0].forward_model()
-        else:
-            tmp_fit = posterior.posterior_components[0].forward_model() * posterior.plasma.plasma_state['a_cal'][0]
-
-        ax_fit.plot(waves, tmp_fit, 'pink', alpha=alpha)
-
-        ax_res.plot(waves, abs(spectra-tmp_fit)/k_res, color='pink',
-                    marker='x', alpha=alpha/3)
-
-        te = posterior.plasma.plasma_state['electron_temperature']
-        ne = posterior.plasma.plasma_state['electron_density']
-
-        ax_plasma.plot(los, ne, color=plasma_color, alpha=alpha)
-        ax_te.plot(los, te, color=te_color, alpha=alpha)
-
-
-
-    leg = ax_fit.legend()
-    leg.draggable()
-
-    if filename is None:
-        fig.show()
-    else:
-        fig.savefig(filename)
-
-=======
     if filename is None:
         fig.show()
     else:
         plt.tight_layout() # breaks the code
         plt.savefig(filename)
         plt.close()
->>>>>>> dev
