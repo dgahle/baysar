@@ -62,7 +62,20 @@ class BaysarPosterior(object):
         self.print_errors = print_errors
         self.temper = temper
 
+        self.passed_priors=priors
         self.curvature = curvature
+
+        self.nan_thetas = []
+        self.inf_thetas = []
+        self.positive_thetas = []
+        self.runtimes = []
+
+        self.get_priors()
+        self.set_sensible_bounds()
+
+        self.init_test(skip_test)
+
+    def get_priors(self):
         if self.curvature is not None:
             self.posterior_components.append(CurvatureCost(self.plasma, self.curvature))
 
@@ -90,16 +103,7 @@ class BaysarPosterior(object):
             self.posterior_components.append(ChargeStateOrderPrior(self))
             # self.posterior_components.append(TauPrior(self.plasma))
 
-        self.posterior_components.extend(priors)
-
-        self.nan_thetas = []
-        self.inf_thetas = []
-        self.positive_thetas = []
-        self.runtimes = []
-
-        self.set_sensible_bounds()
-
-        self.init_test(skip_test)
+        self.posterior_components.extend(self.passed_priors)
 
     def check_init_inputs(self, priors, check_bounds, temper, curvature, print_errors):
         if len(priors)>0:
