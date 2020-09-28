@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 
 # files to be removed from repro
-.idea
+.idea/
 *iml
 *xml
 *.pyc

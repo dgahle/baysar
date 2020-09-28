@@ -454,5 +454,6 @@ adas_line_data['Ne']['9'] = add_ion_info(adas_line_data['Ne']['9'], wavelengths,
 
 
 if __name__=='__main__':
+    print('Success!')
 
     pass
