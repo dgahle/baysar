@@ -75,35 +75,44 @@ class BaysarPosterior(object):
 
         self.init_test(skip_test)
 
+    def got_p(self, comp):
+        return any([type(p) is comp for p in self.posterior_components])
+
     def get_priors(self):
-        if self.curvature is not None:
+        if self.curvature is not None and not self.got_p(CurvatureCost):
             self.posterior_components.append(CurvatureCost(self.plasma, self.curvature))
 
         # calibration priors
-        if self.plasma.calibrate_wavelength:
-            inmean=self.posterior_components[0].x_data.mean()
-            indisp=np.diff(self.posterior_components[0].x_data).mean()
-            wcp_input=[self.plasma, [inmean, indisp], [2*indisp, indisp*0.05]]
-            self.posterior_components.append(WavelengthCalibrationPrior(*wcp_input))
-        if self.plasma.calibrate_intensity:
+        if self.plasma.calibrate_wavelength and not self.got_p(WavelengthCalibrationPrior):
+            for num in range(self.plasma.num_chords):
+                inmean=self.posterior_components[num].x_data.mean()
+                indisp=np.diff(self.posterior_components[0].x_data).mean()
+                wcp_input=[self.plasma, [inmean, indisp], [2*indisp, indisp*0.05]]
+                self.posterior_components.append(WavelengthCalibrationPrior(*wcp_input))
+        if self.plasma.calibrate_intensity and not self.got_p(CalibrationPrior):
             self.posterior_components.append(CalibrationPrior(self.plasma))
-        if self.plasma.calibrate_instrument_function:
+        if self.plasma.calibrate_instrument_function and not self.got_p(GaussianInstrumentFunctionPrior):
             self.posterior_components.append(GaussianInstrumentFunctionPrior(self.plasma.plasma_state))
 
         # static Pe priors
-        self.posterior_components.append(StaticElectronPressureCost(self.plasma))
+        if not self.got_p(StaticElectronPressureCost):
+            self.posterior_components.append(StaticElectronPressureCost(self.plasma))
         # neutral fraction priors
-        if self.plasma.contains_hydrogen:
+        if self.plasma.contains_hydrogen and not self.got_p(NeutralFractionCost):
             n0_prior=NeutralFractionCost(self.plasma, species=self.plasma.hydrogen_species[0])
             self.posterior_components.append(n0_prior)
         # priors for impure plasmas (could use better phrasing)
         if len(self.plasma.impurities)>0:
-            self.posterior_components.append(AntiprotonCost(self.plasma))
-            self.posterior_components.append(MainIonFractionCost(self.plasma))
-            self.posterior_components.append(ChargeStateOrderPrior(self))
-            # self.posterior_components.append(TauPrior(self.plasma))
+            if not self.got_p(AntiprotonCost):
+                self.posterior_components.append(AntiprotonCost(self.plasma))
+            if not self.got_p(MainIonFractionCost):
+                self.posterior_components.append(MainIonFractionCost(self.plasma))
+            if not self.got_p(ChargeStateOrderPrior):
+                self.posterior_components.append(ChargeStateOrderPrior(self))
 
-        self.posterior_components.extend(self.passed_priors)
+        for p in self.passed_priors:
+            if not self.got_p(p):
+                self.posterior_components.append(p)
 
     def check_init_inputs(self, priors, check_bounds, temper, curvature, print_errors):
         if len(priors)>0:
