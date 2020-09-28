@@ -7,7 +7,7 @@ __pycache__/
 *.pyc
 ./unit_test/
 ./demo/
-./.idea/
+./.idea
 # baysar
 ./baysar/neon_refs
 ./baysar/test.py
@@ -15,7 +15,7 @@ __pycache__/
 ./baysar/__pycache__/
 # tulasa
 ./tulasa/__pycache__/
-./tulasa/.idea/
+./tulasa/.idea
 
 # C extensions
 *.so
