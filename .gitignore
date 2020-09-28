@@ -4,6 +4,9 @@ __pycache__/
 *$py.class
 
 # files to be removed from repro
+.idea
+*iml
+*xml
 *.pyc
 ./unit_test/
 ./demo/
