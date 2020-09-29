@@ -249,13 +249,14 @@ def tau_difference(plasma, show_taus=False):
     return diff_taus
 
 class TauPrior:
-    def __init__(self, plasma, tau_error=1):
+    def __init__(self, plasma, mean=0, sigma=1):
         self.plasma=plasma
-        self.tau_error=tau_error
+        self.mean=mean
+        self.sigma=sigma
 
     def __call__(self):
-        diff_log_taus=tau_difference(self.plasma)
-        logp=np.array([gaussian_low_pass_cost(-dlt, threshold=0, error=self.tau_error) for dlt in diff_log_taus])
+        self.diff_log_taus=tau_difference(self.plasma)
+        logp=np.array([gaussian_low_pass_cost(-dlt, threshold=self.mean, error=self.sigma) for dlt in self.diff_log_taus])
         return logp.sum()
 
 class WallConditionsPrior:
@@ -326,7 +327,7 @@ class BowmanTeePrior:
 from numpy import diff
 
 class ChargeStateOrderPrior:
-    def __init__(self, posterior, mean=1.0, sigma=0.2):
+    def __init__(self, posterior, mean=2.0, sigma=0.2):
         self.posterior=posterior
         self.mean=mean
         self.sigma=sigma
@@ -351,7 +352,7 @@ class ChargeStateOrderPrior:
             for dt in diff(tmp1):
                 cost+=gaussian_high_pass_cost(dt, self.mean, self.sigma)
 
-        return cost # *self.scale
+        return cost
 
 class WavelengthCalibrationPrior:
     def __init__(self, plasma, mean, std):
