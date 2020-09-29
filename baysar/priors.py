@@ -326,9 +326,10 @@ class BowmanTeePrior:
 from numpy import diff
 
 class ChargeStateOrderPrior:
-    def __init__(self, posterior, scale=10):
+    def __init__(self, posterior, mean=1.0, sigma=0.2):
         self.posterior=posterior
-        self.scale=scale
+        self.mean=mean
+        self.sigma=sigma
         self.impurity_indicies_dict={}
         for i, l in enumerate(self.posterior.posterior_components[0].lines):
             if 'species' in l.__dict__:
@@ -346,9 +347,11 @@ class ChargeStateOrderPrior:
             for ion in sorted([ion for ion in tmp if ion.startswith(elem)], key=lambda x: tmp[x]):
                 tmp1.append(self.posterior.posterior_components[0].lines[tmp[ion]].ems_te)
                 self.history.append((elem, ion, tmp1[-1]))
-            cost+=sum([min(0, t) for t in diff(tmp1)])
+            # cost+=sum([min(0, t) for t in diff(tmp1)])
+            for dt in diff(tmp1):
+                cost+=gaussian_high_pass_cost(dt, self.mean, self.sigma)
 
-        return cost*self.scale
+        return cost # *self.scale
 
 class WavelengthCalibrationPrior:
     def __init__(self, plasma, mean, std):
