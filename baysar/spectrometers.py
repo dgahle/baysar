@@ -71,6 +71,7 @@ class SpectrometerChord(object):
         self.get_error()
         self.get_lines()
         self.int_func_sparce_matrix()
+        self.convolution_tolerence=1e-2
         print("Built SpectrometerChord no. %d"%(chord_number))
 
     def __call__(self, *args, **kwargs):
@@ -201,7 +202,7 @@ class SpectrometerChord(object):
 
         self.postconv_integral=np.trapz(spectra, self.x_data_wavecal_interp)
         self.conv_integral_ratio=self.postconv_integral/self.preconv_integral
-        if not np.isclose(self.conv_integral_ratio, 1, rtol=1e-2):
+        if not np.isclose(self.conv_integral_ratio, 1, rtol=self.convolution_tolerence:
             raise ValueError(f"Area not conserved in convolution! ({self.conv_integral_ratio}!=1), {self.dispersion_ratios}, {instrument_function_last_used.sum()}")
 
         spectra+=background
