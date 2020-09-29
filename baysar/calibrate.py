@@ -88,7 +88,7 @@ def calibrate_spectra(spectra, wavelengths, references, window=None, instrument_
         reference_pixels.append(ref_pixel)
 
     # print(f'reference_pixels {reference_pixels}')
-    wave1 = interp1d(reference_pixels, references, fill_value="extrapolate")(wave)
+    wave1 = interp1d(reference_pixels, references, fill_value="extrapolate")(wavelengths)
     wave2 = np.linspace(wave1.min(), wave1.max(), len(wave1))
     spectra2 = interp1d(wave1, spectra, fill_value="extrapolate")(wave2)
 
