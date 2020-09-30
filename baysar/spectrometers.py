@@ -174,8 +174,14 @@ class SpectrometerChord(object):
         calibrating_instrument_function=cif0 and cif1
         if calibrating_instrument_function:
             int_func_cal_theta=self.plasma.plasma_state['calint_func_'+str(self.chord_number)]
-            pixels=np.arange( len(self.x_data_fm) )
-            instrument_function_last_used=self.instrument_function_calibrator.calibrate(pixels, *int_func_cal_theta)
+            # pixels=len(self.x_data_fm)
+            # wavelenght normalised (as resolution fwhm is in Angstroms not pixels)
+            instrument_function_last_used=self.instrument_function_calibrator.calibrate(self.x_data_fm, *int_func_cal_theta)
+            instrument_function_last_used/=instrument_function_last_used.sum() # pixel normalisation
+            if not np.isclose(instrument_function_last_used.sum(), 1.0):
+                raise ValueError(f"Instrument function is not pixel normalised! "
+                                 f"{instrument_function_last_used.sum()}, {int_func_cal_theta}")
+
         else:
             instrument_function_last_used=self.instrument_function_fm
 
