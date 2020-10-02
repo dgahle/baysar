@@ -167,8 +167,13 @@ adf11_dir="/home/adas/adas/adf11/"
 hydrogen_adf11_plt=adf11_dir+'plt12/plt12_h.dat'
 hydrogen_adf11_prb=adf11_dir+'prb12/prb12_h.dat'
 
+from os.path import exists as file_exists
 def get_adf11(elem, yr, type, adf11_dir=adf11_dir):
-    return adf11_dir+type+str(yr)+'/'+type+str(yr)+'_'+elem.lower()+'.dat'
+    adf11=adf11_dir+type+str(yr)+'/'+type+str(yr)+'_'+elem.lower()+'.dat'
+    if file_exists(adf11):
+        return adf11
+    else:
+        raise FileNotFoundError(f"{adf11} is not found")
 
 def radiated_power(n0, ni, ne, te, is1, adf11_plt=None, adf11_prb=None, elem='N', yr=96, all=False):
     # get adf11 if not passed
