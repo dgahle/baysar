@@ -211,7 +211,7 @@ class ADAS406Lines(object):
         tec406_lhs = self.tec406[i].ev(ne, te)
         tec406_rhs = self.tec406[j].ev(ne, te)
         self.tec406_lhs=tec406_lhs
-        self.tec406_lhs=tec406_lhs
+        self.tec406_rhs=tec406_rhs
         # tec = np.exp(tec406_lhs*i_weight+tec406_rhs*j_weight)
         self.tec_weights=[i_weight, j_weight]
         tec = np.exp(tec406_lhs)*i_weight + np.exp(tec406_rhs)*j_weight
