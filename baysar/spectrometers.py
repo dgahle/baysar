@@ -148,9 +148,10 @@ class SpectrometerChord(object):
         The is synthetic diagnostic is defined by a wavelength and intensity
         calibration as well as the background level and instrument function.
 
-        Spectra outputs in units of  ph/cm2/sr/A/s.
+        Spectra outputs in units of  ph/cm2/A/sr/s.
         """
-        spectra = sum([l().flatten() for l in self.lines]) # TODO: This is what takes all the time?
+        # TODO: This is what takes all the time?
+        spectra = sum([l().flatten() for l in self.lines]) # ph/cm-2/A/sr/s
 
         background_theta=self.plasma.plasma_state['background_'+str(self.chord_number)]
         background=self.background_function.calculate_background(background_theta)
@@ -211,7 +212,7 @@ class SpectrometerChord(object):
         if not np.isclose(self.conv_integral_ratio, 1, rtol=self.convolution_tolerence):
             raise ValueError(f"Area not conserved in convolution! ({self.conv_integral_ratio}!=1), {self.dispersion_ratios}, {instrument_function_last_used.sum()}")
 
-        spectra+=background
+        spectra+=background # ph/cm-2/A/sr/s
         self.prewavecal_spectra=spectra
         # wave calibration
         self.wavecal_interp=interp1d(self.x_data_wavecal_interp, spectra, bounds_error=False, fill_value="extrapolate")
@@ -227,7 +228,7 @@ class SpectrometerChord(object):
         elif np.isinf(spectra).any():
                 raise TypeError("spectra contains infs")
 
-        return spectra
+        return spectra # ph/cm-2/A/sr/s
 
 
     def get_lines(self):

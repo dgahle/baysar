@@ -218,8 +218,8 @@ class ADAS406Lines(object):
         tec = np.nan_to_num(tec) # todo - why? and fix!
         self.tec=tec
 
-        self.emission_profile = (n0*tec).clip(1) # why do negatives occur here?
-        self.emission_fitted=np.trapz(self.emission_profile, x=self.plasma.los) / (4*pi)
+        self.emission_profile = (n0*tec).clip(1) # ph/cm-3/s # why do negatives occur here?
+        self.emission_fitted=np.trapz(self.emission_profile, x=self.plasma.los) / (4*pi) # ph/cm-2/sr/s
 
         self.ems_ne = dot(self.emission_profile , ne) / self.emission_profile.sum()
         self.ems_conc = n0 / self.ems_ne
@@ -232,7 +232,7 @@ class ADAS406Lines(object):
 
         self.ti=self.plasma.plasma_state[self.species+'_Ti']
 
-        peak=self.linefunction(self.ti, self.emission_fitted )
+        peak=self.linefunction(self.ti, self.emission_fitted ) # ph/cm-2/A/sr/s
         if any(np.isnan(peak)):
             raise TypeError('NaNs in peaks of {} (tau={}, ems_sum={})'.format(self.line, np.log10(tau), self.emission_fitted ))
         if any(np.isinf(peak)):
@@ -402,11 +402,12 @@ class BalmerHydrogenLine(object):
         rec_pec = np.exp(self.rec_pec(ne, te))
         exc_pec = np.exp(self.exc_pec(ne, te))
         # set minimum number of photons to be 1
-        self.rec_profile = n1.clip(1)*ne*rec_pec # need to exclude antiprotons from emission!
-        self.exc_profile = n0*ne*exc_pec
+        # need to exclude antiprotons from emission!
+        self.rec_profile = n1.clip(1)*ne*rec_pec # ph/cm-3/s
+        self.exc_profile = n0*ne*exc_pec # ph/cm-3/s
 
-        rec_sum = np.trapz(self.rec_profile, x=self.plasma.los) / (4*pi)
-        exc_sum = np.trapz(self.exc_profile, x=self.plasma.los) / (4*pi)
+        rec_sum = np.trapz(self.rec_profile, x=self.plasma.los) / (4*pi) # ph/cm-2/sr/s
+        exc_sum = np.trapz(self.exc_profile, x=self.plasma.los) / (4*pi) # ph/cm-2/sr/s
         self.ems_profile = self.rec_profile + self.exc_profile
         self.emission_fitted=np.trapz(self.ems_profile, x=self.plasma.los) / (4*pi)
 
@@ -438,7 +439,7 @@ class BalmerHydrogenLine(object):
         self.exc_peak = nan_to_num( self.lineshape(self.exc_lineshape_input) )
         self.rec_peak = nan_to_num( self.lineshape(self.rec_lineshape_input) )
 
-        return self.rec_peak*rec_sum + self.exc_peak*exc_sum
+        return self.rec_peak*rec_sum + self.exc_peak*exc_sum  # ph/cm-2/A/sr/s
 
 
 
