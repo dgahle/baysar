@@ -182,19 +182,13 @@ class ADAS406Lines(object):
         ne = self.plasma.plasma_state['electron_density'].flatten()
         te = self.plasma.plasma_state['electron_temperature'].flatten()
         tau = self.plasma.plasma_state[self.species+'_tau'][0]
-        # tau = np.zeros(len(ne))+self.plasma.plasma_state[self.species+'_tau'][0]
         if self.species+'_velocity' in self.plasma.plasma_state:
             self.velocity=self.plasma.plasma_state[self.species+'_velocity']
             doppler_shift_ADAS406Lines(self, self.velocity)
 
-        # self.tec_in[:, 0] = self.plasma.plasma_state[self.species+'_tau'][0]# np.array([tau, ne, te])
-        # self.tec_in[:, 1] = self.plasma.plasma_state['electron_density']
-        # self.tec_in[:, 2] = self.plasma.plasma_state['electron_temperature']
         # TODO: comparison to weight on log(tau) vs tau
         adas_taus = self.plasma.adas_plasma_inputs['magical_tau'] # needs line below to!!!
         j=adas_taus.searchsorted(np.log10(tau))
-        # adas_taus = self.plasma.adas_plasma_inputs['tau_exc']
-        # j=adas_taus.searchsorted(tau)
         i=j-1
 
         # index checks:
@@ -202,23 +196,24 @@ class ADAS406Lines(object):
             things=[i, j, np.round(np.log10(tau), 2), len(adas_taus), adas_taus.min(), adas_taus.max()]
             raise ValueError("Indices i and/or j ({}, {}) are out of bounds. tau = 1e{} s and len(adas_taus) = {} with range ({}, {})".format(*things))
 
-        d_tau=1/(adas_taus[j]-adas_taus[i])
-        i_weight = (tau-adas_taus[i])*d_tau
-        j_weight = (adas_taus[j]-tau)*d_tau
+        self.da_taus=[adas_taus[i], np.log10(tau), adas_taus[j]]
+        self.tec_weights=1+np.diff(self.da_taus)/(self.da_taus[0]-self.da_taus[-1])
+        i_weight, j_weight=self.tec_weights
 
-        # tec406_lhs = self.tec406[i](self.tec_in[:, 1], self.tec_in[:, 2])
-        # tec406_rhs = self.tec406[j](self.tec_in[:, 1], self.tec_in[:, 2])
         tec406_lhs = self.tec406[i].ev(ne, te)
         tec406_rhs = self.tec406[j].ev(ne, te)
+
         self.tec406_lhs=tec406_lhs
         self.tec406_rhs=tec406_rhs
-        # tec = np.exp(tec406_lhs*i_weight+tec406_rhs*j_weight)
-        self.tec_weights=[i_weight, j_weight]
-        tec = np.exp(tec406_lhs)*i_weight + np.exp(tec406_rhs)*j_weight
-        tec = np.nan_to_num(tec) # todo - why? and fix!
-        self.tec=tec
 
-        self.emission_profile = (n0*tec).clip(1) # ph/cm-3/s # why do negatives occur here?
+        self.tec406_wieghted=tec406_lhs*i_weight + tec406_rhs*j_weight
+        self.tec=np.nan_to_num( np.exp(self.tec406_wieghted) ) # todo - why? and fix!
+
+        # self.tec406_wieghted=np.exp(tec406_lhs)*i_weight + np.exp(tec406_rhs)*j_weight
+        # self.tec=np.nan_to_num(self.tec406_wieghted) # todo - why? and fix!
+
+
+        self.emission_profile = (n0*self.tec).clip(1) # ph/cm-3/s # why do negatives occur here?
         self.emission_fitted=np.trapz(self.emission_profile, x=self.plasma.los) / (4*pi) # ph/cm-2/sr/s
 
         self.ems_ne = dot(self.emission_profile , ne) / self.emission_profile.sum()
