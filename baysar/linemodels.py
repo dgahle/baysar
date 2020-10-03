@@ -406,8 +406,8 @@ class BalmerHydrogenLine(object):
         self.rec_profile = n1.clip(1)*ne*rec_pec # ph/cm-3/s
         self.exc_profile = n0*ne*exc_pec # ph/cm-3/s
 
-        rec_sum = np.trapz(self.rec_profile, x=self.plasma.los) / (4*pi) # ph/cm-2/sr/s
-        exc_sum = np.trapz(self.exc_profile, x=self.plasma.los) / (4*pi) # ph/cm-2/sr/s
+        self.rec_sum = np.trapz(self.rec_profile, x=self.plasma.los) / (4*pi) # ph/cm-2/sr/s
+        self.exc_sum = np.trapz(self.exc_profile, x=self.plasma.los) / (4*pi) # ph/cm-2/sr/s
         self.ems_profile = self.rec_profile + self.exc_profile
         self.emission_fitted=np.trapz(self.ems_profile, x=self.plasma.los) / (4*pi)
 
@@ -419,7 +419,7 @@ class BalmerHydrogenLine(object):
         self.rec_te = dot(self.rec_profile, te) / self.rec_profile.sum()
 
         # just because there are nice to have
-        self.f_rec = rec_sum / self.emission_fitted
+        self.f_rec = self.rec_sum / self.emission_fitted
         self.ems_ne = dot(self.ems_profile, ne) / self.ems_profile.sum()
         self.ems_te = dot(self.ems_profile, te) / self.ems_profile.sum()
 
@@ -436,10 +436,11 @@ class BalmerHydrogenLine(object):
 
         self.exc_lineshape_input = [self.exc_ne, self.exc_te, self.exc_ti, bfield, viewangle]
         self.rec_lineshape_input = [self.rec_ne, self.rec_te, self.rec_ti, bfield, viewangle]
-        self.exc_peak = nan_to_num( self.lineshape(self.exc_lineshape_input) )
-        self.rec_peak = nan_to_num( self.lineshape(self.rec_lineshape_input) )
+        self.exc_peak = nan_to_num( self.lineshape(self.exc_lineshape_input) )*self.exc_sum
+        self.rec_peak = nan_to_num( self.lineshape(self.rec_lineshape_input) )*self.rec_sum
+        self.ems_peak = self.rec_peak + self.exc_peak
 
-        return self.rec_peak*rec_sum + self.exc_peak*exc_sum  # ph/cm-2/A/sr/s
+        return self.ems_peak # ph/cm-2/A/sr/s
 
 
 
