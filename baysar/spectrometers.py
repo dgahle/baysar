@@ -219,6 +219,12 @@ class SpectrometerChord(object):
         cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
         self.cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
         spectra=self.wavecal_interp(self.cal_wave).clip(background)
+        # check that the are is conserved
+        prewavecal_area=np.trapz(self.prewavecal_spectra, self.x_data_wavecal_interp,)
+        postwavecal_area=np.trapz(spectra, self.cal_wave)
+        wavecal_ratio=prewavecal_area/prewavecal_area
+        if not np.isclose(wavecal_ratio, 1):
+            raise ValueError(f"Area not conserved in wavelength calibrtation! ({wavecal_ratio})")
 
         # output checks
         if len(self.y_data)!=len(spectra):
