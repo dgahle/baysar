@@ -345,11 +345,14 @@ class ChargeStateOrderPrior:
         tmp1=[]
         cost=0
         for elem in self.posterior.plasma.impurities:
+            tmp_history=[]
             for ion in sorted([ion for ion in tmp if ion.startswith(elem)], key=lambda x: tmp[x]):
                 tmp1.append(self.posterior.posterior_components[0].lines[tmp[ion]].ems_te)
+                tmp_history.append((elem, ion, tmp1[-1]))
                 self.history.append((elem, ion, tmp1[-1]))
-            # cost+=sum([min(0, t) for t in diff(tmp1)])
-            for dt in diff(tmp1):
+
+            dts=diff([ems_te[-1] for ems_te in sorted(tmp_history, key=lambda x:float(x[1].split('_')[1]))])
+            for dt in dts:
                 cost+=gaussian_high_pass_cost(dt, self.mean, self.sigma)
 
         return cost
