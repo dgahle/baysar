@@ -332,10 +332,11 @@ class ChargeStateOrderPrior:
         self.mean=mean
         self.sigma=sigma
         self.impurity_indicies_dict={}
-        for i, l in enumerate(self.posterior.posterior_components[0].lines):
-            if 'species' in l.__dict__:
-                if l.species in self.posterior.plasma.impurity_species and not l.species in self.impurity_indicies_dict:
-                    self.impurity_indicies_dict[l.species]=i
+        for counter, c in enumerate(self.posterior.posterior_components[:posterior.plasma.num_chords]):
+            for i, l in enumerate(c.lines):
+                if 'species' in l.__dict__:
+                    if l.species in self.posterior.plasma.impurity_species and not l.species in self.impurity_indicies_dict:
+                        self.impurity_indicies_dict[l.species]=(counter, i)
 
         print(self.impurity_indicies_dict)
 
@@ -347,7 +348,8 @@ class ChargeStateOrderPrior:
         for elem in self.posterior.plasma.impurities:
             tmp_history=[]
             for ion in sorted([ion for ion in tmp if ion.startswith(elem)], key=lambda x: tmp[x]):
-                tmp1.append(self.posterior.posterior_components[0].lines[tmp[ion]].ems_te)
+                chords, line_index=tmp[ion]
+                tmp1.append(self.posterior.posterior_components[chords].lines[line_index].ems_te)
                 tmp_history.append((elem, ion, tmp1[-1]))
                 self.history.append((elem, ion, tmp1[-1]))
 
