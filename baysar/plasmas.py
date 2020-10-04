@@ -256,8 +256,8 @@ class PlasmaLine():
         # tau_exc=np.logspace(-7, 1, 10)
         # tau_rec=np.logspace(1, -5, 18)
         # magical_tau=np.concatenate( ((np.log10(tau_exc)-np.log10(tau_exc).max()), (-np.log10(tau_rec)+2)) )
-        tau_exc=np.logspace(-7, 2, 10)
-        tau_rec=np.logspace(1, -4, 12)
+        tau_exc=np.logspace(-7, 2, 10+12)
+        tau_rec=np.logspace(1, -4, 12-4)
         magical_tau=np.concatenate( ((np.log10(tau_exc)), (-np.log10(tau_rec)+4)) )
         self.adas_plasma_inputs = {'te': np.logspace(-1, 2, 48), # TODO can we get the raw data instead?
                                    'ne': np.logspace(12, 15, 15),
@@ -722,7 +722,7 @@ class PlasmaLine():
             power=np.zeros(shape_pow)
             meta_index=0
             meta=get_meta(elem, index=meta_index)
-            min_frac0=1e-5
+            min_frac0=1e-8
             min_frac1=1e-15
             for t_counter, t in enumerate(tau_exc):
                 print(t_counter, t)
@@ -742,6 +742,7 @@ class PlasmaLine():
                     power[t_counter, :, :, ion]=tmppower
 
             # downstream transport
+            min_frac0=1e-4
             meta_index=-1
             meta=get_meta(elem, index=meta_index)
             for t_counter, t in enumerate(tau_rec):
@@ -793,13 +794,13 @@ class PlasmaLine():
         upper_tau=self.adas_plasma_inputs['magical_tau'][upper_index][0]
         lower_tau=self.adas_plasma_inputs['magical_tau'][lower_index][0]
         dtau=abs(upper_tau-lower_tau)
-        upper_wieght=abs(upper_tau-tau)/dtau
-        lower_wieght=abs(lower_tau-tau)/dtau
+        upper_wieght=1-abs(upper_tau-tau)/dtau
+        lower_wieght=1-abs(lower_tau-tau)/dtau
 
-        upper_power=np.exp( self.impurity_raditive_power[species][upper_tau].ev(ne, te) )
-        lower_power=np.exp( self.impurity_raditive_power[species][lower_tau].ev(ne, te) )
+        upper_power_rates=upper_wieght*self.impurity_raditive_power[species][upper_tau].ev(ne, te)
+        lower_power_rates=lower_wieght*self.impurity_raditive_power[species][lower_tau].ev(ne, te)
 
-        power=nz*0.5*(upper_wieght*upper_power + upper_wieght*upper_power)
+        power=nz*np.exp( 0.5*(upper_power_rates+lower_power_rates) )
         if 'power' not in self.plasma_state:
             self.plasma_state['power']={}
 
