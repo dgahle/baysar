@@ -209,6 +209,7 @@ class SpectrometerChord(object):
 
         self.postconv_integral=np.trapz(spectra, self.x_data_wavecal_interp)
         self.conv_integral_ratio=self.postconv_integral/self.preconv_integral
+        spectra/=self.conv_integral_ratio
         if not np.isclose(self.conv_integral_ratio, 1, rtol=self.convolution_tolerence):
             raise ValueError(f"Area not conserved in convolution! ({self.conv_integral_ratio}!=1), {self.dispersion_ratios}, {instrument_function_last_used.sum()}")
 
