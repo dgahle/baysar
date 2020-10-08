@@ -27,7 +27,7 @@ def plot_posterior_components(posterior, sample, alpha=1, reference=None):
     plt.xlabel(r'$Steps$')
 
     legend=plt.legend()
-    legend.draggable()
+    plt.set_draggable()
 
     plt.tight_layout()
     plt.show()
@@ -35,7 +35,7 @@ def plot_posterior_components(posterior, sample, alpha=1, reference=None):
 import numpy as np
 
 def plot_fit_demo(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
-                  error_norm=True, plasma_reference=None, filename=None, parameterised=True,
+                  error_norm=True, chord=0, plasma_reference=None, filename=None, parameterised=True,
                   only_band=True, sort_te=False):
 
     if size is None:
@@ -69,9 +69,10 @@ def plot_fit_demo(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
     # ax_te2.tick_params(axis='y', labelcolor=te_color)
 
     # ax[0] plot data and fit
-    spectra = posterior.posterior_components[0].y_data
-    error = posterior.posterior_components[0].error
-    waves = posterior.posterior_components[0].x_data
+    chord=posterior.posterior_components[chord]
+    spectra = chord.y_data
+    error = chord.error
+    waves = chord.x_data
 
     ax_fit.plot(waves, spectra, label='Data')
     ax_res.plot(waves, spectra/max(spectra), color='C0', label='Data')
@@ -152,8 +153,8 @@ def plot_fit_demo(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
     ne_all=[]
     for counter0 in np.linspace(0, len(sample)-1, size, dtype=int):
         posterior(sample[counter0])
-        tmp_fit = posterior.posterior_components[0].forward_model()
-        tmp_wave = posterior.posterior_components[0].cal_wave
+        tmp_fit = chord.forward_model()
+        tmp_wave = chord.cal_wave
         tmp_res = abs(spectra-tmp_fit)/k_res
         te = posterior.plasma.plasma_state['electron_temperature']
         ne = posterior.plasma.plasma_state['electron_density']
@@ -211,7 +212,7 @@ def plot_fit_demo(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
 
 
     leg=ax_fit.legend()
-    leg.draggable()
+    fig.set_draggable()
 
     if filename is None:
         fig.show()
@@ -278,7 +279,7 @@ def plot_sources_and_sinks(posterior, sample, log=False, data=None, chord=None, 
     plt.xlabel(r'$LOS \ / \ cm$')
 
     leg=plt.legend()
-    leg.draggable()
+    fig.set_draggable()
 
     plt.show()
 
@@ -371,9 +372,9 @@ def plot_impurtity_profiles_dense(posterior, sample, data, chord, alpha=0.3):
             ax_balance.plot(te_grid, np.array(grided_profiles).mean(0), 'C'+str(charge))
 
     leg_bal=ax_balance.legend()
-    leg_bal.draggable()
+    leg_bal.set_draggable()
     leg_prof=ax_profile.legend()
-    leg_prof.draggable()
+    leg_prof.set_draggable()
     ax_profile.set_xlim(los.min(), los.max())
 
     fig.show()
