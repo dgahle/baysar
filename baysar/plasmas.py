@@ -292,7 +292,7 @@ class PlasmaLine():
             self.zeeman=False
 
         if 'no_sample_neutrals' in self.input_dict:
-            self.no_sample_neutrals=self.input_dict['zeeman']
+            self.no_sample_neutrals=self.input_dict['no_sample_neutrals']
         else:
             self.no_sample_neutrals=True
 
@@ -793,14 +793,13 @@ class PlasmaLine():
         lower_index=upper_index-1
         upper_tau=self.adas_plasma_inputs['magical_tau'][upper_index][0]
         lower_tau=self.adas_plasma_inputs['magical_tau'][lower_index][0]
-        dtau=abs(upper_tau-lower_tau)
-        upper_wieght=1-abs(upper_tau-tau)/dtau
-        lower_wieght=1-abs(lower_tau-tau)/dtau
+        da_taus=[lower_tau, tau, upper_tau]
+        lower_weight, upper_weight=1+np.diff(da_taus)/(da_taus[0]-da_taus[-1])
 
-        upper_power_rates=upper_wieght*self.impurity_raditive_power[species][upper_tau].ev(ne, te)
-        lower_power_rates=lower_wieght*self.impurity_raditive_power[species][lower_tau].ev(ne, te)
+        upper_power_rates=upper_weight*self.impurity_raditive_power[species][upper_tau].ev(ne, te)
+        lower_power_rates=lower_weight*self.impurity_raditive_power[species][lower_tau].ev(ne, te)
 
-        power=nz*np.exp( 0.5*(upper_power_rates+lower_power_rates) )
+        power=nz*np.exp(upper_power_rates+lower_power_rates)
         if 'power' not in self.plasma_state:
             self.plasma_state['power']={}
 
