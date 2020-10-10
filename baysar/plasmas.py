@@ -554,11 +554,11 @@ class PlasmaLine():
 
         # n0_time=self.plasma_state['n0_time']
         n0_time=self.plasma_state[species+'_tau'][0]
-        n0-=n0*ne*scd*n0_time
         if hasattr(self, 'recombining'):
             if self.recombining is True:
                 n0+=n1*ne*acd*n0_time
 
+        n0-=n0*ne*scd*n0_time
         n0=n0.clip(1)
         self.plasma_state[species+'_dens']=n0
 
