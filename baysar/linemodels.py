@@ -421,7 +421,7 @@ class BalmerHydrogenLine(object):
         if self.plasma.cold_neutrals:
             self.plasma.plasma_state[self.species+'_Ti']=0.01
         elif self.plasma.thermalised:
-            thermalised_ti=(1-self.frec)*self.exc_te+self.frec*self.rec_te
+            thermalised_ti=(1-self.f_rec)*self.exc_te+self.f_rec*self.rec_te
             self.plasma.plasma_state[self.species+'_Ti']=thermalised_ti
 
 
