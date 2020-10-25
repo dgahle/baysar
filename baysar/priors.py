@@ -359,6 +359,53 @@ class ChargeStateOrderPrior:
 
         return cost
 
+class CiiiPrior:
+    def __init__(self, plasma, mean=0, sigma=0.2):
+        self.plasma=plasma
+        self.mean=mean
+        self.sigma=sigma
+
+    def __call__(self):
+        if 'C_2_tau' in self.plasma.plasma_state:
+            c_2_tau=self.plasma.plasma_state['C_2_tau'].mean()
+            n_2_tau=self.plasma.plasma_state['N_2_tau'].mean()
+            r_tau=np.log10(c_2_tau/n_2_tau)
+
+            return -0.5*np.square((r_tau-self.mean)/self.sigma)
+        else:
+            return 0
+
+class NeutralPowerPrior:
+    def __init__(self, plasma, mean=1.0, sigma=0.5):
+        self.plasma=plasma
+        self.mean=mean
+        self.sigma=sigma
+
+    def __call__(self):
+        self.exc_power=np.trapz(self.plasma.plasma_state['power']['D_ADAS_0_exc'], self.plasma.los)
+
+        return gaussian_low_pass_cost(self.exc_power, self.mean, self.sigma)
+
+
+class StarkToPeakPrior:
+    def __init__(self, plasma, line, mean=0.6, sigma=0.05):
+        self.plasma=plasma
+        self.line=line
+        self.mean=mean
+        self.sigma=sigma
+
+    def __call__(self):
+        ne_peak=self.plasma.plasma_state['electron_density'].max()
+        self.rec_stark_peak_ratop=self.line.rec_ne/ne_peak
+        self.exc_stark_peak_ratop=self.line.exc_ne/ne_peak
+
+        self.exc_cost=gaussian_high_pass_cost(self.exc_stark_peak_ratop, self.mean, self.sigma)
+        self.rec_cost=gaussian_high_pass_cost(self.rec_stark_peak_ratop, self.mean, self.sigma)
+        self.cost=self.exc_cost+self.rec_cost
+
+        return self.cost
+
+        
 class WavelengthCalibrationPrior:
     def __init__(self, plasma, mean, std):
         self.plasma_state=plasma.plasma_state
