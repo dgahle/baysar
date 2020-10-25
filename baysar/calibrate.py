@@ -1,10 +1,17 @@
 import numpy as np
 
+def lorentzian(x, x0, width, area):
+    square_res=((x-x0)/width)**2
+    inv_peak=np.pi*width*(1+square_res)
+    return area/inv_peak
+
 from scipy.optimize import fmin_l_bfgs_b
 from baysar.lineshapes import gaussian_norm
+from tulasa.general import plot, close_plots
+from scipy.signal import fftconvolve
 def fit_peak(x, y, instrument_function=None):
     # get error
-    y_err=np.sqrt(y.min()*y)
+    y_err=np.sqrt(y.min()*(y+1))
 
     #set up peak fit
     approx_area=np.trapz(y, x)
@@ -16,11 +23,14 @@ def fit_peak(x, y, instrument_function=None):
     # build cost function
     def func(x0):
         fm=gaussian_norm(x, *x0)
+        if instrument_function is not None:
+            fm=fftconvolve(fm, instrument_function, mode='same')
         return 0.5*np.square( (y-fm)/y_err ).sum()
 
     # run fit
     x_opt, f, d=fmin_l_bfgs_b(func, x0, approx_grad=True, bounds=bounds, maxfun=150000, maxiter=150000)
     # print(x_opt, f)
+    # plot([y, gaussian_norm(x, *x_opt)], multi='fake')
     return x_opt
 
 def clip_ends(x, y):
@@ -103,7 +113,10 @@ if __name__=='__main__':
     wave=data.get('wave')
 
     references=[3955.85, 3995.00, 4041.32, 4097.33, 4121.93]
-    window=np.array([-1.5, 1.5])
+    references=[3955.85, 3968.99, 3973.26, 3995.00, 4041.32, 4097.33, 4100.61, 4103.43, 4121.93]
+    references=[3955.85, 3968.99, 3995.00, 4035.09, 4041.32, 4097.33, 4100.61, 4103.43, 4121.93, 4133.7]
+    # references=[3955.85, 3968.99, 3995.00, 4035.09, 4041.32, 4097.33, 4100.61, 4103.43, 4121.93, 4133.7]
+    window=np.array([-1., 1.])
     spectra1, wave1=calibrate_spectra(spectra, wave, references=references, window=window)
 
     import matplotlib.pyplot as plt
@@ -115,6 +128,7 @@ if __name__=='__main__':
     #     plt.plot([cwl, cwl], [spectra.min(), spectra.max()], 'k--')
     for cwl in references:
         plt.plot([cwl, cwl], [spectra.min(), spectra.max()], 'r--')
+    plt.ylim(1e11, 1e14)
     plt.yscale('log')
     plt.show()
 
