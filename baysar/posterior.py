@@ -13,15 +13,17 @@ import concurrent.futures
 from multiprocessing import Pool
 # from baysar.priors import gaussian_low_pass_cost
 
+from itertools import product
+
 from baysar.priors import CurvatureCost, AntiprotonCost, MainIonFractionCost
 from baysar.priors import NeutralFractionCost, StaticElectronPressureCost, TauPrior
-from baysar.priors import ChargeStateOrderPrior
+from baysar.priors import ChargeStateOrderPrior, StarkToPeakPrior
 from baysar.priors import WavelengthCalibrationPrior, CalibrationPrior, GaussianInstrumentFunctionPrior
 from baysar.priors import gaussian_low_pass_cost, gaussian_high_pass_cost
 from baysar.plasmas import PlasmaLine
 from baysar.spectrometers import SpectrometerChord
 from baysar.tools import within, progressbar, clip_data
-from baysar.linemodels import XLine
+from baysar.linemodels import BalmerHydrogenLine, XLine
 from baysar.optimisation import evolutionary_gradient_ascent, sample_around_theta, optimise
 from baysar.output_tools import plot_fit_demo
 
@@ -98,9 +100,22 @@ class BaysarPosterior(object):
         if not self.got_p(StaticElectronPressureCost):
             self.posterior_components.append(StaticElectronPressureCost(self.plasma))
         # neutral fraction priors
-        if self.plasma.contains_hydrogen and not self.got_p(NeutralFractionCost):
-            n0_prior=NeutralFractionCost(self.plasma, species=self.plasma.hydrogen_species[0])
-            self.posterior_components.append(n0_prior)
+        if self.plasma.contains_hydrogen:
+            if not self.got_p(NeutralFractionCost):
+                n0_prior=NeutralFractionCost(self.plasma, species=self.plasma.hydrogen_species[0])
+                self.posterior_components.append(n0_prior)
+
+            if not self.got_p(StarkToPeakPrior):
+                for p in self.posterior_components:
+                    for l in p.lines:
+                        if type(l)==BalmerHydrogenLine and not self.got_p(StarkToPeakPrior):
+                            stark_prior=StarkToPeakPrior(plasma=self.plasma, line=l)
+                            self.posterior_components.append(stark_prior)
+                        if self.got_p(StarkToPeakPrior):
+                            break
+                    if self.got_p(StarkToPeakPrior):
+                        break
+
         # priors for impure plasmas (could use better phrasing)
         if len(self.plasma.impurities)>0:
             if not self.got_p(AntiprotonCost):
