@@ -399,13 +399,13 @@ class StarkToPeakPrior:
         self.rec_stark_peak_ratop=self.line.rec_ne/ne_peak
         self.exc_stark_peak_ratop=self.line.exc_ne/ne_peak
 
-        self.exc_cost=gaussian_high_pass_cost(self.exc_stark_peak_ratop, self.mean, self.sigma)
-        self.rec_cost=gaussian_high_pass_cost(self.rec_stark_peak_ratop, self.mean, self.sigma)
+        self.exc_cost=gaussian_high_pass_cost(self.exc_stark_peak_ratop, self.mean, self.sigma)*(1-self.line.f_rec)
+        self.rec_cost=gaussian_high_pass_cost(self.rec_stark_peak_ratop, self.mean, self.sigma)*self.line.f_rec
         self.cost=self.exc_cost+self.rec_cost
 
         return self.cost
 
-        
+
 class WavelengthCalibrationPrior:
     def __init__(self, plasma, mean, std):
         self.plasma_state=plasma.plasma_state
