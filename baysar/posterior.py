@@ -106,7 +106,7 @@ class BaysarPosterior(object):
                 self.posterior_components.append(n0_prior)
 
             if not self.got_p(StarkToPeakPrior):
-                for p in self.posterior_components:
+                for p in self.posterior_components[:self.plasma.num_chords]:
                     for l in p.lines:
                         if type(l)==BalmerHydrogenLine and not self.got_p(StarkToPeakPrior):
                             stark_prior=StarkToPeakPrior(plasma=self.plasma, line=l)
