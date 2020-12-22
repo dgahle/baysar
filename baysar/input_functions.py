@@ -83,7 +83,7 @@ def check_input_dict_input(wavelength_axis, experimental_emission, instrument_fu
 
     # check that the noise_regions are within the wavelength_axes
     for region, axis in zip(noise_region, wavelength_axis):
-        if any([within(r, axis) for r in region]):
+        if not all([within(r, [axis]) for r in region]):
             raise ValueError("Noise regions are not in the wavelength axes!")
         if np.diff(region)<np.diff(axis).min():
             raise ValueError("Noise regions is subpixel!")
