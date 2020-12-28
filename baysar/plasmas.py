@@ -419,6 +419,10 @@ class PlasmaLine():
                     bounds.append([-10, -2]) # ([-7, -3])
                 elif (tag == '_dens' and is_h_isotope and self.no_sample_neutrals):
                     pass
+                elif (tag == '_Ti' and is_h_isotope and self.cold_neutrals):
+                    pass
+                elif (tag == '_Ti' and not is_h_isotope and self.cold_ions):
+                    pass
                 else:
                     sion = s+tag
                     tmp_b = impurity_bounds[np.where([t in sion for t in impurity_tags])[0][0]]
@@ -794,7 +798,8 @@ class PlasmaLine():
         upper_tau=self.adas_plasma_inputs['magical_tau'][upper_index][0]
         lower_tau=self.adas_plasma_inputs['magical_tau'][lower_index][0]
         da_taus=[lower_tau, tau, upper_tau]
-        lower_weight, upper_weight=1+np.diff(da_taus)/(da_taus[0]-da_taus[-1])
+        # lower_weight, upper_weight=1+np.diff(da_taus)/(da_taus[0]-da_taus[-1])
+        lower_weight, upper_weight=1+np.array([da_taus[1]-da_taus[0], da_taus[-1]-da_taus[1] ])/(da_taus[0]-da_taus[-1])
 
         upper_power_rates=upper_weight*self.impurity_raditive_power[species][upper_tau].ev(ne, te)
         lower_power_rates=lower_weight*self.impurity_raditive_power[species][lower_tau].ev(ne, te)
