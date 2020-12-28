@@ -18,6 +18,24 @@ from numpy import sqrt, linspace, diff, arange, zeros, where, nan_to_num, array,
 
 from baysar.lineshapes import Gaussian, reduce_wavelength
 
+# from numpy import log10, trapz
+from baysar.tools import clip_data # x_data, y_data, x_range
+def estimate_XLine(l, wave, ems, half_width=0.2, half_range=1.5):
+    """
+    Esimates the area of a mystery line (XLine) and gives bounds.
+
+    return estimate, bounds
+    """
+
+    estimate=0
+    for cwl in l.line.cwl:
+        tmp_range=[(cwl-half_width), (cwl+half_width)]
+        newx, newy = clip_data(wave, ems, tmp_range)
+        estimate += trapz(newy, newx)
+
+    estimate=log10(estimate)
+    bounds=[estimate-half_range, estimate+half_range]
+    return estimate, bounds
 
 class XLine(object):
     def __init__(self, cwl, wavelengths, plasma, fractions, fwhm=0.2, species='X', half_range=5):
@@ -34,14 +52,8 @@ class XLine(object):
         ems = self.plasma.plasma_state[self.line_tag]
         return self.line(ems)
 
-    def estimate_log_ems(self, wavelength, spectra):
-        log_ems_estimate=0
-        half_width=0.3
-        for cwl in self.line.cwl:
-            condition = ((cwl-half_width) < wavelength) and (wavelength < (cwl-half_width))
-            index = np.where(condition)[0]
-            log_ems_estimate += spectra[index].sum()
-        self.log_ems_estimate = np.log10(log_ems_estimate)
+    def estimate_ems_and_bounds(self, wavelength, spectra):
+        self.estimate, self.bounds=estimate_XLine(l, wave, ems, half_width=0.2, half_range=1.5)
 
 
 from scipy.constants import speed_of_light
