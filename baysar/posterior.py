@@ -267,6 +267,14 @@ class BaysarPosterior(object):
                 if s.endswith('_Ti'):
                     self.plasma.theta_bounds[self.plasma.slices[s]][0]=[0, 1.7]
 
+        # Need to search each chord for XLines and evalute l.estimate_ems_and_bounds to get bounds
+        for chord in self.posterior_components[:self.plasma.num_chords]:
+            for l in chord.lines:
+                if type(l) == XLine:
+                    l.estimate_ems_and_bounds(chord.x_data, chord.y_data)
+                    self.plasma.theta_bounds[self.plasma.slices[l.line_tag]][0]=l.bounds
+
+
     def random_start(self, order=1, flat=False):
         start = [np.mean(np.random.uniform(bounds[0], bounds[1], size=order)) for bounds in self.plasma.theta_bounds]
         # produce flat plasma profiles
