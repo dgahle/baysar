@@ -14,26 +14,29 @@ import warnings
 import time as clock
 
 import numpy as np
-from numpy import sqrt, linspace, diff, arange, zeros, where, nan_to_num, array, log10, trapz, sin, cos, interp, dot
+from numpy import sqrt, linspace, diff, arange, zeros, where, nan_to_num, array, log10, trapz, sin, cos, interp, dot, isinf
 
 from baysar.lineshapes import Gaussian, reduce_wavelength
 
 # from numpy import log10, trapz
 from baysar.tools import clip_data # x_data, y_data, x_range
-def estimate_XLine(l, wave, ems, half_width=0.2, half_range=1.5):
+def estimate_XLine(l, wave, ems, half_width=None, half_range=1.5):
     """
     Esimates the area of a mystery line (XLine) and gives bounds.
 
     return estimate, bounds
     """
 
-    estimate=0
+    if half_width is None:
+        half_width=diff(wave).mean()
+
+    estimate_list=[]
     for cwl in l.line.cwl:
         tmp_range=[(cwl-half_width), (cwl+half_width)]
         newx, newy = clip_data(wave, ems, tmp_range)
-        estimate += trapz(newy, newx)
+        estimate_list.append( trapz(newy, newx) )
 
-    estimate=log10(estimate)
+    estimate=log10( sum(estimate_list) )
     bounds=[estimate-half_range, estimate+half_range]
     return estimate, bounds
 
@@ -53,7 +56,7 @@ class XLine(object):
         return self.line(ems)
 
     def estimate_ems_and_bounds(self, wavelength, spectra):
-        self.estimate, self.bounds=estimate_XLine(l, wave, ems, half_width=0.2, half_range=1.5)
+        self.estimate, self.bounds=estimate_XLine(self, wavelength, spectra)
 
 
 from scipy.constants import speed_of_light
