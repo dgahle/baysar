@@ -345,8 +345,8 @@ class HydrogenLineShape(object):
         # wavelengths_doppler_num = len(self.wavelengths) # todo make a power of 2
         # if wavelengths_doppler_num % 2 == 0:
         #     wavelengths_doppler_num += 1
-
-        self.wavelengths_doppler = arange(self.cwl-10, self.cwl+10, np.diff(self.wavelengths)[0])
+        dlambda=np.diff(self.wavelengths).mean()
+        self.wavelengths_doppler = arange(self.cwl-10, self.cwl+10+dlambda, dlambda)
         self.doppler_function = DopplerLine(cwl=copy(self.cwl), wavelengths=self.wavelengths_doppler, atomic_mass=atomic_mass, half_range=5000)
 
     def __call__(self, theta):
