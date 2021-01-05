@@ -355,14 +355,14 @@ class HydrogenLineShape(object):
         else:
             electron_density, electron_temperature, ion_temperature = theta
 
-        doppler_component = self.doppler_function(ion_temperature, 1)
+        self.doppler_component = self.doppler_function(ion_temperature, 1)
         if self.zeeman:
-            doppler_component=zeeman_split(self.cwl, doppler_component, self.wavelengths_doppler, b_field, viewangle)
+            self.doppler_component=zeeman_split(self.cwl, self.doppler_component, self.wavelengths_doppler, b_field, viewangle)
 
-        stark_component = stehle_param(self.n_upper, self.n_lower, self.cwl, self.wavelengths, electron_density, electron_temperature)
+        self.stark_component = stehle_param(self.n_upper, self.n_lower, self.cwl, self.wavelengths, electron_density, electron_temperature)
 
         # peak=np.convolve(stark_component, doppler_component/doppler_component.sum(), 'same')
-        peak=fftconvolve(stark_component, doppler_component, 'same')
+        peak=fftconvolve(self.stark_component, self.doppler_component, 'same')
         peak/=trapz(peak, self.wavelengths)
 
         return peak
@@ -394,7 +394,7 @@ class BalmerHydrogenLine(object):
         n1 = self.plasma.plasma_state['main_ion_density']
         ne = self.plasma.plasma_state['electron_density']
         te = self.plasma.plasma_state['electron_temperature']
-        n0 = self.plasma.plasma_state[self.species+'_dens'][0]
+        n0 = self.plasma.plasma_state[self.species+'_dens']
 
         self.n0_profile=n0
 
@@ -424,6 +424,7 @@ class BalmerHydrogenLine(object):
         # used for the emission lineshape calculation
         self.exc_ne = dot(self.exc_profile, ne) / self.exc_profile.sum()
         self.exc_te = dot(self.exc_profile, te) / self.exc_profile.sum()
+        self.exc_n0 = dot(self.exc_profile, self.n0_profile) / self.exc_profile.sum()
 
         self.rec_ne = dot(self.rec_profile, ne) / self.rec_profile.sum()
         self.rec_te = dot(self.rec_profile, te) / self.rec_profile.sum()
