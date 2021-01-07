@@ -197,6 +197,9 @@ class ADAS406Lines(object):
         ne = self.plasma.plasma_state['electron_density'].flatten()
         te = self.plasma.plasma_state['electron_temperature'].flatten()
         tau = self.plasma.plasma_state[self.species+'_tau'][0]
+        if hasattr(self.plasma, 'ne_tau'):
+            if self.plasma.ne_tau: # in 1e13cm-3ms
+                tau = 1e3*tau/(ne*1e-13)
         if self.species+'_velocity' in self.plasma.plasma_state:
             self.velocity=self.plasma.plasma_state[self.species+'_velocity']
             doppler_shift_ADAS406Lines(self, self.velocity)
@@ -221,11 +224,11 @@ class ADAS406Lines(object):
         self.tec406_lhs=tec406_lhs
         self.tec406_rhs=tec406_rhs
 
-        self.tec406_wieghted=tec406_lhs*i_weight + tec406_rhs*j_weight
-        self.tec=np.nan_to_num( np.exp(self.tec406_wieghted) ) # todo - why? and fix!
+        # self.tec406_wieghted=tec406_lhs*i_weight + tec406_rhs*j_weight
+        # self.tec=np.nan_to_num( np.exp(self.tec406_wieghted) ) # todo - why? and fix!
 
-        # self.tec406_wieghted=np.exp(tec406_lhs)*i_weight + np.exp(tec406_rhs)*j_weight
-        # self.tec=np.nan_to_num(self.tec406_wieghted) # todo - why? and fix!
+        self.tec406_wieghted=np.exp(tec406_lhs)*i_weight + np.exp(tec406_rhs)*j_weight
+        self.tec=np.nan_to_num(self.tec406_wieghted) # todo - why? and fix!
 
 
         self.emission_profile = (n0*self.tec).clip(1) # ph/cm-3/s # why do negatives occur here?
@@ -415,6 +418,8 @@ class BalmerHydrogenLine(object):
         # need to exclude antiprotons from emission!
         self.rec_profile = n1.clip(1)*ne*rec_pec # ph/cm-3/s
         self.exc_profile = n0*ne*exc_pec # ph/cm-3/s
+        self.rec_ems_weights = self.rec_profile / self.rec_profile.sum()
+        self.exc_ems_weights = self.exc_profile / self.exc_profile.sum()
 
         self.rec_sum = np.trapz(self.rec_profile, x=self.plasma.los) / (4*pi) # ph/cm-2/sr/s
         self.exc_sum = np.trapz(self.exc_profile, x=self.plasma.los) / (4*pi) # ph/cm-2/sr/s
@@ -422,12 +427,14 @@ class BalmerHydrogenLine(object):
         self.emission_fitted=np.trapz(self.ems_profile, x=self.plasma.los) / (4*pi)
 
         # used for the emission lineshape calculation
-        self.exc_ne = dot(self.exc_profile, ne) / self.exc_profile.sum()
-        self.exc_te = dot(self.exc_profile, te) / self.exc_profile.sum()
-        self.exc_n0 = dot(self.exc_profile, self.n0_profile) / self.exc_profile.sum()
+        self.exc_ne = dot(self.exc_ems_weights, ne)
+        self.exc_te = dot(self.exc_ems_weights, te)
+        self.exc_n0 = dot(self.exc_ems_weights, self.n0_profile)
+        self.exc_n0_frac = dot(self.exc_ems_weights, self.n0_profile/ne)
+        self.exc_n0_frac_alt = self.exc_n0 / self.exc_ne
 
-        self.rec_ne = dot(self.rec_profile, ne) / self.rec_profile.sum()
-        self.rec_te = dot(self.rec_profile, te) / self.rec_profile.sum()
+        self.rec_ne = dot(self.rec_ems_weights, ne)
+        self.rec_te = dot(self.rec_ems_weights, te)
 
         # just because there are nice to have
         self.f_rec = self.rec_sum / self.emission_fitted
