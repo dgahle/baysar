@@ -249,15 +249,34 @@ def tau_difference(plasma, show_taus=False):
     return diff_taus
 
 class TauPrior:
-    def __init__(self, plasma, mean=0, sigma=1):
+    def __init__(self, plasma, mean=0, sigma=0.2):
         self.plasma=plasma
         self.mean=mean
         self.sigma=sigma
 
     def __call__(self):
         self.diff_log_taus=tau_difference(self.plasma)
-        logp=np.array([gaussian_low_pass_cost(-dlt, threshold=self.mean, error=self.sigma) for dlt in self.diff_log_taus])
+        logp=np.array([gaussian_low_pass_cost(dlt, threshold=self.mean, error=self.sigma) for dlt in self.diff_log_taus])
         return logp.sum()
+
+class NIVTauPrior:
+    def __init__(self, plasma_state, mean=1, sigma=0.2, ratio=5):
+        self.plasma = plasma_state
+        self.mean = mean
+        self.sigma = sigma
+        self.ratio = ratio
+
+    def __call__(self):
+        n_iii_tau = self.plasma['N_2_tau'][0]
+        n_iv_tau = self.plasma['N_3_tau'][0]
+
+        r = n_iv_tau / n_iii_tau
+
+        lower_cost = gaussian_high_pass_cost(r, self.mean, self.sigma)
+        upper_cost = gaussian_low_pass_cost(r, self.ratio*self.mean, self.ratio*self.sigma)
+        cost = lower_cost+upper_cost
+
+        return cost
 
 class WallConditionsPrior:
     def __init__(self, plasma, te_min=0.5, ne_min=2e12, te_err=None, ne_err=None):
@@ -388,7 +407,7 @@ class NeutralPowerPrior:
 
 
 class StarkToPeakPrior:
-    def __init__(self, plasma, line, mean=0.6, sigma=0.05):
+    def __init__(self, plasma, line, mean=0.85, sigma=0.05):
         self.plasma=plasma
         self.line=line
         self.mean=mean
