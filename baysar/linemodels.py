@@ -20,7 +20,7 @@ from baysar.lineshapes import Gaussian, reduce_wavelength
 
 # from numpy import log10, trapz
 from baysar.tools import clip_data # x_data, y_data, x_range
-def estimate_XLine(l, wave, ems, half_width=None, half_range=1.5):
+def estimate_XLine(l, wave, ems, half_width=None, half_range=0.5):
     """
     Esimates the area of a mystery line (XLine) and gives bounds.
 
@@ -28,7 +28,7 @@ def estimate_XLine(l, wave, ems, half_width=None, half_range=1.5):
     """
 
     if half_width is None:
-        half_width=diff(wave).mean()
+        half_width=2*diff(wave).mean()
 
     estimate_list=[]
     for cwl in l.line.cwl:
@@ -193,10 +193,20 @@ class ADAS406Lines(object):
 
     def __call__(self):
 
-        n0 = self.plasma.plasma_state[self.species+'_dens']
+        n0 = self.plasma.plasma_state[self.species+'_dens'][0]
         ne = self.plasma.plasma_state['electron_density'].flatten()
         te = self.plasma.plasma_state['electron_temperature'].flatten()
         tau = self.plasma.plasma_state[self.species+'_tau'][0]
+
+        if not hasattr(self.plasma, 'flat_nz'):
+            self.plasma.flat_nz = False
+
+        if not self.plasma.flat_nz:
+            p = ne/ne.max()
+            n0 = n0 * p
+
+        self.n0 = n0
+
         if hasattr(self.plasma, 'ne_tau'):
             if self.plasma.ne_tau: # in 1e13cm-3ms
                 tau = 1e3*tau/(ne*1e-13)
@@ -235,7 +245,8 @@ class ADAS406Lines(object):
         self.emission_fitted=np.trapz(self.emission_profile, x=self.plasma.los) / (4*pi) # ph/cm-2/sr/s
 
         self.ems_ne = dot(self.emission_profile , ne) / self.emission_profile.sum()
-        self.ems_conc = n0 / self.ems_ne
+        self.ems_conc = dot(self.emission_profile , n0 / ne) / self.emission_profile.sum()
+        # self.ems_conc = n0 / self.ems_ne
         self.ems_te = dot(self.emission_profile , te) / self.emission_profile.sum()
 
         if self.plasma.cold_ions:
@@ -459,6 +470,20 @@ class BalmerHydrogenLine(object):
         self.ems_peak = self.rec_peak + self.exc_peak
 
         return self.ems_peak # ph/cm-2/A/sr/s
+
+
+from numpy import round, dot
+def print_ADAS406Line_summary(line):
+    print(f"{line.species}: {round(line.ems_te, 2)} eV, {round(line.ems_ne/1e14, 2)} 1e14 cm-3, {round(1e2*line.ems_conc, 2)} %")
+
+def print_BalmerLine_summary(line):
+    print(f"{line.species} exc: {round(line.exc_te, 2)} eV, {round(line.exc_ne/1e14, 2)} 1e14 cm-3, {round(1e2*line.exc_n0_frac, 3)} %")
+    print(f"{line.species} rec: {round(line.rec_te, 2)} eV, {round(line.rec_ne/1e14, 2)} 1e14 cm-3, {round(1e2*line.f_rec, 2)} %")
+
+def weighted_line_ratio(chord, upper, lower):
+    weights = chord.lines[upper].emission_profile / chord.lines[upper].emission_profile.sum()
+    ratio = chord.lines[upper].emission_profile / chord.lines[lower].emission_profile
+    return dot(weights, ratio)
 
 
 
