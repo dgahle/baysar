@@ -693,6 +693,46 @@ class EsymmtricCauchyPlasma:
         self.electron_temperature=EsymmtricProfile(self.x, bounds_te, centre=0, ptype=ptype)
 
 
+class FlatProfile:
+    def __init__(self, x, bounds_te):
+        self.x = x
+        self.bounds = [bounds_te]
+        self.number_of_variables = len(self.bounds)
+
+    def __call__(self, theta):
+        te = theta[0]
+
+        profile = te + np.zeros(self.x.shape)
+
+        return profile
+
+
+class LeftTopHatProfile:
+    def __init__(self, x, bounds_ne, dr_bounds):
+        self.x = x
+        self.bounds = [bounds_ne, dr_bounds]
+        self.number_of_variables = len(self.bounds)
+
+    def __call__(self, theta):
+        ne, l = theta
+
+        profile = np.zeros(self.x.shape) + 1e10
+        res = self.x[1] - self.x[0]
+        profile[np.where(self.x < l+res)] = ne
+
+        return profile
+
+
+class SlabPlasma:
+    def __init__(self, x=None, dr_bounds=[-5, 2], bounds_ne=[13, 15], bounds_te=[1., 50], **args):
+        if x is None:
+            self.x=np.linspace(0, 20, 200)
+        else:
+            self.x=x
+
+        self.electron_density=LeftTopHatProfile(self.x, bounds_ne, dr_bounds)
+        self.electron_temperature=FlatProfile(self.x, bounds_te)
+
 if __name__=='__main__':
 
     from tulasa.general import close_plots, plot
