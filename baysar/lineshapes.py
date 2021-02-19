@@ -702,7 +702,7 @@ class FlatProfile:
     def __call__(self, theta):
         te = theta[0]
 
-        profile = te + np.zeros(self.x.shape)
+        profile = np.power(10, te) + np.zeros(self.x.shape)
 
         return profile
 
@@ -718,13 +718,13 @@ class LeftTopHatProfile:
 
         profile = np.zeros(self.x.shape) + 1e10
         res = self.x[1] - self.x[0]
-        profile[np.where(self.x < l+res)] = ne
+        profile[np.where(self.x < l+res)] = np.power(10, ne)
 
         return profile
 
 
 class SlabPlasma:
-    def __init__(self, x=None, dr_bounds=[-5, 2], bounds_ne=[13, 15], bounds_te=[1., 50], **args):
+    def __init__(self, x=None, dr_bounds=[-5, 2], bounds_ne=[13, 15], bounds_te=[0., 2.], **args):
         if x is None:
             self.x=np.linspace(0, 20, 200)
         else:
@@ -732,6 +732,44 @@ class SlabPlasma:
 
         self.electron_density=LeftTopHatProfile(self.x, bounds_ne, dr_bounds)
         self.electron_temperature=FlatProfile(self.x, bounds_te)
+
+from numpy import linspace, zeros, where, power
+class LeftRightTopHatProfile:
+    def __init__(self, x, centre, bounds_left, bounds_right, alt=None):
+        self.x = x
+        self.centre = centre
+        self.alt = alt
+        self.bounds = [bounds_left, bounds_right]
+        if self.alt is not None:
+            self.bounds.append([2, 8])
+        self.number_of_variables = len(self.bounds)
+
+    def __call__(self, theta):
+        if self.alt is not None:
+            left, right, centre = theta
+            self.centre = centre
+            self.alt.centre = centre
+        else:
+            left, right = theta
+
+
+        profile = zeros(self.x.shape)
+        profile[where(self.x < self.centre)] = power(10, left)
+        profile[where(self.centre < self.x)] = power(10, right)
+
+        return profile
+
+
+class DoubleSlabPlasma:
+    def __init__(self, x=None, centre=4, **args):
+        if x is None:
+            self.x=linspace(0, 20, 200)
+        else:
+            self.x=x
+
+        # self.centre = centre
+        self.electron_temperature=LeftRightTopHatProfile(self.x, centre, bounds_left=[-1, 0.7], bounds_right=[0, 2.])
+        self.electron_density=LeftRightTopHatProfile(self.x, centre, bounds_left=[13, 15], bounds_right=[13, 14.7], alt=self.electron_temperature)
 
 if __name__=='__main__':
 
