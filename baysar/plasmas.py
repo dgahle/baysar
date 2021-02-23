@@ -660,21 +660,26 @@ class PlasmaLine():
         total_impurity_electrons=0
 
         ne = self.plasma_state['electron_density']
-        te = self.plasma_state['electron_temperature']
+        if self.concstar:
+            for elem in self.impurities:
+                species = [species for species in self.impurity_species if species.startswith(elem+"_")][0]
+                dens = self.plasma_state[species+'_dens']
+                conc = (dens / ne.max()) * ne
+                total_impurity_electrons+=(conc / ne.max()) * ne
+        else:
+            te = self.plasma_state['electron_temperature']
+            for species in self.impurity_species:
+                tau_tag = species+'_tau'
+                dens_tag = species+'_dens'
 
-        for species in self.impurity_species:
-            tau_tag = species+'_tau'
-            dens_tag = species+'_dens'
+                tau = self.plasma_state[tau_tag]
+                conc = self.plasma_state[dens_tag]
+                tau = np.zeros(len(ne)) + tau
 
-            tau = self.plasma_state[tau_tag]
-            conc = self.plasma_state[dens_tag]
-            tau = np.zeros(len(ne)) + tau
-
-            tmp_in = (tau, ne, te)
-            # average_charge = np.exp(self.impurity_average_charge[species](tmp_in))
-            average_charge = self.impurity_average_charge[species](tmp_in).clip(min=0) /2 #TODO: ...
-
-            total_impurity_electrons+=average_charge*conc
+                tmp_in = (tau, ne, te)
+                # average_charge = np.exp(self.impurity_average_charge[species](tmp_in))
+                average_charge = self.impurity_average_charge[species](tmp_in).clip(min=0) /2 #TODO: ...
+                total_impurity_electrons+=average_charge*conc
 
         if set_attribute:
             self.total_impurity_electrons = np.nan_to_num(total_impurity_electrons)
@@ -715,6 +720,10 @@ class PlasmaLine():
         tau_exc = self.adas_plasma_inputs['tau_exc']
         tau_rec = self.adas_plasma_inputs['tau_rec']
 
+        if not hasattr(self, 'concstar'):
+            self.concstar = True
+            print(f"Impurity plasma model self.constar set to {self.concstar}!")
+
         for elem in self.impurities:
             adf11_plt=get_adf11(elem, yr=96, type='plt')
             adf11_prb=get_adf11(elem, yr=96, type='prb')
@@ -733,6 +742,9 @@ class PlasmaLine():
                 with HiddenPrints():
                     out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
                 out['ion'][out['ion'] < min_frac0]=min_frac1
+                if self.concstar:
+                    concstar_correction = np.arange(out['ion'].shape[-1]).clip(1)
+                    out['ion'] = out['ion'] / concstar_correction[None, None, :]
                 bal[t_counter, :, :, :]=out['ion']
                 for ion in range(power.shape[-1]):
                     is1=ion+1
@@ -753,6 +765,9 @@ class PlasmaLine():
                 with HiddenPrints():
                     out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
                 out['ion'][out['ion'] < min_frac0]=min_frac1
+                if self.concstar:
+                    concstar_correction = np.arange(out['ion'].shape[-1]).clip(1)
+                    out['ion'] = out['ion'] / concstar_correction[None, None, :]
                 bal[len(tau_exc)+t_counter, :, :, :]=out['ion']
                 for ion in range(power.shape[-1]):
                     is1=ion+1
@@ -801,10 +816,10 @@ class PlasmaLine():
         # lower_weight, upper_weight=1+np.diff(da_taus)/(da_taus[0]-da_taus[-1])
         lower_weight, upper_weight=1+np.array([da_taus[1]-da_taus[0], da_taus[-1]-da_taus[1] ])/(da_taus[0]-da_taus[-1])
 
-        upper_power_rates=upper_weight*self.impurity_raditive_power[species][upper_tau].ev(ne, te)
-        lower_power_rates=lower_weight*self.impurity_raditive_power[species][lower_tau].ev(ne, te)
+        upper_power_rates=upper_weight*np.exp(self.impurity_raditive_power[species][upper_tau].ev(ne, te))
+        lower_power_rates=lower_weight*np.exp(self.impurity_raditive_power[species][lower_tau].ev(ne, te))
 
-        power=nz*np.exp(upper_power_rates+lower_power_rates)
+        power=nz*upper_power_rates+lower_power_rates
         if 'power' not in self.plasma_state:
             self.plasma_state['power']={}
 

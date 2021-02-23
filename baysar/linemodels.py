@@ -193,17 +193,24 @@ class ADAS406Lines(object):
 
     def __call__(self):
 
-        n0 = self.plasma.plasma_state[self.species+'_dens'][0]
+        n0 = self.plasma.plasma_state[self.species+'_dens'].copy()[0]
         ne = self.plasma.plasma_state['electron_density'].flatten()
         te = self.plasma.plasma_state['electron_temperature'].flatten()
         tau = self.plasma.plasma_state[self.species+'_tau'][0]
 
-        if not hasattr(self.plasma, 'flat_nz'):
-            self.plasma.flat_nz = False
-
-        if not self.plasma.flat_nz:
+        # if not hasattr(self.plasma, 'concstar'):
+        #     self.plasma.concstar = False
+        #
+        if self.plasma.concstar:
             p = ne/ne.max()
             n0 = n0 * p
+
+        # if not hasattr(self.plasma, 'flat_nz'):
+        #     self.plasma.flat_nz = False
+        #
+        # if not self.plasma.flat_nz:
+        #     p = ne/ne.max()
+        #     n0 = n0 * p
 
         self.n0 = n0
 
