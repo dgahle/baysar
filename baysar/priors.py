@@ -405,9 +405,53 @@ class NeutralPowerPrior:
 
         return gaussian_low_pass_cost(self.exc_power, self.mean, self.sigma)
 
+from numpy import array, square, trapz
+from itertools import product
+class BolometryPrior:
+    def __init__(self, plasma, mean=10, sigma=0.5):
+        self.plasma = plasma
+        self.mean = mean
+        self.sigma = sigma
+
+        self.get_references()
+
+    def __call__(self):
+        syntetic_measurement = self.syntetic_bolometer().sum()
+        ratio = syntetic_measurement / self.mean
+        return -0.5 * square(ratio/self.sigma)
+
+    def __print__(self):
+        ...
+
+    def syntetic_bolometer(self):
+        bolo_estimation = []
+        # neutral power
+        if self.plasma.contains_hydrogen:
+            for species, reaction in product(self.plasma.hydrogen_species, ('exc', 'rec')):
+                tmp_power = self.plasma.plasma_state['power'][species+f'_{reaction}']
+                tmp_power = trapz(tmp_power, self.plasma.los).sum()
+                bolo_estimation.append(tmp_power)
+
+        # impurity power
+        for species in self.reference_species:
+            tmp_power = self.plasma.extrapolate_impurity_power(species)
+            tmp_power = trapz(tmp_power, self.plasma.los).sum()
+            bolo_estimation.append(tmp_power)
+
+        return array(bolo_estimation)
+
+    def get_references(self):
+        self.reference_species = []
+        for elem in self.plasma.impurities:
+            if elem+'_2' in self.plasma.impurity_species:
+                self.reference_species.append(elem+'_2')
+            else:
+                ref = [ref for ref in self.plasma.impurity_species if ref.startswith(f"{elem}_")][-1]
+                self.reference_species.append(ref)
+
 
 class StarkToPeakPrior:
-    def __init__(self, plasma, line, mean=0.85, sigma=0.05):
+    def __init__(self, plasma, line, mean=0.65, sigma=0.05):
         self.plasma=plasma
         self.line=line
         self.mean=mean
