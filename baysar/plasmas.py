@@ -802,9 +802,9 @@ class PlasmaLine():
 
                 self.impurity_raditive_power[elem_ion]=dict(rad_power)
 
-    def impurity_power(self, species):
+    def impurity_power(self, species, return_rates=False):
         nz=self.plasma_state[species+'_dens']
-        tau=np.log10(self.plasma_state[species+'_tau'])
+        tau=np.log10(self.plasma_state[species+'_tau'][0])
         ne=self.plasma_state['electron_density']
         te=self.plasma_state['electron_temperature']
 
@@ -812,14 +812,20 @@ class PlasmaLine():
         lower_index=upper_index-1
         upper_tau=self.adas_plasma_inputs['magical_tau'][upper_index][0]
         lower_tau=self.adas_plasma_inputs['magical_tau'][lower_index][0]
-        da_taus=[lower_tau, tau, upper_tau]
+        # da_taus=[lower_tau, tau, upper_tau]
         # lower_weight, upper_weight=1+np.diff(da_taus)/(da_taus[0]-da_taus[-1])
-        lower_weight, upper_weight=1+np.array([da_taus[1]-da_taus[0], da_taus[-1]-da_taus[1] ])/(da_taus[0]-da_taus[-1])
+        # lower_weight, upper_weight=1+np.array([da_taus[1]-da_taus[0], da_taus[-1]-da_taus[1] ])/(da_taus[0]-da_taus[-1])
+        upper_weight = (tau - lower_tau) / (upper_tau - lower_tau)
+        lower_weight = 1 - upper_weight
 
         upper_power_rates=upper_weight*np.exp(self.impurity_raditive_power[species][upper_tau].ev(ne, te))
         lower_power_rates=lower_weight*np.exp(self.impurity_raditive_power[species][lower_tau].ev(ne, te))
+        power_rates = (upper_power_rates+lower_power_rates)
 
-        power=nz*upper_power_rates+lower_power_rates
+        if return_rates:
+            return power_rates
+
+        power=nz*power_rates
         if 'power' not in self.plasma_state:
             self.plasma_state['power']={}
 
