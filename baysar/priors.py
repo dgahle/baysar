@@ -416,9 +416,9 @@ class BolometryPrior:
         self.get_references()
 
     def __call__(self):
-        syntetic_measurement = self.syntetic_bolometer().sum()
-        ratio = syntetic_measurement / self.mean
-        return -0.5 * square(ratio/self.sigma)
+        self.synthetic_measurement = self.syntetic_bolometer().sum()
+        res = 1 - (self.synthetic_measurement / self.mean)
+        return -0.5 * square(res/self.sigma)
 
     def __print__(self):
         ...
