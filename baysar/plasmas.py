@@ -5,8 +5,9 @@ import copy, warnings
 from itertools import product
 
 import collections
-from baysar.lineshapes import MeshLine
 from baysar.tools import within
+from baysar.lineshapes import MeshLine
+from baysar.line_data import adas_line_data
 
 from scipy.interpolate import RegularGridInterpolator, RectBivariateSpline
 from adas import run_adas406, read_adf11, read_adf15
@@ -161,7 +162,7 @@ def get_meta(element, index=0):
 def kms_to_ms(velocity):
     return 1e3*velocity
 
-from adas import read_adf11, run_adas406
+
 
 adf11_dir="/home/adas/adas/adf11/"
 hydrogen_adf11_plt=adf11_dir+'plt12/plt12_h.dat'
@@ -724,9 +725,21 @@ class PlasmaLine():
             self.concstar = True
             print(f"Impurity plasma model self.constar set to {self.concstar}!")
 
+        self.adf11_types = ['scd', 'acd', 'plt', 'prb']
+        self.adf11 = {}
         for elem in self.impurities:
-            adf11_plt=get_adf11(elem, yr=96, type='plt')
-            adf11_prb=get_adf11(elem, yr=96, type='prb')
+            elem_adas_yr = adas_line_data[elem]['ionisation_balance_year']
+            print(elem, elem_adas_yr)
+
+            self.adf11[elem] = {}
+            for adf11_type in self.adf11_types:
+                if adf11_type in adas_line_data[elem]:
+                    self.adf11[elem][adf11_type] = adas_line_data[elem][adf11_type]
+                elif elem_adas_yr is not None:
+                    self.adf11[elem][adf11_type] = get_adf11(elem, yr=elem_adas_yr, type=adf11_type)
+                else:
+                    raise ValueError(f"{elem} data is missing references for {adf11_type.capitalize()} data!")
+
             num_ions=get_number_of_ions(elem)
             shape=(len(tau_exc)+len(tau_rec), len(ne), len(te), num_ions)
             shape_pow=(len(tau_exc)+len(tau_rec), len(ne), len(te), num_ions-1)
@@ -740,7 +753,7 @@ class PlasmaLine():
             for t_counter, t in enumerate(tau_exc):
                 print(t_counter, t)
                 with HiddenPrints():
-                    out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
+                    out, pow = run_adas406(files=self.adf11[elem], elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
                 out['ion'][out['ion'] < min_frac0]=min_frac1
                 if self.concstar:
                     concstar_correction = np.arange(out['ion'].shape[-1]).clip(1)
@@ -748,8 +761,8 @@ class PlasmaLine():
                 bal[t_counter, :, :, :]=out['ion']
                 for ion in range(power.shape[-1]):
                     is1=ion+1
-                    plt=read_adf11(file=adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
-                    prb=read_adf11(file=adf11_prb, adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+                    plt=read_adf11(file=self.adf11[elem]['plt'], adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+                    prb=read_adf11(file=self.adf11[elem]['prb'], adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
 
                     ni=bal[t_counter, :, :, ion]
                     nr=bal[t_counter, :, :, is1]
@@ -763,7 +776,8 @@ class PlasmaLine():
             meta=get_meta(elem, index=meta_index)
             for t_counter, t in enumerate(tau_rec):
                 with HiddenPrints():
-                    out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
+                    # out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
+                    out, pow = run_adas406(files=self.adf11[elem], elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
                 out['ion'][out['ion'] < min_frac0]=min_frac1
                 if self.concstar:
                     concstar_correction = np.arange(out['ion'].shape[-1]).clip(1)
@@ -771,8 +785,8 @@ class PlasmaLine():
                 bal[len(tau_exc)+t_counter, :, :, :]=out['ion']
                 for ion in range(power.shape[-1]):
                     is1=ion+1
-                    plt=read_adf11(file=adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
-                    prb=read_adf11(file=adf11_prb, adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+                    plt=read_adf11(file=self.adf11[elem]['plt'], adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+                    prb=read_adf11(file=self.adf11[elem]['prb'], adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
 
                     ni=bal[t_counter, :, :, ion]
                     nr=bal[t_counter, :, :, is1]
@@ -804,7 +818,7 @@ class PlasmaLine():
 
     def impurity_power(self, species, return_rates=False):
         nz=self.plasma_state[species+'_dens']
-        tau=np.log10(self.plasma_state[species+'_tau'][0])
+        tau=np.log10(self.plasma_state[species+'_tau'])
         ne=self.plasma_state['electron_density']
         te=self.plasma_state['electron_temperature']
 
@@ -817,6 +831,8 @@ class PlasmaLine():
         # lower_weight, upper_weight=1+np.array([da_taus[1]-da_taus[0], da_taus[-1]-da_taus[1] ])/(da_taus[0]-da_taus[-1])
         upper_weight = (tau - lower_tau) / (upper_tau - lower_tau)
         lower_weight = 1 - upper_weight
+        # print(lower_tau, tau, upper_tau)
+        # print(lower_weight, upper_weight)
 
         upper_power_rates=upper_weight*np.exp(self.impurity_raditive_power[species][upper_tau].ev(ne, te))
         lower_power_rates=lower_weight*np.exp(self.impurity_raditive_power[species][lower_tau].ev(ne, te))
@@ -834,6 +850,37 @@ class PlasmaLine():
         power=np.trapz(power, self.los)
 
         return power
+
+    def extrapolate_impurity_power(self, species='N_2', proton_number=None):
+        elem = species.split('_')[0]
+        if proton_number is None:
+            if elem in atomic_number:
+                proton_number = atomic_number[elem]
+            else:
+                raise ValueError(f"{elem} atomic number is not in data base. Pass atomic number using function input proton_number or update atomic_number dict in baysar.plasmas.")
+
+        dens = self.plasma_state[species+'_dens']
+        tau = np.log10(self.plasma_state[species+'_tau'])
+        ne=self.plasma_state['electron_density']
+        te=self.plasma_state['electron_temperature']
+
+        power = []
+        for charge in range(proton_number):
+            tmp_ion = elem + f"_{charge}"
+            upper_index=self.adas_plasma_inputs['magical_tau'].searchsorted(tau)
+            lower_index=upper_index-1
+            upper_tau=self.adas_plasma_inputs['magical_tau'][upper_index][0]
+            lower_tau=self.adas_plasma_inputs['magical_tau'][lower_index][0]
+            upper_weight = (tau - lower_tau) / (upper_tau - lower_tau)
+            lower_weight = 1 - upper_weight
+
+            upper_power_rates=upper_weight*np.exp(self.impurity_raditive_power[tmp_ion][upper_tau].ev(ne, te))
+            lower_power_rates=lower_weight*np.exp(self.impurity_raditive_power[tmp_ion][lower_tau].ev(ne, te))
+            power_rates = (upper_power_rates+lower_power_rates)
+
+            power.append(dens * power_rates)
+
+        return np.array(power)
 
     def total_power(self, extrapolate=False):
         power=0
