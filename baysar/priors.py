@@ -278,6 +278,81 @@ class NIVTauPrior:
 
         return cost
 
+class NIIITauPrior:
+    def __init__(self, plasma_state, mean=1, sigma=0.3, ratio=5):
+        self.plasma = plasma_state
+        self.mean = mean
+        self.sigma = sigma
+        self.ratio = ratio
+
+    def __call__(self):
+        n_ii_tau = self.plasma['N_1_tau'][0]
+        n_iii_tau = self.plasma['N_2_tau'][0]
+
+        r = n_ii_tau / n_iii_tau
+        # r = n_iv_tau / n_iii_tau
+
+        lower_cost = gaussian_high_pass_cost(r, self.mean, self.sigma)
+        # upper_cost = gaussian_low_pass_cost(r, self.ratio*self.mean, self.ratio*self.sigma)
+        cost = lower_cost # +upper_cost
+
+        return cost
+
+class EmsTeOrderPrior:
+    def __init__(self, posterior, mean=2.0, sigma=0.2, species=['B_1', 'C_2']):
+        self.posterior=posterior
+        self.mean=mean
+        self.sigma=sigma
+        self.species=species # sorted(species, key=lambda x: -int(x.split('_')[1]))
+        self.impurity_indicies_dict={}
+        self.impurity_indicies = []
+        for counter, c in enumerate(self.posterior.posterior_components[:posterior.plasma.num_chords]):
+            for i, l in enumerate(c.lines):
+                if 'species' in l.__dict__:
+                    check_species_is_an_impurity = l.species in self.posterior.plasma.impurity_species
+                    check_if_species_collected = not l.species in self.impurity_indicies_dict
+                    check_if_species_wanted = l.species in self.species
+                    check =  all([check_species_is_an_impurity, check_if_species_collected, check_if_species_wanted])
+                    if check:
+                        self.impurity_indicies_dict[l.species]=(counter, i)
+                        self.impurity_indicies.append((l.species, counter, i))
+
+        self.impurity_indicies = sorted(self.impurity_indicies, key=lambda x: -int(x[0].split('_')[1]))
+
+    def __call__(self):
+        ems_te = []
+        self.history=[]
+        for species, chord, line in self.impurity_indicies:
+            ems_te.append(self.posterior.posterior_components[chord].lines[line].ems_te)
+            self.history.append( (*species.split('_'), ems_te[-1]) )
+
+        return gaussian_high_pass_cost(ems_te[0] - ems_te[1], self.mean, self.sigma)
+
+
+from numpy import diff, square
+class ImpurityTauPrior:
+    def __init__(self, plasma, sigma = .3):
+        self.plasma = plasma
+        self.sigma = sigma
+
+        self.species = {}
+        for species in self.plasma.impurity_species:
+            z0, z = species.split('_')
+            if z not in self.species:
+                self.species[z] = []
+
+            self.species[z].append(z0)
+
+    def __call__(self):
+        cost = 0
+        for charge in self.species:
+            if len(self.species[charge]) > 1:
+                tmp_ions = [z0+f'_{charge}' for z0 in self.species[charge]]
+                ion_cost = -0.5  * (square(diff([self.plasma.plasma_theta[ion+'_tau'][0] for ion in tmp_ions])/self.sigma)).sum()
+                cost += ion_cost
+
+        return cost
+
 class WallConditionsPrior:
     def __init__(self, plasma, te_min=0.5, ne_min=2e12, te_err=None, ne_err=None):
         self.plasma=plasma
@@ -357,7 +432,7 @@ class ChargeStateOrderPrior:
                     if l.species in self.posterior.plasma.impurity_species and not l.species in self.impurity_indicies_dict:
                         self.impurity_indicies_dict[l.species]=(counter, i)
 
-        print(self.impurity_indicies_dict)
+        # print(self.impurity_indicies_dict)
 
     def __call__(self):
         self.history=[]
@@ -417,8 +492,8 @@ class BolometryPrior:
 
     def __call__(self):
         self.synthetic_measurement = self.syntetic_bolometer().sum()
-        res = 1 - (self.synthetic_measurement / self.mean)
-        return -0.5 * square(res/self.sigma)
+        res = (self.synthetic_measurement - self.mean) / self.sigma
+        return - 0.5 * square(res)
 
     def __print__(self):
         ...
@@ -433,10 +508,13 @@ class BolometryPrior:
                 bolo_estimation.append(tmp_power)
 
         # impurity power
+        self.power_profiles = {}
         for species in self.reference_species:
             tmp_power = self.plasma.extrapolate_impurity_power(species)
+            self.power_profiles[species.split('_')[0]] = tmp_power.copy()
             tmp_power = trapz(tmp_power, self.plasma.los).sum()
             bolo_estimation.append(tmp_power)
+
 
         return array(bolo_estimation)
 
@@ -467,6 +545,20 @@ class StarkToPeakPrior:
         self.cost=self.exc_cost+self.rec_cost
 
         return self.cost
+
+
+class TeMinPrior:
+
+    def __init__(self, plasma_state, ratio=2., sigma=0.05):
+        self.plasma_state = plasma_state
+        self.ratio = ratio
+        self.sigma = sigma
+
+    def __call__(self):
+        te = self.plasma_state['electron_temperature']
+        ratio = te.max() / te.min()
+
+        return gaussian_high_pass_cost(ratio, self.ratio, self.sigma)
 
 
 class WavelengthCalibrationPrior:
