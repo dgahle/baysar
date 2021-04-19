@@ -561,6 +561,50 @@ class TeMinPrior:
         return gaussian_high_pass_cost(ratio, self.ratio, self.sigma)
 
 
+def gaussian_band_pass_cost(data, bounds, errors):
+    funcs = [gaussian_high_pass_cost, gaussian_low_pass_cost]
+
+    cost = 0
+    for b, e, f in zip(bounds, errors, funcs):
+        cost += f(data, b, e)
+
+    return cost
+
+from numpy import power, log10
+class TeTauPrior:
+
+    def __init__(self, plasma, sigma=0.3):
+        self.plasma = plasma
+        self.sigma = sigma
+
+        self.errors = [self.sigma, self.sigma]
+
+    def __call__(self):
+        self.get_bounds()
+        cost = 0
+        for z in self.plasma.impurity_species:
+            cost += self.get_cost(z)
+
+        return cost
+
+    def get_cost(self, ion):
+        log_tau = log10(self.plasma.plasma_state[ion+'_tau'][0])
+
+        return gaussian_band_pass_cost(log_tau, self.bounds, self.errors)
+
+    def get_bounds(self):
+        self.te_max = self.plasma.plasma_state['electron_temperature'].max()
+
+        if self.te_max > 5:
+            self.bounds = [-5, 0]
+        elif self.te_max < 3:
+            self.bounds = [3, 7]
+        else:
+            self.bounds = [-3, 7]
+
+
+
+
 class WavelengthCalibrationPrior:
     def __init__(self, plasma, mean, std):
         self.plasma_state=plasma.plasma_state
