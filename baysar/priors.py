@@ -529,7 +529,7 @@ class BolometryPrior:
 
 
 class StarkToPeakPrior:
-    def __init__(self, plasma, line, mean=0.65, sigma=0.05):
+    def __init__(self, plasma, line, mean=0.65, sigma=0.075):
         self.plasma=plasma
         self.line=line
         self.mean=mean
@@ -602,7 +602,257 @@ class TeTauPrior:
         else:
             self.bounds = [-3, 7]
 
+from numpy import array, where, trapz
+def get_reduced_stark_spectra(self, line, half_width=10):
 
+    """
+    Crop the wavelength region of a Balmer line of the spectra, spectral error and wavelength array
+    """
+
+    wavelengths = self.x_data.copy()
+    spectra = self.y_data.copy()
+    spectra_error = self.error.copy()
+
+    cwl = line.lineshape.cwl.mean()
+    wavelengths_bounds = cwl + half_width*array([-1, 1])
+
+    crop_indicies = where([wavelengths_bounds.min() < w < wavelengths_bounds.max() for w in wavelengths])
+
+    return spectra[crop_indicies], spectra_error[crop_indicies], wavelengths[crop_indicies], crop_indicies
+
+from numpy import power, square, diff, isnan, round
+from scipy.interpolate import interp1d
+from scipy.signal import fftconvolve
+from scipy.ndimage import center_of_mass
+from baysar.tools import centre_peak
+class FastStarkModel:
+
+    def __init__(self, chord, line):
+
+        self.chord = chord
+        self.line = line
+        self.spectra, self.spectra_error, self.wavelengths, self.crop_indicies = get_reduced_stark_spectra(self.chord, self.line)
+
+        log_ne_bounds = (12.0, 15.5)
+        te_bounds = (3, 30) # (0.5, 30)
+        shift_bounds = (-2, 2)
+
+        self.bounds = [log_ne_bounds, te_bounds] # , shift_bounds)
+
+        self.background_estimation = 0.5 * (self.spectra[:5].mean() + self.spectra[-5:].mean())
+        self.estimed_intensity = trapz(self.spectra - self.background_estimation, self.wavelengths)
+        self.shift = 0 # self.wavelengths[self.spectra.argmax()] - self.wavelengths[lineshape.argmax()]
+        self.slow = False
+
+
+        test_theta = [14, 10] # , 0]
+        self(test_theta)
+        # print(f"theta = {test_theta} -> cost = {self(test_theta)}")
+
+    def theta_check(self, theta):
+
+        test = []
+        for val, b in zip(theta, self.bounds):
+            test.append( not ((min(b) < val < max(b)) or (min(b) == val or max(b) == val)) )
+
+        if any(test):
+            raise ValueError(f"Input is out of bounds! ({theta})")
+
+
+    def min(self, theta):
+        return - self(theta)
+
+    def __call__(self, theta):
+
+        if self.slow:
+            logne, te, self.shift, self.estimed_intensity, self.background_estimation = theta
+            theta = (logne, te)
+
+        # self.theta_check(theta)
+        self.forward_model(theta)
+
+        res = (self.spectra - self.fm) / self.spectra_error
+        cost = -0.5*sum( square(res) )
+
+        return cost
+
+    def forward_model(self, theta):
+
+        logne, te = theta
+
+        _lineshape = self.line.lineshape([power(10, logne), te, te, 0, 0])
+        lineshape = fftconvolve(_lineshape, self.chord.instrument_function, mode='same')
+        self.lineshape_interpolator = interp1d(self.line.lineshape.wavelengths, lineshape, bounds_error=False, fill_value="extrapolate")
+        lineshape = self.lineshape_interpolator(self.wavelengths)
+
+        shifted_lineshape = self.lineshape_interpolator(self.wavelengths - self.shift)
+
+        fm = self.estimed_intensity*shifted_lineshape + self.background_estimation
+
+        if len(fm) > 1024:
+            raise ValueError("need to reduce wavelengths dispersion")
+        elif len(fm) != len(self.spectra):
+            raise ValueError("fm array len is not equal to spectra")
+        elif isnan(fm).any():
+            raise TypeError("fm contains NaNs!")
+
+        self.fm = fm
+
+
+
+
+from scipy.optimize import brute, fmin_l_bfgs_b
+from inference.mcmc import GibbsChain, HamiltonianChain
+def estimate_stark_density(self, line):
+
+    f = FastStarkModel(self, line)
+
+    finish = None # fmin_l_bfgs_b
+    x0, fval, grid, Jout = brute(f.min, f.bounds, Ns=30, full_output=True, disp=False, finish=finish)
+
+    print(f"x0 {round(x0[0], 2)}, {round(x0[1], 2)} ({fval})")
+
+    f.slow = True
+    f.bounds.extend([(-2, 2), f.estimed_intensity*array([0.1, 2.0]), f.background_estimation*array([0.5, 2.0])])
+    x0_slow = [*x0, 0, f.estimed_intensity, f.background_estimation]
+    x1, logP, bfgs_meta = fmin_l_bfgs_b(f.min, x0_slow, approx_grad=True,
+                                        bounds=f.bounds, epsilon=1e-8, maxfun=15000,
+                                        maxiter=15000, disp=None, callback=None)
+
+    print(f"x1 {round(x1[0], 2)}, {round(x1[1], 2)} ({logP})")
+
+    chain = GibbsChain(posterior=f, start=x1)
+    for param, bounds in enumerate(f.bounds):
+        chain.set_boundaries(param, bounds)
+
+    chain.run_for(minutes=2)
+    # chain.plot_diagnostics()
+
+    chain.autoselect_burn_and_thin()
+    # chain.matrix_plot()
+
+    print(f"GibbsChain {round(chain.mode()[0], 2)}, {round(chain.mode()[1], 2)} ({f.min(chain.mode())})")
+
+    # return f, chain.mode(), chain.get_interval(0.68)[0], chain.get_interval(0.95)[0]
+    return f, chain.mode(), chain.get_interval(0.68), chain.get_interval(0.95), chain
+
+
+def estimate_stark_densities(self):
+
+    self.stark_density = []
+    for l in self.hydrogen_lines:
+        self.stark_density.append( estimate_stark_density(self.spectrometer_chord, l) )
+
+from baysar.linemodels import BalmerHydrogenLine
+def find_hydrogen_lines(self):
+
+    self.hydrogen_line_indicies = []
+    self.hydrogen_lines = []
+    for i, l in enumerate(self.spectrometer_chord.lines):
+        if type(l) == BalmerHydrogenLine:
+            self.hydrogen_line_indicies.append(i)
+            self.hydrogen_lines.append(l)
+
+from copy import copy
+from numpy import logspace, square
+from scipy.stats import gaussian_kde
+class FastStarkPrior:
+
+    def __init__(self, chord, line_index=0):
+        self.plasma_state = chord.plasma.plasma_state
+        self.line = chord.lines[line_index]
+        self._fast_stark_model, self._x0, self._x0_sample_68pc, self._x0_sample_95pc, self._chain = estimate_stark_density(chord, self.line)
+
+        self.setup_cost_function()
+
+        if hasattr(chord.plasma, "plasma_reference"):
+            ne_peak = chord.plasma.plasma_reference['electron_density'].max()
+            print()
+            print(f"SOLPS ne peak = {round(ne_peak / 1e13, 2)} 1e13 cm-3")
+            print()
+
+            if (self.fast_stark_ne / ne_peak) > 1.2:
+                import matplotlib.pyplot as plt
+                from numpy import array
+
+                fig, (fit, pdf) = plt.subplots(1, 2, figsize=(11, 4))
+
+                wave = self._fast_stark_model.wavelengths
+                fit.plot(wave, self._fast_stark_model.spectra)
+                self._fast_stark_model.slow = True
+                fm = []
+                for x0 in self._x0_sample_95pc[0]:
+                    self._fast_stark_model(x0)
+                    fm.append(self._fast_stark_model.fm)
+                fm = array(fm)
+                fit.plot(wave, fm.min(0), color='pink')
+                fit.plot(wave, fm.max(0), color='pink')
+                fit.set_xlim((wave.min(), wave.max()))
+                self._fast_stark_model.slow = False
+
+                pdf.plot(self._ne_pdf_axis, self.ne_pdf(self._ne_pdf_axis))
+                pdf.set_xlim((0.0, 1e14))
+                # pdf.set_xlim((1e12, 1e15))
+                # pdf.set_xscale('log')
+
+                plt.savefig("stark_plot")
+                plt.close()
+
+                log_ne = [x0[0] for x0 in self._x0_sample_95pc[0]]
+                s2n = self._fast_stark_model.spectra/self._fast_stark_model.spectra_error
+                error_message = f"Stark ne >> reference ne max! (Ratio = {round(self.fast_stark_ne / ne_peak, 2)}) "
+                error_message += f"(Fast Stark = {round(self.fast_stark_ne/1e13, 2)} 1e13 cm-3, "
+                error_message += f"log range ({min(log_ne)}, {max(log_ne)})) (max|S2N| = {round(s2n.max(), 1)})"
+                # raise ValueError(f"Stark ne >> reference ne max! (Ratio = {round(self.fast_stark_ne / ne_peak, 2)}) (Fast Stark = {round(self.fast_stark_ne/1e13, 2)} 1e13 cm-3, log range ({min(log_ne)}, {max(log_ne)})) (max|S2N| = {round(s2n.max(), 1)})")
+                print(error_message)
+
+    def __call__(self):
+        ne_peak = self.line.plasma.plasma_state['electron_density'].max()
+        self.ne_stark = copy(self.line.ems_ne)
+
+        if self.fast_stark_ne > 1e13:
+            stark_cost = self.ne_pdf.logpdf(self.ne_stark).sum() - self._ne_mode_logP
+        else:
+            stark_res = (1e13 - max([1e13, self.ne_stark]) ) / 1e13
+            stark_cost = -0.5*square(stark_res)
+
+        cost = [stark_cost]
+
+        ratio_check = self.fast_stark_ne / ne_peak
+        # ratio_check = self.ne_stark / ne_peak
+        ratio_error = 0.1
+        # upper check
+        upper_ratio_limit = 0.9
+        lower_ratio_limit = 0.6
+
+        upper_res = (upper_ratio_limit - max([upper_ratio_limit, ratio_check])) / ratio_error
+        cost.append(-0.5*square(upper_res))
+        if self.fast_stark_ne > 1e13:
+            lower_res = (lower_ratio_limit - min([lower_ratio_limit, ratio_check])) / ratio_error
+        else:
+            lower_res = (lower_ratio_limit - min([lower_ratio_limit, 1e13 / ne_peak])) / ratio_error
+
+        cost.append(-0.5*square(lower_res))
+
+        self.last_cost = cost
+
+        return sum(cost)
+
+    def setup_cost_function(self):
+
+        self.ne_pdf = gaussian_kde([10 ** theta[0] for theta in self._x0_sample_95pc[0]])
+        self._ne_pdf_axis = logspace(12, 16, 10000)
+        self._ne_mode_index = self.ne_pdf(self._ne_pdf_axis).argmax()
+        self._ne_mode = self._ne_pdf_axis[self._ne_mode_index]
+        self._ne_mode_prob = self.ne_pdf(self._ne_mode)[0]
+        self._ne_mode_logP = self.ne_pdf.logpdf(self._ne_mode)[0]
+        self._stark_cost = self.ne_pdf(self._ne_pdf_axis) / self._ne_mode_prob
+
+        self.fast_stark_ne = self._ne_mode
+
+        print(f"Fast Stark dens = {round(self._ne_mode/1e13, 2)}e13 cm-3 (mode)")
+
+        self.max_cost = 3
 
 
 class WavelengthCalibrationPrior:

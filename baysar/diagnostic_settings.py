@@ -17,14 +17,24 @@ mastu_pupil = (1.8e2, -1.55e2)
 # mastu_angles = arange(-0.85, -0.15, 0.0127)
 mastu_angles = linspace(-0.85, -0.15, 40)
 
-availible_tokamaks = ["TCV", "MASTU", "MAST SXD"]
+asdex_pupil = (1.405e2, -1.155e2)
+asdex_angles = linspace(-0.2, -0.7, 7)
+
+instrument_width = 4
+
+availible_tokamaks = ["TCV", "MASTU", "MAST SXD", "AUG DivIId"]
 def get_spectrometer_settings(tokamak):
     # check that tokamak is availible
     if tokamak not in availible_tokamaks:
         raise ValueError(f"{tokamak} not availible! Availible tokamaks are {availible_tokamaks}")
 
     if tokamak == "TCV":
-        return {"pupil": tcv_pupil, "angles": tcv_angles, "instrument_width": 4}
+        return {"pupil": tcv_pupil, "angles": tcv_angles, "instrument_width": instrument_width}
 
     if tokamak in ["MASTU", "MAST SXD"]:
-        return {"pupil": mastu_pupil, "angles": mastu_angles, "instrument_width": 4}
+        return {"pupil": mastu_pupil, "angles": mastu_angles, "instrument_width": instrument_width}
+
+    if tokamak in ["AUG DivIId"]:
+        return {"pupil": asdex_pupil, "angles": asdex_angles, "instrument_width": instrument_width, "reverse": True}
+
+    raise ValueError(f"Settings not returned for {tokamak}")

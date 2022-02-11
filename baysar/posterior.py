@@ -260,8 +260,7 @@ class BaysarPosterior(object):
                     new_limit-=np.log10(charge)
                     nb_range=2
                 else: # neutrals
-                    new_limit-=0.7
-                    nb_range=1
+                    nb_range=3
                 self.plasma.theta_bounds[self.plasma.slices[s]][0]=[new_limit-nb_range, new_limit]
             if not self.plasma.thermalised:
                 if s.endswith('_Ti'):

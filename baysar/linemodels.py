@@ -37,9 +37,10 @@ def estimate_XLine(l, wave, ems, half_width=None, half_range=0.5):
         estimate_list.append( trapz(newy, newx) )
 
     estimate=log10( sum(estimate_list) )
-    bounds=[estimate-half_range, estimate+half_range]
+    bounds=[estimate-2*half_range, estimate+half_range]
     return estimate, bounds
 
+from numpy import trapz
 class XLine(object):
     def __init__(self, cwl, wavelengths, plasma, fractions, fwhm=0.2, species='X', half_range=5):
         self.plasma = plasma
@@ -52,8 +53,8 @@ class XLine(object):
         self.line = Gaussian(x=wavelengths, cwl=cwl, fwhm=fwhm, fractions=fractions, normalise=True)
 
     def __call__(self):
-        ems = self.plasma.plasma_state[self.line_tag]
-        return self.line(ems)
+        self.emission_fitted = self.plasma.plasma_state[self.line_tag].mean()
+        return self.line(self.emission_fitted)
 
     def estimate_ems_and_bounds(self, wavelength, spectra):
         self.estimate, self.bounds=estimate_XLine(self, wavelength, spectra)
@@ -198,19 +199,9 @@ class ADAS406Lines(object):
         te = self.plasma.plasma_state['electron_temperature'].flatten()
         tau = self.plasma.plasma_state[self.species+'_tau'][0]
 
-        # if not hasattr(self.plasma, 'concstar'):
-        #     self.plasma.concstar = False
-        #
         if self.plasma.concstar:
             p = ne/ne.max()
             n0 = n0 * p
-
-        # if not hasattr(self.plasma, 'flat_nz'):
-        #     self.plasma.flat_nz = False
-        #
-        # if not self.plasma.flat_nz:
-        #     p = ne/ne.max()
-        #     n0 = n0 * p
 
         self.n0 = n0
 
@@ -221,32 +212,8 @@ class ADAS406Lines(object):
             self.velocity=self.plasma.plasma_state[self.species+'_velocity']
             doppler_shift_ADAS406Lines(self, self.velocity)
 
-        # TODO: comparison to weight on log(tau) vs tau
-        adas_taus = self.plasma.adas_plasma_inputs['magical_tau'] # needs line below to!!!
-        j=adas_taus.searchsorted(np.log10(tau))
-        i=j-1
 
-        # index checks:
-        if any([not c < len(adas_taus) for c in (i, j)]):
-            things=[i, j, np.round(np.log10(tau), 2), len(adas_taus), adas_taus.min(), adas_taus.max()]
-            raise ValueError("Indices i and/or j ({}, {}) are out of bounds. tau = 1e{} s and len(adas_taus) = {} with range ({}, {})".format(*things))
-
-        self.da_taus=[adas_taus[i], np.log10(tau), adas_taus[j]]
-        self.tec_weights=1+np.diff(self.da_taus)/(self.da_taus[0]-self.da_taus[-1])
-        i_weight, j_weight=self.tec_weights
-
-        tec406_lhs = self.tec406[i].ev(ne, te)
-        tec406_rhs = self.tec406[j].ev(ne, te)
-
-        self.tec406_lhs=tec406_lhs
-        self.tec406_rhs=tec406_rhs
-
-        # self.tec406_wieghted=tec406_lhs*i_weight + tec406_rhs*j_weight
-        # self.tec=np.nan_to_num( np.exp(self.tec406_wieghted) ) # todo - why? and fix!
-
-        self.tec406_wieghted=np.exp(tec406_lhs)*i_weight + np.exp(tec406_rhs)*j_weight
-        self.tec=np.nan_to_num(self.tec406_wieghted) # todo - why? and fix!
-
+        _ = self.get_tec(ne, te, tau, star=True)
 
         self.emission_profile = (n0*self.tec).clip(1) # ph/cm-3/s # why do negatives occur here?
         self.emission_fitted=np.trapz(self.emission_profile, x=self.plasma.los) / (4*pi) # ph/cm-2/sr/s
@@ -270,6 +237,63 @@ class ADAS406Lines(object):
             raise TypeError('infs in peaks of {} (tau={}, ems_sum={}))'.format(self.line, np.log10(tau), self.emission_fitted ))
 
         return peak
+
+    def get_tec(self, ne, te, tau, grad=0, star=False):
+
+        # TODO: comparison to weight on log(tau) vs tau
+        adas_taus = self.plasma.adas_plasma_inputs['magical_tau'] # needs line below to!!!
+        j=adas_taus.searchsorted(np.log10(tau))
+        i=j-1
+
+        # index checks:
+        if any([not c < len(adas_taus) for c in (i, j)]):
+            things=[i, j, np.round(np.log10(tau), 2), len(adas_taus), adas_taus.min(), adas_taus.max()]
+            raise ValueError("Indices i and/or j ({}, {}) are out of bounds. tau = 1e{} s and len(adas_taus) = {} with range ({}, {})".format(*things))
+
+        self.da_taus=[adas_taus[i], np.log10(tau), adas_taus[j]]
+        self.tec_weights=1+np.diff(self.da_taus)/(self.da_taus[0]-self.da_taus[-1])
+        i_weight, j_weight=self.tec_weights
+
+        if False:
+            if star:
+                tec406_lhs = self.tec406[i].ev(ne, te)
+                tec406_rhs = self.tec406[j].ev(ne, te)
+            else:
+                raise ValueError("Non concstar tec not yet implimented!")
+        else:
+            tec406_lhs = self.tec406[i].ev(ne, te)
+            tec406_rhs = self.tec406[j].ev(ne, te)
+
+        self.tec406_lhs=tec406_lhs
+        self.tec406_rhs=tec406_rhs
+
+        # self.tec406_wieghted=tec406_lhs*i_weight + tec406_rhs*j_weight
+        # self.tec=np.nan_to_num( np.exp(self.tec406_wieghted) ) # todo - why? and fix!
+
+        self.tec406_wieghted=np.exp(tec406_lhs)*i_weight + np.exp(tec406_rhs)*j_weight
+        self.tec=np.nan_to_num(self.tec406_wieghted) # todo - why? and fix!
+
+        if grad:
+            # raise ValueError(f"Gradient method yet to be implimented!")
+            # calculate the d/dne
+            grad_ne_tec406_lhs = self.tec406[i].ev(ne, te, dx=grad, dy=0)
+            grad_ne_tec406_rhs = self.tec406[j].ev(ne, te, dx=grad, dy=0)
+            # grad_ne = np.exp(grad_ne_tec406_lhs)*i_weight + np.exp(grad_ne_tec406_rhs)*j_weight
+            grad_ne = grad_ne_tec406_lhs*i_weight + grad_ne_tec406_rhs*j_weight
+            # calculate the d/dTe
+            # grad_te_tec406_lhs = self.tec406[i].ev(ne, te, dx=0, dy=grad)
+            # grad_te_tec406_rhs = self.tec406[j].ev(ne, te, dx=0, dy=grad)
+            grad_te_tec406_lhs = self.tec406[i].ev(ne, te, dx=0, dy=grad)
+            grad_te_tec406_rhs = self.tec406[j].ev(ne, te, dx=0, dy=grad)
+            # grad_te = np.exp(grad_te_tec406_lhs)*i_weight + np.exp(grad_te_tec406_rhs)*j_weight
+            grad_te = (grad_te_tec406_lhs*i_weight + grad_te_tec406_rhs*j_weight)  
+            # calculate the d/dlogtau
+            grad_logtau = (np.exp(tec406_rhs) - np.exp(tec406_lhs)) / (adas_taus[j] - adas_taus[i])
+
+            return self.tec, np.array([grad_ne, grad_te, grad_logtau])
+        else:
+            return self.tec
+
 
 
 # def comparison(self, theta, line_model='stehle_param'):
@@ -307,8 +331,9 @@ loman_coeff={'32': [0.7665, 0.064, 3.710e-18],  # Balmer Series
 def stehle_param(n_upper, n_lower, cwl, wavelengths, electron_density, electron_temperature):
     # Paramaterised MMM Stark profile coefficients from Bart's paper
     a_ij, b_ij, c_ij = loman_coeff[str(n_upper) + str(n_lower)]
-    delta_lambda_12ij = c_ij*np.divide( (1e6*electron_density)**a_ij, electron_temperature**b_ij)  # nm
-    ls_s = 1 / (abs((wavelengths - cwl))**(2.5) + (5 * delta_lambda_12ij)**(2.5))
+    delta_lambda_12ij = 10.0 * c_ij*np.divide( (1e6*electron_density)**a_ij, electron_temperature**b_ij)  # nm -> A
+    gamma = delta_lambda_12ij / 2.0
+    ls_s = 1 / (abs((wavelengths - cwl))**2.5 + gamma**2.5)
     return ls_s / trapz(ls_s, wavelengths)
 
 

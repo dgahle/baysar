@@ -225,6 +225,30 @@ def make_input_dict(wavelength_axis, experimental_emission, instrument_function,
 
     return input_dict
 
+from numpy import array
+_default_wavelength_axis = array([[3930, 4150]])
+def get_species_data(species, ions, wavelength_axis=_default_wavelength_axis, input_dict={}, line_data=adas_line_data):
+    input_dict['species'] = []
+
+    for s, i in zip(species, ions):
+        if s in line_data:
+            for ion in i:
+                sion = s+'_'+ion
+                if ion in line_data[s]:
+                    input_dict[sion] = line_data[s][ion]
+                    if 'default_pecs' in input_dict[sion]:
+                        input_dict[sion].pop('default_pecs')
+                    input_dict['species'].append(sion)
+                    for line in list(input_dict[sion].keys()):
+                        if not within(line, wavelength_axis):
+                            input_dict[sion].pop(line)
+                else:
+                    print(sion + ' is not in adas_line_data')
+        else:
+            print(s + ' is not in adas_line_data')
+
+    return input_dict
+
 if __name__=='__main__':
 
     num_chords = 1

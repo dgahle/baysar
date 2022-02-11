@@ -657,27 +657,26 @@ class EsymmtricProfile:
         if self.centre is None:
             # A, c, sigma, f=theta
             A, c, f=theta
+            min = 1e-3
         else:
             # A, sigma, f=theta
-            A, f=theta
+            A, f, min=theta
             c=self.centre
 
         # sigma=1
         # btheta=[np.power(10, A), c, sigma, f]
         # btheta=[np.power(10, A), c, f, sigma]
         btheta=[np.power(10, A), c, 0.2*f, f]
-        return self.peak(self.x, *btheta).clip(1e-3)
+        return self.peak(self.x, *btheta).clip(min)
 
     def get_bounds(self):
 
         if self.centre is None:
             self.bounds.append([-5, 2])
 
-        shape_bounds=[[1., 10.],
-                      [0, 10]] # asymmetry bounds
-
-        # self.bounds.extend(shape_bounds)
         self.bounds.append([1, 6])
+        if self.centre is not None:
+            self.bounds.append([0.2, 3])
         self.number_of_variables=len(self.bounds)
 
 class EsymmtricCauchyPlasma:

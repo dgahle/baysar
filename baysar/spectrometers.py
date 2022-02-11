@@ -96,9 +96,32 @@ class SpectrometerChord(object):
         """
 
         self.get_noise_spectra()
-        self.error = sqrt(   square(std(self.y_data_continuum)) +  # noise
-                                        self.y_data * self.a_cal +  # poisson
-                              self.anomalous_error*self.y_data    ) # annomolus
+        self.error_components = [square(std(self.y_data_continuum)),  # noise
+                                        self.y_data * self.a_cal,  # poisson
+                                        self.anomalous_error*self.y_data    ] # annomolus
+
+        if any([np.isnan(ec).any() for ec in self.error_components]):
+            raise TypeError("NaNs in self.error!")
+
+        self.error = sqrt( sum(self.error_components)  )
+
+        checks = [np.isnan, np.isinf]
+
+        if np.isnan(self.error).any():
+            print(f"a_cal {self.a_cal}")
+
+            for check in checks:
+                print(check(self.error_components[0]))
+                for i in range(3):
+                    print(check(self.error_components[i]).any(), self.error_components[i].min())
+
+            print(f"Noise: {np.isinf(self.error_components[0])}")
+            print(f"Possion: {np.isinf(self.error_components[1]).any()}")
+            print(f"Anomalous: {np.isinf(self.error_components[2]).any()}")
+            print(f"Total: {np.isnan(self.error).any()}")
+
+            raise TypeError("NaNs in self.error!")
+
 
     def likelihood(self, cauchy=True):
         """
@@ -124,7 +147,10 @@ class SpectrometerChord(object):
             raise ValueError('Some points of square_normalised_residuals are inf')
 
         if any(np.isnan(self.square_normalised_residuals)):
-            print(fm)
+            print(f"Forward model: {fm}")
+            print(f"Spectra: {self.y_data}")
+            print(f"Residuals: {self.square_normalised_residuals}")
+            print(f"Errors: {self.error}")
             print('nan indicies', np.where(np.isnan(self.square_normalised_residuals)))
             raise ValueError('Some points of square_normalised_residuals are nan')
 
@@ -210,8 +236,9 @@ class SpectrometerChord(object):
         self.postconv_integral=np.trapz(spectra, self.x_data_wavecal_interp)
         self.conv_integral_ratio=self.postconv_integral/self.preconv_integral
         spectra/=self.conv_integral_ratio
-        if not np.isclose(self.conv_integral_ratio, 1, rtol=self.convolution_tolerence):
-            raise ValueError(f"Area not conserved in convolution! ({self.conv_integral_ratio}!=1), {self.dispersion_ratios}, {instrument_function_last_used.sum()}")
+        self.conv_integral_ratio2=np.trapz(spectra, self.x_data_wavecal_interp)/self.preconv_integral
+        if not np.isclose(self.conv_integral_ratio2, 1, rtol=self.convolution_tolerence):
+            raise ValueError(f"Area not conserved in convolution! ({self.conv_integral_ratio2}!=1), {self.dispersion_ratios}, {instrument_function_last_used.sum()}")
 
         spectra+=background # ph/cm-2/A/sr/s
         self.prewavecal_spectra=spectra

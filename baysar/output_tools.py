@@ -240,6 +240,7 @@ def get_bolo_index(posterior_components):
 
 import matplotlib.pyplot as plt
 from numpy import array
+from scipy.stats import gaussian_kde
 def plot_fit_pres(posterior, sample, save=None, alpha=0.5):
 
     bolo_index = get_bolo_index(posterior.posterior_components)
@@ -258,7 +259,9 @@ def plot_fit_pres(posterior, sample, save=None, alpha=0.5):
     ax_fit.fill_between(x, y-y_err, y+y_err, alpha=alpha)
 
     ax_fit.set_xlim(x.min(), x.max())
-    ax_fit.set_ylim(bottom=0)
+    if y.max()/y.min() > 20.:
+        ax_fit.set_yscale('log')
+    # ax_fit.set_ylim(bottom=0)
 
 
     fits = []
@@ -327,7 +330,9 @@ def plot_fit_pres(posterior, sample, save=None, alpha=0.5):
 
         # bolo_ax.plot(x, px)
         if len(baysar_power) > 1:
-            bolo_ax.hist(baysar_power, histtype='stepfilled', density=True, color='pink', alpha=alpha)
+            # bolo_ax.hist(baysar_power, histtype='stepfilled', density=True, color='pink', alpha=alpha)
+            baysar_power_axis = np.linspace(0.5*baysar_power.min(), 1.5*baysar_power.max(), 100)
+            bolo_ax.fill_between(baysar_power_axis, gaussian_kde(baysar_power)(baysar_power_axis), color='pink', alpha=alpha)
         else:
             bolo_ax.plot([baysar_power.mean(0), baysar_power.mean(0)], [0, target.max()*1.2], color='pink') # , alpha=alpha)
 
@@ -339,6 +344,9 @@ def plot_fit_pres(posterior, sample, save=None, alpha=0.5):
 
     if save is None:
         fig.show()
+    else:
+        plt.savefig(save)
+        plt.close()
 
 
 
