@@ -243,7 +243,7 @@ class EmissionProfile:
             self.tau_model: TauFromTeEms = TauFromTeEms.load(element=self.element, charge=int(self.charge))
         # Get spectroscopic quantities
         self.get_emission_profiles()
-        self.get_lineshape() 
+        self.get_lineshape()
 
     def get_emission_profiles(self):
         self.emission_profiles = []
@@ -282,9 +282,9 @@ class EmissionProfile:
             self.ems_ne.append(ems.dot(ne)/ems.sum())
             self.exc_ne.append(ems_exc.dot(ne)/ems_exc.sum())
             self.rec_ne.append(ems_rec.dot(ne)/ems_rec.sum())
-            self.ems_conc.append(ems.dot(n_total) / ems.sum())
-            self.exc_conc.append(ems_exc.dot(n_exc) / ems_exc.sum())
-            self.rec_conc.append(ems_rec.dot(n_rec) / ems_rec.sum())
+            self.ems_conc.append(ems.dot(n_total/ne) / ems.sum())
+            self.exc_conc.append(ems_exc.dot(n_exc/ne) / ems_exc.sum())
+            self.rec_conc.append(ems_rec.dot(n_rec/ne) / ems_rec.sum())
             self.f_rec.append(ems.dot(ems_rec/ems)/ems.sum())
 
             los_tags = ['emission_profiles', 'emission_profiles_integrated', 'f_rec']
