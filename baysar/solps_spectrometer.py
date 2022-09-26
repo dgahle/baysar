@@ -227,6 +227,7 @@ from itertools import product
 from adas import read_adf15
 from baysar.lineshapes import gaussian_norm
 from baysar.linemodels import stehle_param
+from baysar.inter_baysar import TauFromTeEms
 class EmissionProfile:
     def __init__(self, line_data, solps):
         self.solps = solps
@@ -237,13 +238,19 @@ class EmissionProfile:
                 setattr(self, key, np.array([line_data[key]]).flatten())
             else:
                 setattr(self, key, line_data[key])
-
+        # Build tau model for ions
+        if int(self.charge) > 0:
+            self.tau_model: TauFromTeEms = TauFromTeEms.load(element=self.element, charge=int(self.charge))
+        # Get spectroscopic quantities
         self.get_emission_profiles()
-        self.get_lineshape()
+        self.get_lineshape() 
 
     def get_emission_profiles(self):
         self.emission_profiles = []
         self.emission_profiles_integrated = []
+        self.ems_conc = []
+        self.exc_conc = []
+        self.rec_conc = []
         self.ems_te = []
         self.exc_te = []
         self.rec_te = []
@@ -259,6 +266,7 @@ class EmissionProfile:
             charge = int(self.charge)
             n_exc = self.solps.species_dens[self.element][los_counter][charge]
             n_rec = self.solps.species_dens[self.element][los_counter][charge+1]
+            n_total = n_exc + n_rec
 
             pec_exc, _ = read_adf15(te=te, dens=ne, file=self.pec, block=self.exc_block)
             pec_rec, _ = read_adf15(te=te, dens=ne, file=self.pec, block=self.rec_block)
@@ -274,14 +282,24 @@ class EmissionProfile:
             self.ems_ne.append(ems.dot(ne)/ems.sum())
             self.exc_ne.append(ems_exc.dot(ne)/ems_exc.sum())
             self.rec_ne.append(ems_rec.dot(ne)/ems_rec.sum())
+            self.ems_conc.append(ems.dot(n_total) / ems.sum())
+            self.exc_conc.append(ems_exc.dot(n_exc) / ems_exc.sum())
+            self.rec_conc.append(ems_rec.dot(n_rec) / ems_rec.sum())
             self.f_rec.append(ems.dot(ems_rec/ems)/ems.sum())
 
             los_tags = ['emission_profiles', 'emission_profiles_integrated', 'f_rec']
-            for left, right in product(['ems', 'exc', 'rec'], ['ne', 'te']):
+            for left, right in product(['ems', 'exc', 'rec'], ['conc', 'ne', 'te']):
                 los_tags.append(f"{left}_{right}")
             self.weight_average_dicts.append({})
             for tag in los_tags:
                 self.weight_average_dicts[-1][tag] = self.__dict__[tag][-1]
+
+        # Get tau
+        tau_model_check: bool = hasattr(self, 'tau_model')
+        if tau_model_check:
+            self.ems_tau = self.tau_model.tau_from_te_ems(self.ems_te)
+        else:
+            self.ems_tau = np.empty(len(self.ems_te))
 
     def get_lineshape(self):
         self.lineshapes = []
@@ -458,3 +476,12 @@ def gaussian_smoother(length, width, asymmetry=None):
     smoother.eliminate_zeros()
 
     return smoother
+
+
+if __name__=="__main__":
+    mds_number: int = 160837
+    dss: SyntheticSpectrometer = SyntheticSpectrometer(mds_number)
+    for l in dss.lines:
+        print(f'{l.element}{l.charge}', l.ems_tau)
+
+    pass
