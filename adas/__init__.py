@@ -1,1 +1,1 @@
-from python import read_adf15
+from .python import read_adf15

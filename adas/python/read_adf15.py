@@ -142,7 +142,8 @@ def read_adf15(adf15: [str, Path],
     adf15_model: DataArray = load_adf15(adf15)
     # Interpolate to get desired values
     block: list[int] = [block] if type(block) is int else block
-    pecs_out: DataArray = adf15_model.interp(block=block, ne=ne, Te=te)
+    kwargs: dict = dict(fill_value="extrapolate")
+    pecs_out: DataArray = adf15_model.interp(block=block, ne=ne, Te=te, kwargs=kwargs)
     return pecs_out
 
 
@@ -160,12 +161,14 @@ def main() -> None:
     folders: list[str] = [
         'boron',
         'nitrogen',
-        'nitrogen'
+        'nitrogen',
+        'nitrogen',
     ]
     test_files: list[str] = [
         'pecXXb_pjub1.dat',
+        'n_ii_3900_4900_te_1_100.pass',
         'pec96#n_vsu#n1.dat',
-        'n_v_vsu.pass'
+        'n_v_vsu.pass',
     ]
     # Test read_adf15 and run
     file: str
