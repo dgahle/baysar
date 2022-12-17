@@ -6,6 +6,10 @@ Python env 3.10 and
 
 `conda create -n InterBaysar python=3.10 --yes`
 
+Need conda tool kit
+
+`conda install cudatoolkit`
+
 ## How to run
 
 Blah...
