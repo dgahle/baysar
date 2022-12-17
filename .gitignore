@@ -1,3 +1,11 @@
+# Inter-BaySAR
+inter_baysar/cache/
+inter_baysar/data/
+inter_baysar/output/
+
+# ADAS
+adas/adas
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
