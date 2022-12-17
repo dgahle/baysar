@@ -1,0 +1,5 @@
+matplotlib==3.6.2
+numba==0.56.4
+numpy==1.23.5
+scipy==1.9.3
+xarray==2022.12.0

@@ -23,8 +23,6 @@ logp = pdf_dict['logp']
 logp_norm = logp[:, 0, :] - logp.max(0)[0, None, :]
 thetas = pdf_dict['theta']
 
-from tulasa.general import plot
-
 mode_indicies = logp.argmax(0)[0]
 mode_thetas = np.array([thetas[i] for i in mode_indicies])
 

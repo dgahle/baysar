@@ -4,8 +4,11 @@
 #
 #
 # Imports
-from adas import read_adf11, run_adas406
-from baysar.plasmas import get_adf11, get_meta
+try:
+    from adas import read_adf11, run_adas406
+except ModuleNotFoundError:
+    pass
+# from baysar.plasmas import get_adf11, get_meta
 from matplotlib.pyplot import subplots, legend
 from numpy import linspace, logspace, zeros, log10, array, concatenate, savez, log, exp
 from numpy import load as load_npz
@@ -20,6 +23,28 @@ ATOMIC_DATA_CACHE_PATH: Path = Path(__file__).parent / 'cache'
 
 
 # Functions and classes
+atomic_number={'He':2, 'Li':3, 'Be':4, 'B':5, 'C':6, 'N':7, 'O':8, 'F':9, 'Ne':10}
+def get_number_of_ions(element):
+    return atomic_number[element]+1
+
+def get_meta(element, index=0):
+    num=get_number_of_ions(element)
+    meta=zeros(num)
+    meta[index]=1
+    return meta
+
+adf11_dir="/home/adas/adas/adf11/"
+hydrogen_adf11_plt=adf11_dir+'plt12/plt12_h.dat'
+hydrogen_adf11_prb=adf11_dir+'prb12/prb12_h.dat'
+
+from os.path import exists as file_exists
+def get_adf11(elem, yr, type, adf11_dir=adf11_dir):
+    adf11=adf11_dir+type+str(yr)+'/'+type+str(yr)+'_'+elem.lower()+'.dat'
+    if file_exists(adf11):
+        return adf11
+    else:
+        raise FileNotFoundError(f"{adf11} is not found")
+
 class TauFromTeEms:
 
     def __init__(self, element: str, charge: int, res: int = 30, tau_res: int = 20, load: bool=False):
@@ -34,7 +59,7 @@ class TauFromTeEms:
         self.tau_res = tau_res
 
         self.get_plasma_conditions()
-        self.get_power_rates()
+        # self.get_power_rates()
         if not load:
             self.get_te_ems()
             self.get_interpolate()
@@ -231,7 +256,7 @@ class Interp3D:
 
 
 from baysar.line_data import adas_line_data
-from baysar.plasmas import get_adf11
+# from baysar.plasmas import get_adf11
 adf11_types = ['scd', 'acd', 'plt', 'prb']
 def get_adf11s(element:str) -> dict:
     adf11 = {}
