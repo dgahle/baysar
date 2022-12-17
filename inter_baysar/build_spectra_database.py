@@ -4,10 +4,7 @@
 #
 #
 # Imports
-try:
-    from adas import run_adas406, read_adf15
-except ModuleNotFoundError:
-    pass
+from adas import read_adf15
 from argparse import ArgumentParser
 from baysar.lineshapes import gaussian_norm
 from baysar.input_functions import get_species_data
@@ -18,6 +15,7 @@ from pathlib import Path
 from scipy.constants import pi
 from scipy.io import readsav
 from time import time
+from tqdm import tqdm
 
 
 # Variables
@@ -37,8 +35,11 @@ args=parser.parse_args()
 
 # Functions
 atomic_number={'He':2, 'Li':3, 'Be':4, 'B':5, 'C':6, 'N':7, 'O':8, 'F':9, 'Ne':10}
+
+
 def get_number_of_ions(element):
     return atomic_number[element]+1
+
 
 def get_meta(element, index=0):
     num=get_number_of_ions(element)
@@ -64,8 +65,8 @@ def f(theta, lines, log_tau, adas406_interp):
         exc_block = lines[l]['exc_block']
         rec_block = lines[l]['rec_block']
 
-        exc_pec, _ = read_adf15(file=adf15, block=exc_block, te=te, dens=dens)
-        rec_pec, _ = read_adf15(file=adf15, block=rec_block, te=te, dens=dens)
+        exc_pec = read_adf15(adf15=adf15, block=exc_block, te=te, ne=dens).data
+        rec_pec = read_adf15(adf15=adf15, block=rec_block, te=te, ne=dens).data
 
         tmp_dl_ems = power(10, log_dl_cz) * dens ** 2 * (f_exc * exc_pec + f_rec * rec_pec)
         dl_ems.append(tmp_dl_ems)
@@ -73,9 +74,10 @@ def f(theta, lines, log_tau, adas406_interp):
     return array(dl_ems)
 
 
-def g(dl_ems, lines):
+def g(dl_ems, lines, theta):
     _intensity = [de*lines[l]['jj_frac'] for de, l in zip(dl_ems, lines)]
     intensity = concatenate(_intensity)
+    cwls, wave, sigma = theta
     res = (cwls[:, None] - wave[None, :]) / sigma
     logp = - 0.5 * square(res)
     spectra = exp(logp) / (sqrt(2 * pi) * sigma)
@@ -124,17 +126,17 @@ def main() -> None:
     spectra_database = []
     print("building spectra data base")
     start_time = time()
-    # Load atominc models (tau_model and adas406)
+    # Load atomic models (tau_model and adas406)
     tau_model: TauFromTeEms = get_tau_model()
     adas406_interp: Adas406Interp = get_ion_bal_model()
     # build initial distribution
-    for theta in initial_distribution:
+    for theta in tdqm(initial_distribution):
         te, log_ne, log_dl_cz = theta
         # log_tau = tau_model.tau_from_te_ems(te, log=True)
         log_tau = tau_model.chi_from_te_ems(te)
         theta_in = te, log_ne, log_tau, log_dl_cz
         tmp_dl_ems = f(theta_in, pec_database, log_tau, adas406_interp) # LS resolved
-        tmp_spectra = g(tmp_dl_ems, pec_database) # need to make jj resolved
+        tmp_spectra = g(tmp_dl_ems, pec_database, theta=[cwls, wave, sigma]) # need to make jj resolved
         spectra_database.append((tmp_spectra, tmp_dl_ems, theta))
     # Callbacks
     print()
