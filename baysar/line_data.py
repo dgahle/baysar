@@ -5,7 +5,10 @@
 
 import os
 from numpy import ones, arange
+from pathlib import Path
 
+
+ADF15_PATH: Path = Path(__file__).parent.parent / 'adas' / 'adas' / 'adf15'
 data_pathroot = os.path.expanduser('~/baysar/data/')
 
 # N V 2 TECs down to 1
@@ -215,7 +218,7 @@ adas_line_data['N']['0'] = add_ion_info(adas_line_data['N']['0'], wavelengths, j
 
 adas_line_data['N']['1'] = {'default_pecs': adas_root+'adf15/pec96#n/pec96#n_pju#n1.dat'}
 
-my_n_ii_file = '/home/dgahle/adas/idl_spectra/use_adas208/n_ii_3900_4900_te_1_100.pass'
+my_n_ii_file: Path = ADF15_PATH / 'nitrogen' / 'n_ii_3900_4900_te_1_100.pass'
 
 # nist?
 # wavelengths = [600.50, 586.30, 669.80, 629.30, 613.70,
