@@ -6,7 +6,7 @@
 # Imports
 try:
     from adas import read_adf11, run_adas406
-except ModuleNotFoundError:
+except ImportError:
     pass
 # from baysar.plasmas import get_adf11, get_meta
 from matplotlib.pyplot import subplots, legend
