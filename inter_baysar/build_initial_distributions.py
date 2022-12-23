@@ -17,8 +17,8 @@ log_dl_cz_bounds = [-2, 0]
 
 parser = ArgumentParser()
 
-parser.add_argument('--sample_size', type=int, default=100000)
-parser.add_argument('--save', type=str, default=None)
+parser.add_argument('--sample_size', type=int, default=10)
+parser.add_argument('--save', type=str, default='output/test_initial_distribution')
 parser.add_argument('--plot', action='store_true')
 parser.add_argument('--gaussian', action='store_true')
 

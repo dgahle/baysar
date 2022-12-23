@@ -5,8 +5,8 @@
 #
 # Imports
 from argparse import ArgumentParser
-from numba import njit
-from numpy import array, ndarray, load, prod, round, savez, square
+from numba import float32, njit, vectorize
+from numpy import array, ndarray, load, prod, round, savez, square, sum
 from pathlib import Path
 from time import time
 
@@ -25,12 +25,20 @@ args = parser.parse_args()
 
 
 # Functions
+# from numba.cuda import jit
+# @jit('void(float32[:], float32[:], float32[:])')
+# def _calculate_posterior(data, grid, error):
+#     res = (data - grid) / error
+#     res_squared = res * res
+#     logp = - 0.5 * res_squared
+#     return logp
+
+
 @njit
 def calculate_posterior(data, grid, error):
-# def calculate_posterior(data: ndarray, grid: ndarray, error: ndarray) -> tuple[ndarray, ndarray]:
-    res: ndarray = (data - grid) / error
-    logp: ndarray = - 0.5 * square(res).sum(1)
-    return logp  # [logp, res]
+    res = (data - grid) / error
+    return - 0.5 * square(res).sum(1)
+    # return _calculate_posterior(data, grid, error).sum(1)
 
 
 def main() -> None:
@@ -52,7 +60,7 @@ def main() -> None:
     print(f'logp.shape {logp.shape}')
     # super_size = array(res.shape, dtype=float)
     # super_size = np.array([training_data.shape[0], pixel, num_chords, time_num], dtype=float)
-    runtime = round(time() - start_time, 3)
+    runtime = round(time() - start_time / 5, 3)
     n_comparisons = round(prod(logp.shape) * 1e-6, 3)
     print( f"Run in {runtime} s ({n_comparisons}M comparisons)" )
     # print( f"{super_size.tolist()} in {runtime} s ({n_comparisons}M comparisons)" )

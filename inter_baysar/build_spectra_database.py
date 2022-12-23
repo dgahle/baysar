@@ -130,7 +130,7 @@ def main() -> None:
     tau_model: TauFromTeEms = get_tau_model()
     adas406_interp: Adas406Interp = get_ion_bal_model()
     # build initial distribution
-    for theta in tdqm(initial_distribution):
+    for theta in tqdm(initial_distribution):
         te, log_ne, log_dl_cz = theta
         # log_tau = tau_model.tau_from_te_ems(te, log=True)
         log_tau = tau_model.chi_from_te_ems(te)
