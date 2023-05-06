@@ -27,7 +27,7 @@ def plot_posterior_components(posterior, sample, alpha=1, reference=None):
     plt.xlabel(r'$Steps$')
 
     legend=plt.legend()
-    legend.draggable()
+    plt.set_draggable()
 
     plt.tight_layout()
     plt.show()
@@ -35,7 +35,7 @@ def plot_posterior_components(posterior, sample, alpha=1, reference=None):
 import numpy as np
 
 def plot_fit_demo(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
-                  error_norm=True, plasma_reference=None, filename=None, parameterised=True,
+                  error_norm=True, chord=0, plasma_reference=None, filename=None, parameterised=True,
                   only_band=True, sort_te=False):
 
     if size is None:
@@ -56,6 +56,8 @@ def plot_fit_demo(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
     te_color = 'tab:blue'
     ax_plasma.set_xlabel(r'$LOS \ / \ cm$')
     ax_plasma.set_ylabel(r'$n_{e} \ / \ cm^{-3}$', color=plasma_color)
+    # ax_plasma.set_xlabel(r'$LOS \ / \ cm$')
+    # ax_plasma.set_ylabel(r'$n_{e} \ / \ cm^{-3}$', color=plasma_color)
     ax_plasma.tick_params(axis='y', labelcolor=plasma_color)
     ax_te = ax_plasma.twinx()  # instantiate a second axes that shares the same x-axis
     ax_te.set_ylabel(r'$T_{e} \ / \ eV$', color=te_color)  # we already handled the x-label with ax1
@@ -69,9 +71,10 @@ def plot_fit_demo(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
     # ax_te2.tick_params(axis='y', labelcolor=te_color)
 
     # ax[0] plot data and fit
-    spectra = posterior.posterior_components[0].y_data
-    error = posterior.posterior_components[0].error
-    waves = posterior.posterior_components[0].x_data
+    chord=posterior.posterior_components[chord]
+    spectra = chord.y_data
+    error = chord.error
+    waves = chord.x_data
 
     ax_fit.plot(waves, spectra, label='Data')
     ax_res.plot(waves, spectra/max(spectra), color='C0', label='Data')
@@ -105,6 +108,10 @@ def plot_fit_demo(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
     ax_res.set_xlabel(r'$Wavelength \ / \ \AA$')
 
     los=posterior.plasma.los
+    los=los.copy()
+    los+=abs(los.min())
+    # los/=100
+
     ax_plasma.set_xlim([min(los), max(los)])
 
     if not parameterised:
@@ -152,8 +159,8 @@ def plot_fit_demo(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
     ne_all=[]
     for counter0 in np.linspace(0, len(sample)-1, size, dtype=int):
         posterior(sample[counter0])
-        tmp_fit = posterior.posterior_components[0].forward_model()
-        tmp_wave = posterior.posterior_components[0].cal_wave
+        tmp_fit = chord.forward_model()
+        tmp_wave = chord.cal_wave
         tmp_res = abs(spectra-tmp_fit)/k_res
         te = posterior.plasma.plasma_state['electron_temperature']
         ne = posterior.plasma.plasma_state['electron_density']
@@ -206,12 +213,13 @@ def plot_fit_demo(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
             ne_all[counter]=ne_all[counter, index]
         te_all=np.sort(te_all, axis=1)
     # plot the band of the inferred plasma profiles
+    # from copy import copy
+
     ax_plasma.fill_between(los, ne_all.min(0), ne_all.max(0), color=plasma_color, alpha=alpha)
     ax_te.fill_between(los, te_all.min(0), te_all.max(0), color=te_color, alpha=alpha)
 
 
-    leg=ax_fit.legend()
-    leg.draggable()
+    leg=ax_fit.legend().set_draggable(True)
 
     if filename is None:
         fig.show()
@@ -221,6 +229,271 @@ def plot_fit_demo(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
         plt.close()
 
     # return te_all, ne_all
+
+def get_bolo_index(posterior_components):
+    from baysar.priors import BolometryPrior
+    for index, p in enumerate(posterior_components):
+        if type(p) == BolometryPrior:
+            return index
+
+    return None
+
+import matplotlib.pyplot as plt
+from numpy import array
+from scipy.stats import gaussian_kde
+def plot_fit_pres(posterior, sample, save=None, alpha=0.5):
+
+    bolo_index = get_bolo_index(posterior.posterior_components)
+    if bolo_index is not None:
+        bolo = posterior.posterior_components[bolo_index]
+
+    fig, ax = plt.subplots(1, 3)
+
+    ax_fit, ax_ne, ax_te = ax
+
+    y = posterior.posterior_components[0].y_data
+    y_err = posterior.posterior_components[0].error
+    x = posterior.posterior_components[0].x_data
+
+    ax_fit.plot(x, y)
+    ax_fit.fill_between(x, y-y_err, y+y_err, alpha=alpha)
+
+    ax_fit.set_xlim(x.min(), x.max())
+    if y.max()/y.min() > 20.:
+        ax_fit.set_yscale('log')
+    # ax_fit.set_ylim(bottom=0)
+
+
+    fits = []
+    baysar_ne = []
+    baysar_te = []
+    baysar_power = []
+
+    for s in sample:
+        posterior(s)
+
+        fits.append(posterior.posterior_components[0].forward_model())
+
+        baysar_ne.append(posterior.plasma.plasma_state['electron_density'])
+        baysar_te.append(posterior.plasma.plasma_state['electron_temperature'])
+
+        if bolo_index is not None:
+            baysar_power.append(bolo.synthetic_measurement)
+
+
+    fits = array(fits)
+    ax_fit.plot(x, fits.mean(0), color='pink')
+    ax_fit.fill_between(x, fits.min(0), fits.max(0), alpha=alpha, color='pink')
+
+    plasma_colors = ['red', 'blue']
+    tags = ['electron_density', 'electron_temperature']
+    axs = [ax_ne, ax_te]
+
+    baysar_los = posterior.plasma.los.copy()
+    baysar_te_peak_los = - baysar_los.min()
+    baysar_los += baysar_te_peak_los
+    baysar_ne = array(baysar_ne)
+    baysar_te = array(baysar_te)
+    if bolo_index is not None:
+        baysar_power = array(baysar_power)
+
+    for prof, a, col in zip([baysar_ne, baysar_te], axs, plasma_colors):
+        a.plot(baysar_los, prof.mean(0), alpha=alpha, color=col)
+        a.fill_between(baysar_los, prof.min(0), prof.max(0), alpha=alpha, color=col)
+
+        a.set_xlim(baysar_los.min(), baysar_los.max())
+        a.set_ylim(bottom=0, top=prof.max()*1.2)
+
+    if hasattr(posterior.plasma, 'plasma_reference'):
+        t = 'electron_temperature'
+        y = posterior.plasma.plasma_reference[t]
+        x = posterior.plasma.plasma_reference[t+'_los']
+        dr = baysar_te_peak_los - x[y.argmax()]
+
+        for t, a, col in zip(tags, axs, plasma_colors):
+            y = posterior.plasma.plasma_reference[t]
+            x = posterior.plasma.plasma_reference[t+'_los']
+
+            a.plot(x+dr, y, 'x--', color=col)
+
+    if bolo_index is not None:
+        # rect = l,b,w,h
+        rect = (0.16, 0.65, 0.15, 0.2)
+        bolo_ax = fig.add_axes(rect)
+
+        from baysar.lineshapes import gaussian_norm
+        sigma4 = 4 * bolo.sigma
+        bounds_power = (bolo.mean + array([-sigma4, sigma4])).clip(0)
+        x_power = np.linspace(*bounds_power, 100)
+        target = gaussian_norm(x_power, bolo.mean, bolo.sigma, 1)
+        bolo_ax.fill_between(x_power, 0*target, target, color='C0') # , alpha=alpha)
+
+        # bolo_ax.plot(x, px)
+        if len(baysar_power) > 1:
+            # bolo_ax.hist(baysar_power, histtype='stepfilled', density=True, color='pink', alpha=alpha)
+            baysar_power_axis = np.linspace(0.5*baysar_power.min(), 1.5*baysar_power.max(), 100)
+            bolo_ax.fill_between(baysar_power_axis, gaussian_kde(baysar_power)(baysar_power_axis), color='pink', alpha=alpha)
+        else:
+            bolo_ax.plot([baysar_power.mean(0), baysar_power.mean(0)], [0, target.max()*1.2], color='pink') # , alpha=alpha)
+
+        # bolo_ax.set_xlim(0.8*min(baysar_power), 1.2*max(baysar_power))
+        bolo_ax.set_ylim(bottom=0)
+        bolo_ax.set_xlim(*bounds_power)
+
+        bolo_ax.set_yticks([])
+
+    if save is None:
+        fig.show()
+    else:
+        plt.savefig(save)
+        plt.close()
+
+
+
+def plot_fit_demo_henderson(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
+                            error_norm=True, chord=0, plasma_reference=None, filename=None, parameterised=True,
+                            only_band=True, sort_te=False):
+
+    if size is None:
+        size = len(sample)
+    if alpha is None:
+        alpha=1/size
+    if alpha < 0.02:
+        alpha = 0.02
+
+    fig = plt.figure()
+    ax_fit = fig.add_axes([.15, .2, .4, .6]) # [x0, y0, width, height]
+    ax_plasma = fig.add_axes([.65, .2, .26, .6]) # [x0, y0, width, height]
+
+    plasma_color = 'tab:red'
+    te_color = 'tab:blue'
+    ax_plasma.set_xlabel(r'$LOS \ / \ cm$')
+    ax_plasma.set_ylabel(r'$n_{e} \ / \ m^{-3}$', color=plasma_color)
+    # ax_plasma.set_xlabel(r'$LOS \ / \ cm$')
+    # ax_plasma.set_ylabel(r'$n_{e} \ / \ cm^{-3}$', color=plasma_color)
+    ax_plasma.tick_params(axis='y', labelcolor=plasma_color)
+    ax_te = ax_plasma.twinx()  # instantiate a second axes that shares the same x-axis
+    ax_te.set_ylabel(r'$T_{e} \ / \ eV$', color=te_color)  # we already handled the x-label with ax1
+    ax_te.tick_params(axis='y', labelcolor=te_color)
+
+
+    # ax[0] plot data and fit
+    chord=posterior.posterior_components[chord]
+    spectra = chord.y_data * 1e5
+    error = chord.error * 1e5
+    waves = chord.x_data / 10.
+
+    ax_fit.plot(waves, spectra, color='k', label='Data')
+    ax_fit.fill_between(waves, spectra-error, spectra+error, color='k', alpha=0.2)
+    ax_fit.plot(np.zeros(10), 'red', label='Fit')
+    # ax_fit.set_ylim(ylim)
+    ax_fit.set_yscale('log')
+
+
+    # ax_plasma.set_ylim(bottom=0)
+    # ax_te.set_ylim(bottom=0)
+
+    # ax_fit.set_xticklabels([])
+    ax_fit.set_xlim([min(waves), max(waves)])
+
+    # ax[1].set_ylabel(r'$\sigma - Normalised \ Residuals$')
+    ax_fit.set_xlabel(r'$Wavelength \ / nm$')
+
+    los=posterior.plasma.los
+    los=los.copy()
+    los+=abs(los.min())
+    # los/=100
+
+    ax_plasma.set_xlim([min(los), max(los)])
+
+    if not parameterised:
+        los_ne_theta=posterior.plasma.profile_function.electron_density.x_points
+        if posterior.plasma.profile_function.electron_density.zero_bounds:
+            los_ne_theta=los_ne_theta[1:-1]
+        los_te_theta=posterior.plasma.profile_function.electron_temperature.x_points
+        if posterior.plasma.profile_function.electron_temperature.zero_bounds:
+            los_te_theta=los_te_theta[1:-1]
+
+    if plasma_reference is not None:
+        te = plasma_reference['electron_temperature'].copy()
+        ne = plasma_reference['electron_density'].copy()
+        los_ref=plasma_reference['electron_density_los'].copy()
+        # sort plasma profiles
+        if sort_te:
+            indices=np.argsort(te)
+            ne=ne[indices][::-1]
+            te=te[indices][::-1]
+            los_ref-=76.
+
+        if 'electron_density_los' in plasma_reference:
+            ax_plasma.plot(los_ref, ne, 'x--', color=plasma_color)
+            # ax_plasma2.plot(plasma_reference['electron_density_los'], ne, 'x--', color=plasma_color)
+        else:
+            ax_plasma.plot(los, ne, 'x--', color=plasma_color)
+            # ax_plasma2.plot(los, ne, 'x--', color=plasma_color)
+
+        if 'electron_temperature_los' in plasma_reference:
+            ax_te.plot(los_ref, te, 'x--', color=te_color)
+            # ax_te2.plot(plasma_reference['electron_temperature_los'], te, 'x--', color=te_color)
+        else:
+            ax_te.plot(los, te, 'x--', color=te_color)
+            # ax_te2.plot(los, te, 'x--', color=te_color)
+
+    if error_norm:
+        k_res = error
+    else:
+        k_res = spectra
+
+    fit_all=[]
+    wave_all=[]
+    res_all=[]
+    te_all=[]
+    ne_all=[]
+    for counter0 in np.linspace(0, len(sample)-1, size, dtype=int):
+        posterior(sample[counter0])
+        tmp_fit = chord.forward_model()
+        tmp_wave = chord.cal_wave
+        tmp_res = abs(spectra-tmp_fit)/k_res
+        te = posterior.plasma.plasma_state['electron_temperature']
+        ne = posterior.plasma.plasma_state['electron_density']
+
+        fit_all.append(tmp_fit)
+        wave_all.append(tmp_wave)
+        res_all.append(tmp_res)
+        te_all.append(te)
+        ne_all.append(ne)
+
+
+    fit_all=np.array(fit_all)
+    res_all=np.array(res_all)
+    te_all=np.array(te_all)
+    ne_all=np.array(ne_all)
+
+    waves=waves.astype(np.float64)
+    # plot the band of the spectra fits
+    if only_band:
+        alpha=1
+        ax_fit.plot(waves, 1e5*fit_all.mean(0), color='red', alpha=alpha)
+
+    a, b=fit_all.min(0), fit_all.max(0)
+    ax_fit.fill_between(waves, 1e5*a, 1e5*b, color='red', alpha=alpha)
+
+    # from copy import copy
+
+    ax_plasma.fill_between(los, ne_all.min(0)*1e6, ne_all.max(0)*1e6, color=plasma_color, alpha=alpha)
+    ax_te.fill_between(los, te_all.min(0), te_all.max(0), color=te_color, alpha=alpha)
+
+
+    leg=ax_fit.legend().set_draggable(True)
+
+    if filename is None:
+        fig.show()
+    else:
+        # plt.tight_layout() # breaks the code
+        plt.savefig(filename)
+        plt.close()
+
+
 import numpy as np
 from scipy.interpolate import interp1d
 
@@ -278,7 +551,7 @@ def plot_sources_and_sinks(posterior, sample, log=False, data=None, chord=None, 
     plt.xlabel(r'$LOS \ / \ cm$')
 
     leg=plt.legend()
-    leg.draggable()
+    leg=ax_fit.legend().set_draggable(True)
 
     plt.show()
 
@@ -371,9 +644,9 @@ def plot_impurtity_profiles_dense(posterior, sample, data, chord, alpha=0.3):
             ax_balance.plot(te_grid, np.array(grided_profiles).mean(0), 'C'+str(charge))
 
     leg_bal=ax_balance.legend()
-    leg_bal.draggable()
+    leg_bal.set_draggable()
     leg_prof=ax_profile.legend()
-    leg_prof.draggable()
+    leg_prof.set_draggable()
     ax_profile.set_xlim(los.min(), los.max())
 
     fig.show()

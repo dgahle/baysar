@@ -75,6 +75,7 @@ class SpectrometerChord(object):
         self.get_error()
         self.get_lines()
         self.int_func_sparce_matrix()
+        self.convolution_tolerence=1e-2
         print("Built SpectrometerChord no. %d"%(chord_number))
 
     def __call__(self, *args, **kwargs):
@@ -99,9 +100,32 @@ class SpectrometerChord(object):
         """
 
         self.get_noise_spectra()
-        self.error = sqrt(   square(std(self.y_data_continuum)) +  # noise
-                                        self.y_data * self.a_cal +  # poisson
-                              self.anomalous_error*self.y_data    ) # annomolus
+        self.error_components = [square(std(self.y_data_continuum)),  # noise
+                                        self.y_data * self.a_cal,  # poisson
+                                        self.anomalous_error*self.y_data    ] # annomolus
+
+        if any([np.isnan(ec).any() for ec in self.error_components]):
+            raise TypeError("NaNs in self.error!")
+
+        self.error = sqrt( sum(self.error_components)  )
+
+        checks = [np.isnan, np.isinf]
+
+        if np.isnan(self.error).any():
+            print(f"a_cal {self.a_cal}")
+
+            for check in checks:
+                print(check(self.error_components[0]))
+                for i in range(3):
+                    print(check(self.error_components[i]).any(), self.error_components[i].min())
+
+            print(f"Noise: {np.isinf(self.error_components[0])}")
+            print(f"Possion: {np.isinf(self.error_components[1]).any()}")
+            print(f"Anomalous: {np.isinf(self.error_components[2]).any()}")
+            print(f"Total: {np.isnan(self.error).any()}")
+
+            raise TypeError("NaNs in self.error!")
+
 
     def likelihood(self, cauchy=True):
         """
@@ -127,7 +151,10 @@ class SpectrometerChord(object):
             raise ValueError('Some points of square_normalised_residuals are inf')
 
         if any(np.isnan(self.square_normalised_residuals)):
-            print(fm)
+            print(f"Forward model: {fm}")
+            print(f"Spectra: {self.y_data}")
+            print(f"Residuals: {self.square_normalised_residuals}")
+            print(f"Errors: {self.error}")
             print('nan indicies', np.where(np.isnan(self.square_normalised_residuals)))
             raise ValueError('Some points of square_normalised_residuals are nan')
 
@@ -151,9 +178,10 @@ class SpectrometerChord(object):
         The is synthetic diagnostic is defined by a wavelength and intensity
         calibration as well as the background level and instrument function.
 
-        Spectra outputs in units of  ph/cm2/sr/A/s.
+        Spectra outputs in units of  ph/cm2/A/sr/s.
         """
-        spectra = sum([l().flatten() for l in self.lines]) # TODO: This is what takes all the time?
+        # TODO: This is what takes all the time?
+        spectra = sum([l().flatten() for l in self.lines]) # ph/cm-2/A/sr/s
 
         background_theta=self.plasma.plasma_state['background_'+str(self.chord_number)]
         background=self.background_function.calculate_background(background_theta)
@@ -177,8 +205,14 @@ class SpectrometerChord(object):
         calibrating_instrument_function=cif0 and cif1
         if calibrating_instrument_function:
             int_func_cal_theta=self.plasma.plasma_state['calint_func_'+str(self.chord_number)]
-            pixels=np.arange( len(self.x_data_fm) )
-            instrument_function_last_used=self.instrument_function_calibrator.calibrate(pixels, *int_func_cal_theta)
+            # pixels=len(self.x_data_fm)
+            # wavelenght normalised (as resolution fwhm is in Angstroms not pixels)
+            instrument_function_last_used=self.instrument_function_calibrator.calibrate(self.x_data_fm, *int_func_cal_theta)
+            instrument_function_last_used/=instrument_function_last_used.sum() # pixel normalisation
+            if not np.isclose(instrument_function_last_used.sum(), 1.0):
+                raise ValueError(f"Instrument function is not pixel normalised! "
+                                 f"{instrument_function_last_used.sum()}, {int_func_cal_theta}")
+
         else:
             instrument_function_last_used=self.instrument_function_fm
 
@@ -205,16 +239,24 @@ class SpectrometerChord(object):
 
         self.postconv_integral=np.trapz(spectra, self.x_data_wavecal_interp)
         self.conv_integral_ratio=self.postconv_integral/self.preconv_integral
-        if not np.isclose(self.conv_integral_ratio, 1, rtol=1e-2):
-            raise ValueError(f"Area not conserved in convolution! ({self.conv_integral_ratio}!=1), {self.dispersion_ratios}, {instrument_function_last_used.sum()}")
+        spectra/=self.conv_integral_ratio
+        self.conv_integral_ratio2=np.trapz(spectra, self.x_data_wavecal_interp)/self.preconv_integral
+        if not np.isclose(self.conv_integral_ratio2, 1, rtol=self.convolution_tolerence):
+            raise ValueError(f"Area not conserved in convolution! ({self.conv_integral_ratio2}!=1), {self.dispersion_ratios}, {instrument_function_last_used.sum()}")
 
-        spectra+=background
+        spectra+=background # ph/cm-2/A/sr/s
         self.prewavecal_spectra=spectra
         # wave calibration
         self.wavecal_interp=interp1d(self.x_data_wavecal_interp, spectra, bounds_error=False, fill_value="extrapolate")
         cal_theta=self.plasma.plasma_state['calwave_'+str(self.chord_number)]
         self.cal_wave=self.wavelength_calibrator.calibrate(self.x_data, cal_theta)
         spectra=self.wavecal_interp(self.cal_wave).clip(background)
+        # check that the are is conserved
+        prewavecal_area=np.trapz(self.prewavecal_spectra, self.x_data_wavecal_interp,)
+        postwavecal_area=np.trapz(spectra, self.cal_wave)
+        wavecal_ratio=prewavecal_area/prewavecal_area
+        if not np.isclose(wavecal_ratio, 1):
+            raise ValueError(f"Area not conserved in wavelength calibrtation! ({wavecal_ratio})")
 
         # output checks
         if len(self.y_data)!=len(spectra):
@@ -224,7 +266,7 @@ class SpectrometerChord(object):
         elif np.isinf(spectra).any():
                 raise TypeError("spectra contains infs")
 
-        return spectra
+        return spectra # ph/cm-2/A/sr/s
 
 
     def get_lines(self):

@@ -366,6 +366,10 @@ adas_line_data['D'] = {'atomic_mass': 2, 'atomic_charge': 1,
                        'ionisation_balance_year': 12,
                        'ions': ['0']}
 
+adf11_dir="/home/adas/adas/adf11/"
+adas_line_data['D']['plt'] = adf11_dir+'plt12/plt12_h.dat'
+adas_line_data['D']['prb'] = adf11_dir+'prb12/prb12_h.dat'
+
 adas_line_data['D']['0'] = {'default_pecs': adas_root+'adf15/pec12#h/pec12#h_pju#h0.dat'}
 balmer_pecs=adas_root+'adf15/pec12#h/pec12#h_balmer#h0.dat'
 
@@ -456,6 +460,30 @@ rec_block = [17]
 adas_line_data['He']['1'] = add_ion_info(adas_line_data['He']['1'], wavelengths, jj_fraction,
                                         pecs, exc_block, rec_block)
 
+adas_line_data['B'] = {'atomic_mass': 10, 'atomic_charge': 5,
+                       'ionisation_balance_year': 96,
+                       'ions': ['1']}
+
+# (base) dgahle@freia016:~> ls /home/dgahle/Downloads/b96_prototype/
+# acd96_b.dat       plt96_b.dat       scd96_b.dat
+# pecXXb_pjub1.dat  prb96_b.dat
+
+adas_line_data['B']['scd'] = "/home/dgahle/Downloads/b96_prototype/scd96_b.dat"
+adas_line_data['B']['acd'] = "/home/dgahle/Downloads/b96_prototype/acd96_b.dat"
+adas_line_data['B']['plt'] = "/home/dgahle/Downloads/b96_prototype/plt96_b.dat"
+adas_line_data['B']['prb'] = "/home/dgahle/Downloads/b96_prototype/prb96_b.dat"
+
+my_b_ii_file = "/home/dgahle/Downloads/b96_prototype/pecXXb_pjub1.dat"
+wavelengths = [4121.93]
+jj_fraction = [[1]]
+pecs = [my_b_ii_file]
+exc_block = [11]
+rec_block = [34]
+
+adas_line_data['B']['1'] = {'default_pecs': my_b_ii_file}
+adas_line_data['B']['1'] = add_ion_info(adas_line_data['B']['1'], wavelengths, jj_fraction,
+                                        pecs, exc_block, rec_block)
+
 adas_line_data['C'] = {'atomic_mass': 12, 'atomic_charge': 6,
                        'ionisation_balance_year': 96,
                        'ions': ['1', '2', '3', '4']}
@@ -463,7 +491,6 @@ adas_line_data['C'] = {'atomic_mass': 12, 'atomic_charge': 6,
 adas_line_data['C']['1'] = {'default_pecs': adas_root+'adf15/pec96#c/pec96#c_vsu#c1.dat'}
 
 my_c_ii_file = '/home/dgahle/adas/idl_spectra/use_adas208/c_ii_vsu.pass'
-wavelengths = [4268.3, 5124.4, 5143.3]
 wavelengths = [(3918.89, 3920.69), 4268.3, (5120.08, 5121.83, 5125.21, 5126.96), (5132.95, 5133.28, 5137.26, 5139.17, 5143.50, 5145.17, 5151.09)]
 jj_fraction = [[0.334, 0.666], [1], [0.083, 0.417, 0.333, 0.167], [0.14, 0.151, 0.029, 0.045, 0.139, 0.349, 0.149]]
 pecs = [my_c_ii_file, None, None, None]
@@ -476,11 +503,13 @@ adas_line_data['C']['1'] = add_ion_info(adas_line_data['C']['1'], wavelengths, j
 adas_line_data['C']['2'] = {'default_pecs': adas_root+'adf15/pec96#c/pec96#c_vsu#c2.dat'}
 
 my_c_iii_file = '/home/dgahle/adas/idl_spectra/use_adas208/c_iii_vsu.pass'
-wavelengths = [(4068.27, 4068.96, 4070.00), 4162.90, 4186.90, (4647.42, 4650.25, 4651.47)]
-jj_fraction = [[0.234, 0.268, 0.498], [1], [1], [0.556, 0.333, 0.111] ] # need to update
-pecs = [my_c_iii_file, my_c_iii_file, my_c_iii_file, None]
-exc_block = [5, 7, 9, 2]
-rec_block = [39, 41, 43, 52]
+wavelengths = [(4067.94, 4068.92, 4070.26, 4070.31), 4121.85, 4162.90, 4186.90, (4647.42, 4650.25, 4651.47)]
+jj_fraction = [[0.225, 0.300, 0.425, 0.050], [1], [1], [1], [0.556, 0.333, 0.111] ] # need to update
+# wavelengths = [(4067.94, 4068.92, 4070.26, 4070.31), 4162.90, 4186.90, (4647.42, 4650.25, 4651.47)]
+# jj_fraction = [[0.225, 0.300, 0.425, 0.050], [1], [1], [0.556, 0.333, 0.111] ] # need to update
+pecs = [my_c_iii_file, my_c_iii_file, my_c_iii_file, my_c_iii_file, None]
+exc_block = [5, 6, 7, 9, 2]
+rec_block = [39, 40, 41, 43, 52]
 
 adas_line_data['C']['2'] = add_ion_info(adas_line_data['C']['2'], wavelengths, jj_fraction,
                                         pecs, exc_block, rec_block)
@@ -627,34 +656,45 @@ my_o_ii_file = '/home/dgahle/adas/idl_spectra/use_adas208/o_ii_vsu.pass'
 
 adas_line_data['O']['1'] = {'default_pecs': my_o_ii_file}
 
-wavelengths = [(3954.36, 3973.26, 3982.71), (3967.37, 3985.42, 3992.76, 4007.46),
-               (4069.62, 4069.89, 4072.16, 4075.86, 4078.84, 4084.65, 4085.11, 4092.93, 4094.14, 4107.09),
-               (4084.65, 4096.53), 4112.69, 4113.42, 4152.82, # 404 nm region
-               4563.18, (4590.97, 4595.96, 4596.18), # 465 nm region
-               (4638.86, 4641.81, 4649.13, 4650.84, 4661.63, 4673.73, 4676.24, 4696.35),
-               4700.44, (4690.90, 4691.41, 4701.18, 4701.71),
-               (4698.45, 4699.00, 4703.16, 4705.35, 4741.71), (4699.22, 4705.35), 4710.01]
-jj_fraction = [ [0.333, 0.333, 0.333, 0.333], [0.25, 0.25, 0.25, 0.25],
-                [.1 for l in arange(10)], [.5, .5], [1], [1], [1], # 404 nm region
-                [1], [0.333, 0.333, 0.333], [0.125 for l in arange(8)], [1], # 465 nm region
-                [0.25, 0.25, 0.25, 0.25], [0.2, 0.2, 0.2, 0.2, 0.2], [.5, .5], [1] ]
-pecs = [None, None, None, None, None, None, # 404 nm region
-        None, None, None, None, None, None, None, None] # 465 nm region
-exc_block = [8, 9, 10, 11, 12, 13, 14, # 404 nm region
-             26, 27, 28, 29, 30, 31, 32, 33] # 465 nm region
-rec_block = [49, 50, 51, 52, 53, 54, 55, 56, # 404 nm region
-             68, 69, 70, 71, 72, 73, 74, 75] # 465 nm region
+wavelengths = [3973.26]
+# wavelengths = [(3954.36, 3973.26, 3982.71), (3967.37, 3985.42, 3992.76, 4007.46),
+#                (4069.62, 4069.89, 4072.16, 4075.86, 4078.84, 4084.65, 4085.11, 4092.93, 4094.14, 4107.09),
+#                (4084.65, 4096.53), 4112.69, 4113.42, 4152.82, # 404 nm region
+#                4563.18, (4590.97, 4595.96, 4596.18), # 465 nm region
+#                (4638.86, 4641.81, 4649.13, 4650.84, 4661.63, 4673.73, 4676.24, 4696.35),
+#                4700.44, (4690.90, 4691.41, 4701.18, 4701.71),
+#                (4698.45, 4699.00, 4703.16, 4705.35, 4741.71), (4699.22, 4705.35), 4710.01]
+jj_fraction = [[1]]
+# jj_fraction = [ [0., 1.0, 0.], [0.25, 0.25, 0.25, 0.25],
+#                 [.1 for l in arange(10)], [.5, .5], [1], [1], [1], # 404 nm region
+#                 [1], [0.333, 0.333, 0.333], [0.125 for l in arange(8)], [1], # 465 nm region
+#                 [0.25, 0.25, 0.25, 0.25], [0.2, 0.2, 0.2, 0.2, 0.2], [.5, .5], [1] ]
+pecs = [None]
+# pecs = [None, None, None, None, None, None, # 404 nm region
+#         None, None, None, None, None, None, None, None] # 465 nm region
+exc_block = [8]
+# exc_block = [8, 9, 10, 11, 12, 13, 14, # 404 nm region
+#              26, 27, 28, 29, 30, 31, 32, 33] # 465 nm region
+rec_block = [49]
+# rec_block = [49, 50, 51, 52, 53, 54, 55, 56, # 404 nm region
+#              68, 69, 70, 71, 72, 73, 74, 75] # 465 nm region
 
 adas_line_data['O']['1'] = add_ion_info(adas_line_data['O']['1'], wavelengths, jj_fraction,
                                         pecs, exc_block, rec_block)
 
 adas_line_data['O']['2'] = {'default_pecs': adas_root+'adf15/pec96#o/pec96#o_vsu#o2.dat'}
 
-wavelengths = [3962.69, 3966.79, 4085.40, 4105.01, 4112.81, 4264.14, 4359.08, 4762.61]
-jj_fraction = [ [1], [1], [1], [1], [1], [1], [1], [1] ]
-pecs = [None, None, None, None, None, None, None, None]
-exc_block = [16, 17, 18, 19, 20, 21, 22, 23]
-rec_block = [44, 45, 46, 47, 48, 49, 50, 51]
+wavelengths = [3961.59 ]
+jj_fraction = [ [1] ]
+pecs = [None ]
+exc_block = [16 ]
+rec_block = [44 ]
+
+# wavelengths = [3962.69, 3966.79, 4085.40, 4105.01, 4112.81, 4264.14, 4359.08, 4762.61]
+# jj_fraction = [ [1], [1], [1], [1], [1], [1], [1], [1] ]
+# pecs = [None, None, None, None, None, None, None, None]
+# exc_block = [16, 17, 18, 19, 20, 21, 22, 23]
+# rec_block = [44, 45, 46, 47, 48, 49, 50, 51]
 
 adas_line_data['O']['2'] = add_ion_info(adas_line_data['O']['2'], wavelengths, jj_fraction,
                                         pecs, exc_block, rec_block)
@@ -801,5 +841,6 @@ line_data_multiplet['N']['4']['[4603.73, 4619.98]'] = {'wavelength': [4603.73, 4
 
 
 if __name__=='__main__':
+    print('Success!')
 
     pass

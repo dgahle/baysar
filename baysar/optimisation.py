@@ -48,7 +48,7 @@ class LogWrapper(object):
 
 
 
-def bfgs_worker(posterior, bounds, maxiter, maxfun, connection, end):
+def bfgs_worker(posterior, bounds, maxiter, maxfun, epsilon, connection, end):
     # main loop persists until shutdown event is triggered
     while not end.is_set():
         # poll the pipe until there is something to read
@@ -67,7 +67,7 @@ def bfgs_worker(posterior, bounds, maxiter, maxfun, connection, end):
             if hasattr(posterior, 'cost_gradient'):
                 x_opt, fmin, D = fmin_l_bfgs_b(posterior.cost, theta0, fprime=posterior.cost_gradient, bounds = bounds, maxiter=maxiter, maxfun=maxfun)
             else:
-                x_opt, fmin, D = fmin_l_bfgs_b(posterior.cost, theta0, bounds = bounds, approx_grad = True, maxiter=maxiter, maxfun=maxfun)
+                x_opt, fmin, D = fmin_l_bfgs_b(posterior.cost, theta0, bounds = bounds, approx_grad = True, maxiter=maxiter, maxfun=maxfun, epsilon=epsilon)
 
             # store results in a dictionary
             result = {
@@ -87,15 +87,22 @@ def bfgs_worker(posterior, bounds, maxiter, maxfun, connection, end):
 
 def evolutionary_gradient_ascent(posterior=None, initial_population = None, generations=20, threads=1,
                                  perturbation=0.075, mutation_probability = 0.5, bounds = None,
-                                 maxiter = 1000, maxfun= int(3e4)):
+                                 maxiter = 1000, maxfun= int(3e4), epsilon=1e-8):
+
+    # check that initial population is big enough not to break
+    min_population_size = 8
+    if len(initial_population) < min_population_size:
+        raise ValueError(f"Initial population is too small ({len(initial_population)})! Must be atleast {min_population_size}.")
 
     # initialise all the processes
+    print(f" # initial s0 {posterior(initial_population[0])}")
+
     shutdown_evt = Event()
     processes = []
     connections = []
     for i in range(threads):
         parent_ctn, child_ctn = Pipe()
-        p = Process(target=bfgs_worker, args=(posterior, bounds, maxiter, maxfun, child_ctn, shutdown_evt))
+        p = Process(target=bfgs_worker, args=(posterior, bounds, maxiter, maxfun, epsilon, child_ctn, shutdown_evt))
         p.start()
         processes.append(p)
         connections.append(parent_ctn)
@@ -250,6 +257,8 @@ class Population(object):
 
         # sort the population by fitness
         fitnesses, adults = unzip(sorted(zip(fitnesses, adults), key=lambda x : x[0]))
+        # print(f'fitnesses: {fitnesses}')
+        # print(f'adults: {adults}')
 
         # update elites
         self.elite_adults = adults[-self.n_elites:]
@@ -337,6 +346,7 @@ class Population(object):
         else:
             weights = self.adult_ranks * self.rank_prob(self.get_diversity())
             weights /= weights.sum()
+
         return weights
 
     def get_diversity(self):

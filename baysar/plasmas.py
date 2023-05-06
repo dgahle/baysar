@@ -5,8 +5,9 @@ import copy, warnings
 from itertools import product
 
 import collections
-from baysar.lineshapes import MeshLine
 from baysar.tools import within
+from baysar.lineshapes import MeshLine
+from baysar.line_data import adas_line_data
 
 from scipy.interpolate import RegularGridInterpolator, RectBivariateSpline
 from adas import run_adas406, read_adf11, read_adf15
@@ -161,14 +162,19 @@ def get_meta(element, index=0):
 def kms_to_ms(velocity):
     return 1e3*velocity
 
-from adas import read_adf11, run_adas406
+
 
 adf11_dir="/home/adas/adas/adf11/"
 hydrogen_adf11_plt=adf11_dir+'plt12/plt12_h.dat'
 hydrogen_adf11_prb=adf11_dir+'prb12/prb12_h.dat'
 
+from os.path import exists as file_exists
 def get_adf11(elem, yr, type, adf11_dir=adf11_dir):
-    return adf11_dir+type+str(yr)+'/'+type+str(yr)+'_'+elem.lower()+'.dat'
+    adf11=adf11_dir+type+str(yr)+'/'+type+str(yr)+'_'+elem.lower()+'.dat'
+    if file_exists(adf11):
+        return adf11
+    else:
+        raise FileNotFoundError(f"{adf11} is not found")
 
 def radiated_power(n0, ni, ne, te, is1, adf11_plt=None, adf11_prb=None, elem='N', yr=96, all=False):
     # get adf11 if not passed
@@ -251,8 +257,8 @@ class PlasmaLine():
         # tau_exc=np.logspace(-7, 1, 10)
         # tau_rec=np.logspace(1, -5, 18)
         # magical_tau=np.concatenate( ((np.log10(tau_exc)-np.log10(tau_exc).max()), (-np.log10(tau_rec)+2)) )
-        tau_exc=np.logspace(-7, 2, 10)
-        tau_rec=np.logspace(1, -4, 12)
+        tau_exc=np.logspace(-7, 2, 10+12)
+        tau_rec=np.logspace(1, -4, 12-4)
         magical_tau=np.concatenate( ((np.log10(tau_exc)), (-np.log10(tau_rec)+4)) )
         self.adas_plasma_inputs = {'te': np.logspace(-1, 2, 48), # TODO can we get the raw data instead?
                                    'ne': np.logspace(12, 15, 15),
@@ -287,7 +293,7 @@ class PlasmaLine():
             self.zeeman=False
 
         if 'no_sample_neutrals' in self.input_dict:
-            self.no_sample_neutrals=self.input_dict['zeeman']
+            self.no_sample_neutrals=self.input_dict['no_sample_neutrals']
         else:
             self.no_sample_neutrals=True
 
@@ -310,6 +316,7 @@ class PlasmaLine():
         self.get_impurity_ion_bal()
         self.build_impurity_average_charge()
         self.get_impurity_tecs()
+        self.build_electron_doner_interpolaters()
         if self.contains_hydrogen:
             self.get_hydrogen_pecs()
 
@@ -413,6 +420,10 @@ class PlasmaLine():
                     slice_lengths.append(1)
                     bounds.append([-10, -2]) # ([-7, -3])
                 elif (tag == '_dens' and is_h_isotope and self.no_sample_neutrals):
+                    pass
+                elif (tag == '_Ti' and is_h_isotope and self.cold_neutrals):
+                    pass
+                elif (tag == '_Ti' and not is_h_isotope and self.cold_ions):
                     pass
                 else:
                     sion = s+tag
@@ -530,6 +541,10 @@ class PlasmaLine():
                 self.plasma_state[species+'_dens']=self.plasma_state['main_ion_density'].copy()
             self.update_neutral_profile()
 
+        # get impurity electrons
+        if hasattr(self, 'impurity_electron'):
+            self.get_impurity_electron_profiles()
+
         self.total_power()
 
     def update_neutral_profile(self):
@@ -547,20 +562,29 @@ class PlasmaLine():
         acd = read_adf11(file=self.acdfile, adf11type='acd', is1=1, index_1=-1, index_2=-1,
                          te=te, dens=ne, all=False, skipzero=False, unit_te='ev')
 
+        plt = read_adf11(file=hydrogen_adf11_plt, adf11type='plt', is1=1, index_1=-1,
+                         index_2=-1, te=te, dens=ne, all=False) # , skipzero=False, unit_te='ev')
+
+        prb = read_adf11(file=hydrogen_adf11_prb, adf11type='prb', is1=1, index_1=-1,
+                         index_2=-1, te=te, dens=ne, all=False) # , skipzero=False, unit_te='ev')
+
         # n0_time=self.plasma_state['n0_time']
         n0_time=self.plasma_state[species+'_tau'][0]
-        n0-=n0*ne*scd*n0_time
         if hasattr(self, 'recombining'):
             if self.recombining is True:
                 n0+=n1*ne*acd*n0_time
 
+        n0-=n0*ne*scd*n0_time
         n0=n0.clip(1)
         self.plasma_state[species+'_dens']=n0
 
+        self.h_pot = 2.18e-18
         self.scd=scd
         self.acd=acd
         self.ion_source=n0*ne*scd
         self.ion_sink=n1*ne*acd
+        self.E_ion = plt/scd + self.h_pot
+        self.E_rec = prb/acd - self.h_pot
 
     def print_plasma_state(self):
         print_plasma_state(self)
@@ -651,21 +675,26 @@ class PlasmaLine():
         total_impurity_electrons=0
 
         ne = self.plasma_state['electron_density']
-        te = self.plasma_state['electron_temperature']
+        if self.concstar:
+            for elem in self.impurities:
+                species = [species for species in self.impurity_species if species.startswith(elem+"_")][0]
+                dens = self.plasma_state[species+'_dens']
+                conc = (dens / ne.max()) * ne
+                total_impurity_electrons+=(conc / ne.max()) * ne
+        else:
+            te = self.plasma_state['electron_temperature']
+            for species in self.impurity_species:
+                tau_tag = species+'_tau'
+                dens_tag = species+'_dens'
 
-        for species in self.impurity_species:
-            tau_tag = species+'_tau'
-            dens_tag = species+'_dens'
+                tau = self.plasma_state[tau_tag]
+                conc = self.plasma_state[dens_tag]
+                tau = np.zeros(len(ne)) + tau
 
-            tau = self.plasma_state[tau_tag]
-            conc = self.plasma_state[dens_tag]
-            tau = np.zeros(len(ne)) + tau
-
-            tmp_in = (tau, ne, te)
-            # average_charge = np.exp(self.impurity_average_charge[species](tmp_in))
-            average_charge = self.impurity_average_charge[species](tmp_in).clip(min=0) /2 #TODO: ...
-
-            total_impurity_electrons+=average_charge*conc
+                tmp_in = (tau, ne, te)
+                # average_charge = np.exp(self.impurity_average_charge[species](tmp_in))
+                average_charge = self.impurity_average_charge[species](tmp_in).clip(min=0) /2 #TODO: ...
+                total_impurity_electrons+=average_charge*conc
 
         if set_attribute:
             self.total_impurity_electrons = np.nan_to_num(total_impurity_electrons)
@@ -706,9 +735,24 @@ class PlasmaLine():
         tau_exc = self.adas_plasma_inputs['tau_exc']
         tau_rec = self.adas_plasma_inputs['tau_rec']
 
+        if not hasattr(self, 'concstar'):
+            self.concstar = True
+            print(f"Impurity plasma model self.constar set to {self.concstar}!")
+
+        self.adf11_types = ['scd', 'acd', 'plt', 'prb']
+        self.adf11 = {}
         for elem in self.impurities:
-            adf11_plt=get_adf11(elem, yr=96, type='plt')
-            adf11_prb=get_adf11(elem, yr=96, type='prb')
+            elem_adas_yr = adas_line_data[elem]['ionisation_balance_year']
+
+            self.adf11[elem] = {}
+            for adf11_type in self.adf11_types:
+                if adf11_type in adas_line_data[elem]:
+                    self.adf11[elem][adf11_type] = adas_line_data[elem][adf11_type]
+                elif elem_adas_yr is not None:
+                    self.adf11[elem][adf11_type] = get_adf11(elem, yr=elem_adas_yr, type=adf11_type)
+                else:
+                    raise ValueError(f"{elem} data is missing references for {adf11_type.capitalize()} data!")
+
             num_ions=get_number_of_ions(elem)
             shape=(len(tau_exc)+len(tau_rec), len(ne), len(te), num_ions)
             shape_pow=(len(tau_exc)+len(tau_rec), len(ne), len(te), num_ions-1)
@@ -717,18 +761,21 @@ class PlasmaLine():
             power=np.zeros(shape_pow)
             meta_index=0
             meta=get_meta(elem, index=meta_index)
-            min_frac0=1e-5
+            min_frac0=1e-8
             min_frac1=1e-15
             for t_counter, t in enumerate(tau_exc):
                 print(t_counter, t)
                 with HiddenPrints():
-                    out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
+                    out, pow = run_adas406(files=self.adf11[elem], elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
                 out['ion'][out['ion'] < min_frac0]=min_frac1
+                if self.concstar:
+                    concstar_correction = np.arange(out['ion'].shape[-1]).clip(1)
+                    out['ion'] = out['ion'] / concstar_correction[None, None, :]
                 bal[t_counter, :, :, :]=out['ion']
                 for ion in range(power.shape[-1]):
                     is1=ion+1
-                    plt=read_adf11(file=adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
-                    prb=read_adf11(file=adf11_prb, adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+                    plt=read_adf11(file=self.adf11[elem]['plt'], adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+                    prb=read_adf11(file=self.adf11[elem]['prb'], adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
 
                     ni=bal[t_counter, :, :, ion]
                     nr=bal[t_counter, :, :, is1]
@@ -737,17 +784,22 @@ class PlasmaLine():
                     power[t_counter, :, :, ion]=tmppower
 
             # downstream transport
+            min_frac0=1e-4
             meta_index=-1
             meta=get_meta(elem, index=meta_index)
             for t_counter, t in enumerate(tau_rec):
                 with HiddenPrints():
-                    out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
+                    # out, pow = run_adas406(year=96, elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
+                    out, pow = run_adas406(files=self.adf11[elem], elem=elem, te=te, dens=ne, tint=t, meta=meta, all=True)
                 out['ion'][out['ion'] < min_frac0]=min_frac1
+                if self.concstar:
+                    concstar_correction = np.arange(out['ion'].shape[-1]).clip(1)
+                    out['ion'] = out['ion'] / concstar_correction[None, None, :]
                 bal[len(tau_exc)+t_counter, :, :, :]=out['ion']
                 for ion in range(power.shape[-1]):
                     is1=ion+1
-                    plt=read_adf11(file=adf11_plt, adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
-                    prb=read_adf11(file=adf11_prb, adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+                    plt=read_adf11(file=self.adf11[elem]['plt'], adf11type='plt', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
+                    prb=read_adf11(file=self.adf11[elem]['prb'], adf11type='prb', is1=is1, index_1=-1, index_2=-1, te=te, dens=ne, all=True)
 
                     ni=bal[t_counter, :, :, ion]
                     nr=bal[t_counter, :, :, is1]
@@ -777,7 +829,7 @@ class PlasmaLine():
 
                 self.impurity_raditive_power[elem_ion]=dict(rad_power)
 
-    def impurity_power(self, species):
+    def impurity_power(self, species, return_rates=False):
         nz=self.plasma_state[species+'_dens']
         tau=np.log10(self.plasma_state[species+'_tau'])
         ne=self.plasma_state['electron_density']
@@ -787,14 +839,22 @@ class PlasmaLine():
         lower_index=upper_index-1
         upper_tau=self.adas_plasma_inputs['magical_tau'][upper_index][0]
         lower_tau=self.adas_plasma_inputs['magical_tau'][lower_index][0]
-        dtau=abs(upper_tau-lower_tau)
-        upper_wieght=abs(upper_tau-tau)/dtau
-        lower_wieght=abs(lower_tau-tau)/dtau
+        # da_taus=[lower_tau, tau, upper_tau]
+        # lower_weight, upper_weight=1+np.diff(da_taus)/(da_taus[0]-da_taus[-1])
+        # lower_weight, upper_weight=1+np.array([da_taus[1]-da_taus[0], da_taus[-1]-da_taus[1] ])/(da_taus[0]-da_taus[-1])
+        upper_weight = (tau - lower_tau) / (upper_tau - lower_tau)
+        lower_weight = 1 - upper_weight
+        # print(lower_tau, tau, upper_tau)
+        # print(lower_weight, upper_weight)
 
-        upper_power=np.exp( self.impurity_raditive_power[species][upper_tau].ev(ne, te) )
-        lower_power=np.exp( self.impurity_raditive_power[species][lower_tau].ev(ne, te) )
+        upper_power_rates=upper_weight*np.exp(self.impurity_raditive_power[species][upper_tau].ev(ne, te))
+        lower_power_rates=lower_weight*np.exp(self.impurity_raditive_power[species][lower_tau].ev(ne, te))
+        power_rates = (upper_power_rates+lower_power_rates)
 
-        power=nz*0.5*(upper_wieght*upper_power + upper_wieght*upper_power)
+        if return_rates:
+            return power_rates
+
+        power=nz*power_rates
         if 'power' not in self.plasma_state:
             self.plasma_state['power']={}
 
@@ -803,6 +863,37 @@ class PlasmaLine():
         power=np.trapz(power, self.los)
 
         return power
+
+    def extrapolate_impurity_power(self, species='N_2', proton_number=None):
+        elem = species.split('_')[0]
+        if proton_number is None:
+            if elem in atomic_number:
+                proton_number = atomic_number[elem]
+            else:
+                raise ValueError(f"{elem} atomic number is not in data base. Pass atomic number using function input proton_number or update atomic_number dict in baysar.plasmas.")
+
+        dens = self.plasma_state[species+'_dens']
+        tau = np.log10(self.plasma_state[species+'_tau'])
+        ne=self.plasma_state['electron_density']
+        te=self.plasma_state['electron_temperature']
+
+        power = []
+        for charge in range(proton_number):
+            tmp_ion = elem + f"_{charge}"
+            upper_index=self.adas_plasma_inputs['magical_tau'].searchsorted(tau)
+            lower_index=upper_index-1
+            upper_tau=self.adas_plasma_inputs['magical_tau'][upper_index][0]
+            lower_tau=self.adas_plasma_inputs['magical_tau'][lower_index][0]
+            upper_weight = (tau - lower_tau) / (upper_tau - lower_tau)
+            lower_weight = 1 - upper_weight
+
+            upper_power_rates=upper_weight*np.exp(self.impurity_raditive_power[tmp_ion][upper_tau].ev(ne, te))
+            lower_power_rates=lower_weight*np.exp(self.impurity_raditive_power[tmp_ion][lower_tau].ev(ne, te))
+            power_rates = (upper_power_rates+lower_power_rates)
+
+            power.append(dens * power_rates)
+
+        return np.array(power)
 
     def total_power(self, extrapolate=False):
         power=0
@@ -816,12 +907,12 @@ class PlasmaLine():
         if self.contains_hydrogen:
             for species in self.hydrogen_species:
                 n0=self.plasma_state[species+'_dens']
-                plt=read_adf11(file=hydrogen_adf11_plt, adf11type='plt', is1=1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
+                plt=read_adf11(file=hydrogen_adf11_plt, adf11type='plt', is1=1, index_1=-1, index_2=-1, te=te, dens=ne, all=False) # , skipzero=False, unit_te='ev')
                 exc_power=ne*n0*plt
                 self.plasma_state['power'][species+'_exc']=exc_power
                 power+=exc_power
 
-            prb=read_adf11(file=hydrogen_adf11_prb, adf11type='prb', is1=1, index_1=-1, index_2=-1, te=te, dens=ne, all=all) # , skipzero=False, unit_te='ev')
+            prb=read_adf11(file=hydrogen_adf11_prb, adf11type='prb', is1=1, index_1=-1, index_2=-1, te=te, dens=ne, all=False) # , skipzero=False, unit_te='ev')
             rec_power=ne*ni*prb
             self.plasma_state['power'][self.hydrogen_species[0]+'_rec']=rec_power
             power+=rec_power
@@ -929,6 +1020,122 @@ class PlasmaLine():
             if not check_bounds_order(self.theta_bounds):
                 raise ValueError('Bounds could not be reordered!')
         return [((bound[0]<r) and (r<bound[1])) or any([b==r for b in bound]) for bound, r in zip(self.theta_bounds, theta)]
+
+
+    def build_electron_doner_interpolaters(self):
+        electron_doner_interpolaters(self)
+
+    def get_impurity_electron_profiles(self):
+        get_impurity_electrons(self)
+
+
+from scipy.interpolate import RectBivariateSpline
+def electron_doner_interpolaters(self):
+    ne=self.adas_plasma_inputs['ne']
+    te=self.adas_plasma_inputs['te']
+
+    impurity_electrons = {}
+    impurity_electrons_interp = {}
+    for z0 in self.impurities:
+
+        impurity_electrons_interp[z0] = {}
+        num_charge_states = self.impurity_ion_bal[z0].shape[-1]
+
+        electrons_per_ion = np.arange(num_charge_states)[None, None, None, :]
+        if self.concstar:
+            electrons_per_ion = np.square(electrons_per_ion)
+
+        impurity_electrons[z0] = self.impurity_ion_bal[z0] * electrons_per_ion
+
+        for z in range(num_charge_states):
+
+            # print(z0, z)
+            tmp_e_list = []
+            for tnum, tau in enumerate(self.adas_plasma_inputs['magical_tau']):
+                rates = impurity_electrons[z0][tnum, :, :, z]
+                tmpspline = RectBivariateSpline(ne, te, np.log( rates.clip(1e-30) ))
+                tmp_e_list.append((tau, tmpspline))
+
+            impurity_electrons_interp[z0][z] = dict(tmp_e_list)
+
+    self.impurity_electron_dict = impurity_electrons
+    self.impurity_electron = impurity_electrons_interp
+
+
+def get_impurity_electrons(self):
+    ne=self.plasma_state['electron_density']
+    te=self.plasma_state['electron_temperature']
+
+
+    if True: # 'total_ion_density' not in self.plasma_state:
+        self.plasma_state['total_ion_density'] = self.plasma_state['main_ion_density'].copy()
+
+    # print(self.impurities)
+    # print(ne.max(), te.max())
+    # print(ne.shape, te.shape)
+    self.electrons_per_ion = {}
+    for z0 in self.impurities:
+        tmp = []
+        num_charge_states = self.impurity_ion_bal[z0].shape[-1]
+        for z in 1 + np.arange(num_charge_states-1):
+            tmp_key = f"{z0}_{z}_tau"
+            if not tmp_key in self.plasma_state:
+                tmp_key = None
+                tmp_z = z
+                while tmp_key is None:
+                    tmp_z += 1
+                    tmp_key = f"{z0}_{tmp_z}_tau"
+                    if tmp_key not in self.plasma_state:
+                        tmp_key = None
+
+                    if tmp_z == num_charge_states:
+                        tmp_key = [ts for ts in self.plasma_state if ts.startswith(z0+'_') and ts.endswith('_tau')]
+                        tmp_key = tmp_key[-1]
+
+            tau = self.plasma_state[tmp_key][0]
+
+            i = self.adas_plasma_inputs['magical_tau'].searchsorted(np.log10(tau))
+            j = i - 1
+            i_upper = np.power(10, self.adas_plasma_inputs['magical_tau'][i])
+            j_lower = np.power(10, self.adas_plasma_inputs['magical_tau'][j])
+            k_norm = abs(i_upper - j_lower)
+
+            lower_wieght = 1 - (tau - j_lower)/k_norm
+            upper_wieght = 1 - lower_wieght
+
+            if not np.isclose(tau, lower_wieght*j_lower + upper_wieght*i_upper, rtol=1e-05, atol=1e-08, equal_nan=False):
+                print(z0, z, tmp_key, tau, lower_wieght*j_lower + upper_wieght*i_upper)
+                raise ValueError(f"Linear interpolation error!")
+
+            exc_electrons = np.exp(self.impurity_electron[z0][z][self.adas_plasma_inputs['magical_tau'][i]].ev(ne, te))
+            # rec_electrons = np.exp(self.impurity_electron[z0][z+1][self.adas_plasma_inputs['magical_tau'][i]].ev(ne, te))
+            # mean_electrons = np.array([exc_electrons, rec_electrons]).mean(0)
+            # print(z0, z, np.log10(tau), mean_electrons.max(), mean_electrons.shape)
+            # tmp.append(mean_electrons)
+            tmp.append(exc_electrons)
+
+        self.electrons_per_ion[z0] = np.array(tmp)
+        # print(z0, self.electrons_per_ion[z0].sum(0).max())
+
+        if self.concstar:
+            if not hasattr(self, 'impurity_density_profile'):
+                self.impurity_density_profile = {}
+
+            if not hasattr(self, 'impurity_electron_profile'):
+                self.impurity_electron_profile = {}
+
+            z0_dens_key = [ts for ts in self.plasma_state if ts.startswith(z0+'_') and ts.endswith('_dens')][0]
+            z0_dens =  self.plasma_state[z0_dens_key][0]
+            tmp_profile = z0_dens * (ne / ne.max())
+            self.impurity_density_profile[z0] = tmp_profile / self.electrons_per_ion[z0].sum(0)
+            self.impurity_electron_profile[z0] = tmp_profile
+            self.plasma_state['total_ion_density'] += self.impurity_density_profile[z0]
+
+            # print(z0, z, self.plasma_state['total_ion_density'].max(), self.plasma_state['total_ion_density'].argmax(), tmp_profile.max(), self.plasma_state['main_ion_density'].max())
+
+
+
+
 
 
 class PlasmaSimple2D:

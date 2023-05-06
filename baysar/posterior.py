@@ -13,15 +13,17 @@ import concurrent.futures
 from multiprocessing import Pool
 # from baysar.priors import gaussian_low_pass_cost
 
+from itertools import product
+
 from baysar.priors import CurvatureCost, AntiprotonCost, MainIonFractionCost
 from baysar.priors import NeutralFractionCost, StaticElectronPressureCost, TauPrior
-from baysar.priors import ChargeStateOrderPrior
+from baysar.priors import ChargeStateOrderPrior, StarkToPeakPrior
 from baysar.priors import WavelengthCalibrationPrior, CalibrationPrior, GaussianInstrumentFunctionPrior
 from baysar.priors import gaussian_low_pass_cost, gaussian_high_pass_cost
 from baysar.plasmas import PlasmaLine
 from baysar.spectrometers import SpectrometerChord
 from baysar.tools import within, progressbar, clip_data
-from baysar.linemodels import XLine
+from baysar.linemodels import BalmerHydrogenLine, XLine
 from baysar.optimisation import evolutionary_gradient_ascent, sample_around_theta, optimise
 from baysar.output_tools import plot_fit_demo
 
@@ -62,44 +64,70 @@ class BaysarPosterior(object):
         self.print_errors = print_errors
         self.temper = temper
 
+        self.passed_priors=priors
         self.curvature = curvature
-        if self.curvature is not None:
-            self.posterior_components.append(CurvatureCost(self.plasma, self.curvature))
-
-        # calibration priors
-        if self.plasma.calibrate_wavelength:
-            inmean=self.posterior_components[0].x_data.mean()
-            indisp=np.diff(self.posterior_components[0].x_data).mean()
-            wcp_input=[self.plasma, [inmean, indisp], [2*indisp, indisp*0.05]]
-            self.posterior_components.append(WavelengthCalibrationPrior(*wcp_input))
-        if self.plasma.calibrate_intensity:
-            self.posterior_components.append(CalibrationPrior(self.plasma))
-        if self.plasma.calibrate_instrument_function:
-            self.posterior_components.append(GaussianInstrumentFunctionPrior(self.plasma.plasma_state))
-
-        # static Pe priors
-        self.posterior_components.append(StaticElectronPressureCost(self.plasma))
-        # neutral fraction priors
-        if self.plasma.contains_hydrogen:
-            n0_prior=NeutralFractionCost(self.plasma, species=self.plasma.hydrogen_species[0])
-            self.posterior_components.append(n0_prior)
-        # priors for impure plasmas (could use better phrasing)
-        if len(self.plasma.impurities)>0:
-            self.posterior_components.append(AntiprotonCost(self.plasma))
-            self.posterior_components.append(MainIonFractionCost(self.plasma))
-            self.posterior_components.append(ChargeStateOrderPrior(self))
-            # self.posterior_components.append(TauPrior(self.plasma))
-
-        self.posterior_components.extend(priors)
 
         self.nan_thetas = []
         self.inf_thetas = []
         self.positive_thetas = []
         self.runtimes = []
 
+        self.get_priors()
         self.set_sensible_bounds()
 
         self.init_test(skip_test)
+
+    def got_p(self, comp):
+        return any([type(p) is comp for p in self.posterior_components])
+
+    def get_priors(self):
+        if self.curvature is not None and not self.got_p(CurvatureCost):
+            self.posterior_components.append(CurvatureCost(self.plasma, self.curvature))
+
+        # calibration priors
+        if self.plasma.calibrate_wavelength and not self.got_p(WavelengthCalibrationPrior):
+            for num in range(self.plasma.num_chords):
+                inmean=self.posterior_components[num].x_data.mean()
+                indisp=np.diff(self.posterior_components[0].x_data).mean()
+                wcp_input=[self.plasma, [inmean, indisp], [2*indisp, indisp*0.05]]
+                self.posterior_components.append(WavelengthCalibrationPrior(*wcp_input))
+        if self.plasma.calibrate_intensity and not self.got_p(CalibrationPrior):
+            self.posterior_components.append(CalibrationPrior(self.plasma))
+        if self.plasma.calibrate_instrument_function and not self.got_p(GaussianInstrumentFunctionPrior):
+            self.posterior_components.append(GaussianInstrumentFunctionPrior(self.plasma.plasma_state))
+
+        # static Pe priors
+        if not self.got_p(StaticElectronPressureCost):
+            self.posterior_components.append(StaticElectronPressureCost(self.plasma))
+        # neutral fraction priors
+        if self.plasma.contains_hydrogen:
+            if not self.got_p(NeutralFractionCost):
+                n0_prior=NeutralFractionCost(self.plasma, species=self.plasma.hydrogen_species[0])
+                self.posterior_components.append(n0_prior)
+
+            if not self.got_p(StarkToPeakPrior):
+                for p in self.posterior_components[:self.plasma.num_chords]:
+                    for l in p.lines:
+                        if type(l)==BalmerHydrogenLine and not self.got_p(StarkToPeakPrior):
+                            stark_prior=StarkToPeakPrior(plasma=self.plasma, line=l)
+                            self.posterior_components.append(stark_prior)
+                        if self.got_p(StarkToPeakPrior):
+                            break
+                    if self.got_p(StarkToPeakPrior):
+                        break
+
+        # priors for impure plasmas (could use better phrasing)
+        if len(self.plasma.impurities)>0:
+            if not self.got_p(AntiprotonCost):
+                self.posterior_components.append(AntiprotonCost(self.plasma))
+            if not self.got_p(MainIonFractionCost):
+                self.posterior_components.append(MainIonFractionCost(self.plasma))
+            if not self.got_p(ChargeStateOrderPrior):
+                self.posterior_components.append(ChargeStateOrderPrior(self))
+
+        for p in self.passed_priors:
+            if not self.got_p(p):
+                self.posterior_components.append(p)
 
     def check_init_inputs(self, priors, check_bounds, temper, curvature, print_errors):
         if len(priors)>0:
@@ -232,12 +260,20 @@ class BaysarPosterior(object):
                     new_limit-=np.log10(charge)
                     nb_range=2
                 else: # neutrals
-                    new_limit-=0.7
-                    nb_range=1
+                    nb_range=3
                 self.plasma.theta_bounds[self.plasma.slices[s]][0]=[new_limit-nb_range, new_limit]
             if not self.plasma.thermalised:
                 if s.endswith('_Ti'):
                     self.plasma.theta_bounds[self.plasma.slices[s]][0]=[0, 1.7]
+
+        # Need to search each chord for XLines and evalute l.estimate_ems_and_bounds to get bounds
+        for chord in self.posterior_components[:self.plasma.num_chords]:
+            for l in chord.lines:
+                if type(l) == XLine:
+                    l.estimate_ems_and_bounds(chord.x_data, chord.y_data)
+                    self.plasma.theta_bounds[self.plasma.slices[l.line_tag]]=l.bounds
+                    # self.plasma.theta_bounds[self.plasma.slices[l.line_tag]][0]=l.bounds
+
 
     def random_start(self, order=1, flat=False):
         start = [np.mean(np.random.uniform(bounds[0], bounds[1], size=order)) for bounds in self.plasma.theta_bounds]
@@ -274,20 +310,22 @@ class BaysarPosterior(object):
             chords=[chord for chord in self.posterior_components if type(chord)==SpectrometerChord]
             for chord in chords:
                 rs[self.plasma.slices['background_'+str(chord.chord_number)].start]=np.log10(np.mean(chord.y_data_continuum))
-            # improved start for mystery_lines
-            half_width_range=0.1
-            half_width_range=np.array([-half_width_range, half_width_range])
-            for xline in [line for line in chord.lines if type(line)==XLine]:
-                estemate_ems=0
-                half_width_wave=np.diff(chord.x_data)[0]*2
-                for cwl, fraction in zip(xline.line.cwl, xline.line.fractions):
-                    _, y=clip_data(chord.x_data, chord.y_data, [cwl-half_width_wave, cwl+half_width_wave])
-                    estemate_ems+=sum(y*fraction)
-                # rs[self.plasma.slices[xline.line_tag].start]=np.log10(estemate_ems)
-                rs[self.plasma.slices[xline.line_tag].start]=np.random.uniform( *(np.log10(estemate_ems)-1+1e1*half_width_range) )
+            # # improved start for mystery_lines
+            # half_width_range=0.1
+            # half_width_range=np.array([-half_width_range, half_width_range])
+            # for xline in [line for line in chord.lines if type(line)==XLine]:
+            #     estemate_ems=0
+            #     half_width_wave=np.diff(chord.x_data)[0]*2
+            #     for cwl, fraction in zip(xline.line.cwl, xline.line.fractions):
+            #         _, y=clip_data(chord.x_data, chord.y_data, [cwl-half_width_wave, cwl+half_width_wave])
+            #         estemate_ems+=sum(y*fraction)
+            #     # rs[self.plasma.slices[xline.line_tag].start]=np.log10(estemate_ems)
+            #     rs[self.plasma.slices[xline.line_tag].start]=np.random.uniform( *(np.log10(estemate_ems)-1+1e1*half_width_range) )
 
         if not all(self.plasma.is_theta_within_bounds(rs)):
-            raise ValueError("Error in rs shape. {} should be {}.".format(rs.shape, self.plasma.n_params))
+            for i in np.where([not a for a in self.plasma.is_theta_within_bounds(rs)])[0]:
+                print(f"Index: {i}, rs[i] = {rs[i]}, bounds = {self.plasma.theta_bounds[i]}")
+            raise ValueError(f"Some of rs is out of bounds! Read above the traceback.")
 
         out=[self(rs), rs]
         if spectra:

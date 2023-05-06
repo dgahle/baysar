@@ -574,10 +574,9 @@ class ReducedBowmanTProfile:
             self.bounds.append(self.sigma_bounds)
 >>>>>>> dev
 
+        self.bounds.append([0, 2])
         if self.asdex:
-            self.bounds.extend([[-2, 0], self.bounds[0]])
-        else:
-            self.bounds.append([0, 2])
+            self.bounds.extend([self.bounds[0]])
 
 <<<<<<< HEAD
         if self.zero_bounds is not None:
@@ -649,7 +648,8 @@ class SimpleSeparatrix(object):
         self.electron_temperature=LinearSeparatrix(self.x, bounds_te)
 
 def esymmtric_gaussian(x, ems, cwl, sigma, efactor):
-    dx=cwl-x
+    # dx=cwl-x
+    dx=x-cwl
     sigma+=efactor/(1+np.exp(-dx))
     mean_square=np.square(dx/sigma)
 
@@ -681,35 +681,120 @@ class EsymmtricProfile:
 
     def __call__(self, theta):
         if self.centre is None:
-            A, c, sigma, f=theta
+            # A, c, sigma, f=theta
+            A, c, f=theta
+            min = 1e-3
         else:
-            A, sigma, f=theta
+            # A, sigma, f=theta
+            A, f, min=theta
             c=self.centre
 
-        btheta=[np.power(10, A), c, sigma, f]
-        return self.peak(self.x, *btheta).clip(1e-3)
+        # sigma=1
+        # btheta=[np.power(10, A), c, sigma, f]
+        # btheta=[np.power(10, A), c, f, sigma]
+        btheta=[np.power(10, A), c, 0.2*f, f]
+        return self.peak(self.x, *btheta).clip(min)
 
     def get_bounds(self):
 
         if self.centre is None:
             self.bounds.append([-5, 2])
 
-        shape_bounds=[[1., 10.],
-                      [0, 10]] # asymmetry bounds
-
-        self.bounds.extend(shape_bounds)
+        self.bounds.append([1, 6])
+        if self.centre is not None:
+            self.bounds.append([0.2, 3])
         self.number_of_variables=len(self.bounds)
 
 class EsymmtricCauchyPlasma:
-    def __init__(self, x=None, dr_bounds=[-5, 2], bounds_ne=[13, 15], bounds_te=[0., 1.7], ptype='cauchy', **args):
+    def __init__(self, x=None, dr_bounds=[-5, 2], bounds_ne=[13, 15], bounds_te=[0., 1.7], dr=None, ptype='cauchy', **args):
         if x is None:
             self.x=np.linspace(-10, 25, 50)
         else:
             self.x=x
 
-        self.electron_density=EsymmtricProfile(self.x, bounds_ne, centre=None, ptype='cauchy')
-        self.electron_temperature=EsymmtricProfile(self.x, bounds_te, centre=0, ptype='cauchy')
+        self.dr = dr
 
+        self.electron_density=EsymmtricProfile(self.x, bounds_ne, centre=self.dr, ptype=ptype)
+        self.electron_temperature=EsymmtricProfile(self.x, bounds_te, centre=0, ptype=ptype)
+
+
+class FlatProfile:
+    def __init__(self, x, bounds_te):
+        self.x = x
+        self.bounds = [bounds_te]
+        self.number_of_variables = len(self.bounds)
+
+    def __call__(self, theta):
+        te = theta[0]
+
+        profile = np.power(10, te) + np.zeros(self.x.shape)
+
+        return profile
+
+
+class LeftTopHatProfile:
+    def __init__(self, x, bounds_ne, dr_bounds):
+        self.x = x
+        self.bounds = [bounds_ne, dr_bounds]
+        self.number_of_variables = len(self.bounds)
+
+    def __call__(self, theta):
+        ne, l = theta
+
+        profile = np.zeros(self.x.shape) + 1e10
+        res = self.x[1] - self.x[0]
+        profile[np.where(self.x < l+res)] = np.power(10, ne)
+
+        return profile
+
+
+class SlabPlasma:
+    def __init__(self, x=None, dr_bounds=[-5, 2], bounds_ne=[13, 15], bounds_te=[0., 2.], **args):
+        if x is None:
+            self.x=np.linspace(0, 20, 200)
+        else:
+            self.x=x
+
+        self.electron_density=LeftTopHatProfile(self.x, bounds_ne, dr_bounds)
+        self.electron_temperature=FlatProfile(self.x, bounds_te)
+
+from numpy import linspace, zeros, where, power
+class LeftRightTopHatProfile:
+    def __init__(self, x, centre, bounds_left, bounds_right, alt=None):
+        self.x = x
+        self.centre = centre
+        self.alt = alt
+        self.bounds = [bounds_left, bounds_right]
+        if self.alt is not None:
+            self.bounds.append([2, 8])
+        self.number_of_variables = len(self.bounds)
+
+    def __call__(self, theta):
+        if self.alt is not None:
+            left, right, centre = theta
+            self.centre = centre
+            self.alt.centre = centre
+        else:
+            left, right = theta
+
+
+        profile = zeros(self.x.shape)
+        profile[where(self.x < self.centre)] = power(10, left)
+        profile[where(self.centre < self.x)] = power(10, right)
+
+        return profile
+
+
+class DoubleSlabPlasma:
+    def __init__(self, x=None, centre=4, **args):
+        if x is None:
+            self.x=linspace(0, 20, 200)
+        else:
+            self.x=x
+
+        # self.centre = centre
+        self.electron_temperature=LeftRightTopHatProfile(self.x, centre, bounds_left=[-1, 0.7], bounds_right=[0, 2.])
+        self.electron_density=LeftRightTopHatProfile(self.x, centre, bounds_left=[13, 15], bounds_right=[13, 14.7], alt=self.electron_temperature)
 
 if __name__=='__main__':
 

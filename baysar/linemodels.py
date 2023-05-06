@@ -13,7 +13,7 @@ import warnings
 
 import time as clock
 
-<<<<<<< HEAD
+
 def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
 
     """
@@ -165,14 +165,35 @@ class BasicLine(object):
         self.wavelengths = wavelengths
 
         self.vectorise = vectorise
-=======
-import numpy as np
-from numpy import sqrt, linspace, diff, arange, zeros, where, nan_to_num, array, log10, trapz, sin, cos, interp, dot
->>>>>>> dev
+
+from numpy import sqrt, linspace, diff, arange, zeros, where, nan_to_num, array, log10, trapz, sin, cos, interp, dot, isinf
+
 
 from baysar.lineshapes import Gaussian, reduce_wavelength
 
+# from numpy import log10, trapz
+from baysar.tools import clip_data # x_data, y_data, x_range
+def estimate_XLine(l, wave, ems, half_width=None, half_range=0.5):
+    """
+    Esimates the area of a mystery line (XLine) and gives bounds.
 
+    return estimate, bounds
+    """
+
+    if half_width is None:
+        half_width=2*diff(wave).mean()
+
+    estimate_list=[]
+    for cwl in l.line.cwl:
+        tmp_range=[(cwl-half_width), (cwl+half_width)]
+        newx, newy = clip_data(wave, ems, tmp_range)
+        estimate_list.append( trapz(newy, newx) )
+
+    estimate=log10( sum(estimate_list) )
+    bounds=[estimate-2*half_range, estimate+half_range]
+    return estimate, bounds
+
+from numpy import trapz
 class XLine(object):
     def __init__(self, cwl, wavelengths, plasma, fractions, fwhm=0.2, species='X', half_range=5):
         self.plasma = plasma
@@ -185,17 +206,11 @@ class XLine(object):
         self.line = Gaussian(x=wavelengths, cwl=cwl, fwhm=fwhm, fractions=fractions, normalise=True)
 
     def __call__(self):
-        ems = self.plasma.plasma_state[self.line_tag]
-        return self.line(ems)
+        self.emission_fitted = self.plasma.plasma_state[self.line_tag].mean()
+        return self.line(self.emission_fitted)
 
-    def estimate_log_ems(self, wavelength, spectra):
-        log_ems_estimate=0
-        half_width=0.3
-        for cwl in self.line.cwl:
-            condition = ((cwl-half_width) < wavelength) and (wavelength < (cwl-half_width))
-            index = np.where(condition)[0]
-            log_ems_estimate += spectra[index].sum()
-        self.log_ems_estimate = np.log10(log_ems_estimate)
+    def estimate_ems_and_bounds(self, wavelength, spectra):
+        self.estimate, self.bounds=estimate_XLine(self, wavelength, spectra)
 
 
 from scipy.constants import speed_of_light
@@ -332,51 +347,33 @@ class ADAS406Lines(object):
 
     def __call__(self):
 
-        n0 = self.plasma.plasma_state[self.species+'_dens']
+        n0 = self.plasma.plasma_state[self.species+'_dens'].copy()[0]
         ne = self.plasma.plasma_state['electron_density'].flatten()
         te = self.plasma.plasma_state['electron_temperature'].flatten()
         tau = self.plasma.plasma_state[self.species+'_tau'][0]
-        # tau = np.zeros(len(ne))+self.plasma.plasma_state[self.species+'_tau'][0]
+
+        if self.plasma.concstar:
+            p = ne/ne.max()
+            n0 = n0 * p
+
+        self.n0 = n0
+
+        if hasattr(self.plasma, 'ne_tau'):
+            if self.plasma.ne_tau: # in 1e13cm-3ms
+                tau = 1e3*tau/(ne*1e-13)
         if self.species+'_velocity' in self.plasma.plasma_state:
             self.velocity=self.plasma.plasma_state[self.species+'_velocity']
             doppler_shift_ADAS406Lines(self, self.velocity)
 
-        # self.tec_in[:, 0] = self.plasma.plasma_state[self.species+'_tau'][0]# np.array([tau, ne, te])
-        # self.tec_in[:, 1] = self.plasma.plasma_state['electron_density']
-        # self.tec_in[:, 2] = self.plasma.plasma_state['electron_temperature']
-        # TODO: comparison to weight on log(tau) vs tau
-        adas_taus = self.plasma.adas_plasma_inputs['magical_tau'] # needs line below to!!!
-        j=adas_taus.searchsorted(np.log10(tau))
-        # adas_taus = self.plasma.adas_plasma_inputs['tau_exc']
-        # j=adas_taus.searchsorted(tau)
-        i=j-1
 
-        # index checks:
-        if any([not c < len(adas_taus) for c in (i, j)]):
-            things=[i, j, np.round(np.log10(tau), 2), len(adas_taus), adas_taus.min(), adas_taus.max()]
-            raise ValueError("Indices i and/or j ({}, {}) are out of bounds. tau = 1e{} s and len(adas_taus) = {} with range ({}, {})".format(*things))
+        _ = self.get_tec(ne, te, tau, star=True)
 
-        d_tau=1/(adas_taus[j]-adas_taus[i])
-        i_weight = (tau-adas_taus[i])*d_tau
-        j_weight = (adas_taus[j]-tau)*d_tau
-
-        # tec406_lhs = self.tec406[i](self.tec_in[:, 1], self.tec_in[:, 2])
-        # tec406_rhs = self.tec406[j](self.tec_in[:, 1], self.tec_in[:, 2])
-        tec406_lhs = self.tec406[i].ev(ne, te)
-        tec406_rhs = self.tec406[j].ev(ne, te)
-        self.tec406_lhs=tec406_lhs
-        self.tec406_lhs=tec406_lhs
-        # tec = np.exp(tec406_lhs*i_weight+tec406_rhs*j_weight)
-        self.tec_weights=[i_weight, j_weight]
-        tec = np.exp(tec406_lhs)*i_weight + np.exp(tec406_rhs)*j_weight
-        tec = np.nan_to_num(tec) # todo - why? and fix!
-        self.tec=tec
-
-        self.emission_profile = (n0*tec).clip(1) # why do negatives occur here?
-        self.emission_fitted=np.trapz(self.emission_profile, x=self.plasma.los) / (4*pi)
+        self.emission_profile = (n0*self.tec).clip(1) # ph/cm-3/s # why do negatives occur here?
+        self.emission_fitted=np.trapz(self.emission_profile, x=self.plasma.los) / (4*pi) # ph/cm-2/sr/s
 
         self.ems_ne = dot(self.emission_profile , ne) / self.emission_profile.sum()
-        self.ems_conc = n0 / self.ems_ne
+        self.ems_conc = dot(self.emission_profile , n0 / ne) / self.emission_profile.sum()
+        # self.ems_conc = n0 / self.ems_ne
         self.ems_te = dot(self.emission_profile , te) / self.emission_profile.sum()
 
         if self.plasma.cold_ions:
@@ -386,17 +383,73 @@ class ADAS406Lines(object):
 
         self.ti=self.plasma.plasma_state[self.species+'_Ti']
 
-<<<<<<< HEAD
-        ems = np.nan_to_num( ems.clip(min=1e-20) )
-=======
-        peak=self.linefunction(self.ti, self.emission_fitted )
+
+        peak=self.linefunction(self.ti, self.emission_fitted ) # ph/cm-2/A/sr/s
+
         if any(np.isnan(peak)):
             raise TypeError('NaNs in peaks of {} (tau={}, ems_sum={})'.format(self.line, np.log10(tau), self.emission_fitted ))
         if any(np.isinf(peak)):
             raise TypeError('infs in peaks of {} (tau={}, ems_sum={}))'.format(self.line, np.log10(tau), self.emission_fitted ))
->>>>>>> dev
+
 
         return peak
+
+    def get_tec(self, ne, te, tau, grad=0, star=False):
+
+        # TODO: comparison to weight on log(tau) vs tau
+        adas_taus = self.plasma.adas_plasma_inputs['magical_tau'] # needs line below to!!!
+        j=adas_taus.searchsorted(np.log10(tau))
+        i=j-1
+
+        # index checks:
+        if any([not c < len(adas_taus) for c in (i, j)]):
+            things=[i, j, np.round(np.log10(tau), 2), len(adas_taus), adas_taus.min(), adas_taus.max()]
+            raise ValueError("Indices i and/or j ({}, {}) are out of bounds. tau = 1e{} s and len(adas_taus) = {} with range ({}, {})".format(*things))
+
+        self.da_taus=[adas_taus[i], np.log10(tau), adas_taus[j]]
+        self.tec_weights=1+np.diff(self.da_taus)/(self.da_taus[0]-self.da_taus[-1])
+        i_weight, j_weight=self.tec_weights
+
+        if False:
+            if star:
+                tec406_lhs = self.tec406[i].ev(ne, te)
+                tec406_rhs = self.tec406[j].ev(ne, te)
+            else:
+                raise ValueError("Non concstar tec not yet implimented!")
+        else:
+            tec406_lhs = self.tec406[i].ev(ne, te)
+            tec406_rhs = self.tec406[j].ev(ne, te)
+
+        self.tec406_lhs=tec406_lhs
+        self.tec406_rhs=tec406_rhs
+
+        # self.tec406_wieghted=tec406_lhs*i_weight + tec406_rhs*j_weight
+        # self.tec=np.nan_to_num( np.exp(self.tec406_wieghted) ) # todo - why? and fix!
+
+        self.tec406_wieghted=np.exp(tec406_lhs)*i_weight + np.exp(tec406_rhs)*j_weight
+        self.tec=np.nan_to_num(self.tec406_wieghted) # todo - why? and fix!
+
+        if grad:
+            # raise ValueError(f"Gradient method yet to be implimented!")
+            # calculate the d/dne
+            grad_ne_tec406_lhs = self.tec406[i].ev(ne, te, dx=grad, dy=0)
+            grad_ne_tec406_rhs = self.tec406[j].ev(ne, te, dx=grad, dy=0)
+            # grad_ne = np.exp(grad_ne_tec406_lhs)*i_weight + np.exp(grad_ne_tec406_rhs)*j_weight
+            grad_ne = grad_ne_tec406_lhs*i_weight + grad_ne_tec406_rhs*j_weight
+            # calculate the d/dTe
+            # grad_te_tec406_lhs = self.tec406[i].ev(ne, te, dx=0, dy=grad)
+            # grad_te_tec406_rhs = self.tec406[j].ev(ne, te, dx=0, dy=grad)
+            grad_te_tec406_lhs = self.tec406[i].ev(ne, te, dx=0, dy=grad)
+            grad_te_tec406_rhs = self.tec406[j].ev(ne, te, dx=0, dy=grad)
+            # grad_te = np.exp(grad_te_tec406_lhs)*i_weight + np.exp(grad_te_tec406_rhs)*j_weight
+            grad_te = (grad_te_tec406_lhs*i_weight + grad_te_tec406_rhs*j_weight)  
+            # calculate the d/dlogtau
+            grad_logtau = (np.exp(tec406_rhs) - np.exp(tec406_lhs)) / (adas_taus[j] - adas_taus[i])
+
+            return self.tec, np.array([grad_ne, grad_te, grad_logtau])
+        else:
+            return self.tec
+
 
 
 # def comparison(self, theta, line_model='stehle_param'):
@@ -434,8 +487,9 @@ loman_coeff={'32': [0.7665, 0.064, 3.710e-18],  # Balmer Series
 def stehle_param(n_upper, n_lower, cwl, wavelengths, electron_density, electron_temperature):
     # Paramaterised MMM Stark profile coefficients from Bart's paper
     a_ij, b_ij, c_ij = loman_coeff[str(n_upper) + str(n_lower)]
-    delta_lambda_12ij = c_ij*np.divide( (1e6*electron_density)**a_ij, electron_temperature**b_ij)  # nm
-    ls_s = 1 / (abs((wavelengths - cwl))**(2.5) + (5 * delta_lambda_12ij)**(2.5))
+    delta_lambda_12ij = 10.0 * c_ij*np.divide( (1e6*electron_density)**a_ij, electron_temperature**b_ij)  # nm -> A
+    gamma = delta_lambda_12ij / 2.0
+    ls_s = 1 / (abs((wavelengths - cwl))**2.5 + gamma**2.5)
     return ls_s / trapz(ls_s, wavelengths)
 
 
@@ -487,7 +541,6 @@ class HydrogenLineShape(object):
             self.n_upper=n_upper
             self.n_lower=n_lower
 
-<<<<<<< HEAD
         from baysar.lineshapes import GaussiansNorm # , Gaussian
 
         wavelengths_doppler_num = len(self.wavelengths)
@@ -525,16 +578,15 @@ class HydrogenLineShape(object):
 
         self.get_delta_magnetic_quantum_number()
         self.bohr_magnaton = scipy.constants.physical_constants['Bohr magneton in K/T'][0]
-=======
+
         # print("Transition n=%d -> %d | %f A"%(self.n_upper, self.n_lower, np.round(self.cwl, 2)))
->>>>>>> dev
 
         # # TODO - why?
         # wavelengths_doppler_num = len(self.wavelengths) # todo make a power of 2
         # if wavelengths_doppler_num % 2 == 0:
         #     wavelengths_doppler_num += 1
-
-        self.wavelengths_doppler = arange(self.cwl-10, self.cwl+10, np.diff(self.wavelengths)[0])
+        dlambda=np.diff(self.wavelengths).mean()
+        self.wavelengths_doppler = arange(self.cwl-10, self.cwl+10+dlambda, dlambda)
         self.doppler_function = DopplerLine(cwl=copy(self.cwl), wavelengths=self.wavelengths_doppler, atomic_mass=atomic_mass, half_range=5000)
 
     def __call__(self, theta):
@@ -543,14 +595,14 @@ class HydrogenLineShape(object):
         else:
             electron_density, electron_temperature, ion_temperature = theta
 
-        doppler_component = self.doppler_function(ion_temperature, 1)
+        self.doppler_component = self.doppler_function(ion_temperature, 1)
         if self.zeeman:
-            doppler_component=zeeman_split(self.cwl, doppler_component, self.wavelengths_doppler, b_field, viewangle)
+            self.doppler_component=zeeman_split(self.cwl, self.doppler_component, self.wavelengths_doppler, b_field, viewangle)
 
-        stark_component = stehle_param(self.n_upper, self.n_lower, self.cwl, self.wavelengths, electron_density, electron_temperature)
+        self.stark_component = stehle_param(self.n_upper, self.n_lower, self.cwl, self.wavelengths, electron_density, electron_temperature)
 
         # peak=np.convolve(stark_component, doppler_component/doppler_component.sum(), 'same')
-        peak=fftconvolve(stark_component, doppler_component, 'same')
+        peak=fftconvolve(self.stark_component, self.doppler_component, 'same')
         peak/=trapz(peak, self.wavelengths)
 
         return peak
@@ -582,7 +634,7 @@ class BalmerHydrogenLine(object):
         n1 = self.plasma.plasma_state['main_ion_density']
         ne = self.plasma.plasma_state['electron_density']
         te = self.plasma.plasma_state['electron_temperature']
-        n0 = self.plasma.plasma_state[self.species+'_dens'][0]
+        n0 = self.plasma.plasma_state[self.species+'_dens']
 
         self.n0_profile=n0
 
@@ -600,30 +652,36 @@ class BalmerHydrogenLine(object):
         rec_pec = np.exp(self.rec_pec(ne, te))
         exc_pec = np.exp(self.exc_pec(ne, te))
         # set minimum number of photons to be 1
-        self.rec_profile = n1.clip(1)*ne*rec_pec # need to exclude antiprotons from emission!
-        self.exc_profile = n0*ne*exc_pec
+        # need to exclude antiprotons from emission!
+        self.rec_profile = n1.clip(1)*ne*rec_pec # ph/cm-3/s
+        self.exc_profile = n0*ne*exc_pec # ph/cm-3/s
+        self.rec_ems_weights = self.rec_profile / self.rec_profile.sum()
+        self.exc_ems_weights = self.exc_profile / self.exc_profile.sum()
 
-        rec_sum = np.trapz(self.rec_profile, x=self.plasma.los) / (4*pi)
-        exc_sum = np.trapz(self.exc_profile, x=self.plasma.los) / (4*pi)
+        self.rec_sum = np.trapz(self.rec_profile, x=self.plasma.los) / (4*pi) # ph/cm-2/sr/s
+        self.exc_sum = np.trapz(self.exc_profile, x=self.plasma.los) / (4*pi) # ph/cm-2/sr/s
         self.ems_profile = self.rec_profile + self.exc_profile
         self.emission_fitted=np.trapz(self.ems_profile, x=self.plasma.los) / (4*pi)
 
         # used for the emission lineshape calculation
-        self.exc_ne = dot(self.exc_profile, ne) / self.exc_profile.sum()
-        self.exc_te = dot(self.exc_profile, te) / self.exc_profile.sum()
+        self.exc_ne = dot(self.exc_ems_weights, ne)
+        self.exc_te = dot(self.exc_ems_weights, te)
+        self.exc_n0 = dot(self.exc_ems_weights, self.n0_profile)
+        self.exc_n0_frac = dot(self.exc_ems_weights, self.n0_profile/ne)
+        self.exc_n0_frac_alt = self.exc_n0 / self.exc_ne
 
-        self.rec_ne = dot(self.rec_profile, ne) / self.rec_profile.sum()
-        self.rec_te = dot(self.rec_profile, te) / self.rec_profile.sum()
+        self.rec_ne = dot(self.rec_ems_weights, ne)
+        self.rec_te = dot(self.rec_ems_weights, te)
 
         # just because there are nice to have
-        self.f_rec = rec_sum / self.emission_fitted
+        self.f_rec = self.rec_sum / self.emission_fitted
         self.ems_ne = dot(self.ems_profile, ne) / self.ems_profile.sum()
         self.ems_te = dot(self.ems_profile, te) / self.ems_profile.sum()
 
         if self.plasma.cold_neutrals:
             self.plasma.plasma_state[self.species+'_Ti']=0.01
         elif self.plasma.thermalised:
-            thermalised_ti=(1-self.frec)*self.exc_te+self.frec*self.rec_te
+            thermalised_ti=(1-self.f_rec)*self.exc_te+self.f_rec*self.rec_te
             self.plasma.plasma_state[self.species+'_Ti']=thermalised_ti
 
 
@@ -633,10 +691,25 @@ class BalmerHydrogenLine(object):
 
         self.exc_lineshape_input = [self.exc_ne, self.exc_te, self.exc_ti, bfield, viewangle]
         self.rec_lineshape_input = [self.rec_ne, self.rec_te, self.rec_ti, bfield, viewangle]
-        self.exc_peak = nan_to_num( self.lineshape(self.exc_lineshape_input) )
-        self.rec_peak = nan_to_num( self.lineshape(self.rec_lineshape_input) )
+        self.exc_peak = nan_to_num( self.lineshape(self.exc_lineshape_input) )*self.exc_sum
+        self.rec_peak = nan_to_num( self.lineshape(self.rec_lineshape_input) )*self.rec_sum
+        self.ems_peak = self.rec_peak + self.exc_peak
 
-        return self.rec_peak*rec_sum + self.exc_peak*exc_sum
+        return self.ems_peak # ph/cm-2/A/sr/s
+
+
+from numpy import round, dot
+def print_ADAS406Line_summary(line):
+    print(f"{line.species}: {round(line.ems_te, 2)} eV, {round(line.ems_ne/1e14, 2)} 1e14 cm-3, {round(1e2*line.ems_conc, 2)} %")
+
+def print_BalmerLine_summary(line):
+    print(f"{line.species} exc: {round(line.exc_te, 2)} eV, {round(line.exc_ne/1e14, 2)} 1e14 cm-3, {round(1e2*line.exc_n0_frac, 3)} %")
+    print(f"{line.species} rec: {round(line.rec_te, 2)} eV, {round(line.rec_ne/1e14, 2)} 1e14 cm-3, {round(1e2*line.f_rec, 2)} %")
+
+def weighted_line_ratio(chord, upper, lower):
+    weights = chord.lines[upper].emission_profile / chord.lines[upper].emission_profile.sum()
+    ratio = chord.lines[upper].emission_profile / chord.lines[lower].emission_profile
+    return dot(weights, ratio)
 
 
 
