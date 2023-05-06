@@ -1,6 +1,7 @@
 # O. Imports and Settings
 # 0.0. Before Anything Else Settings
 import os
+
 batch_mode = os.getenv('LOADL_ACTIVE', None)
 job_name = os.getenv('LOADL_JOB_NAME', None)
 execution_mode = os.getenv('LOADL_STEP_TYPE', None)
@@ -9,32 +10,32 @@ if batch_mode == 'yes':
     matplotlib.use('Agg')
     print('In batch mode')
 
-# 0.1. Standard Imports
-import numpy as np
+import argparse
+import datetime
+import itertools as itert
+import pickle
+import sys
+import time as clock
+from collections import OrderedDict
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D as ax3d
+
+# 0.1. Standard Imports
+import numpy as np
+import scipy.integrate as scigrate
 
 # import scipy.ndimage.filters as filters
 # import scipy.io as sio
 # from scipy import constants
 # import scipy.integrate as integ
 import scipy.interpolate as inter
-import scipy.integrate as scigrate
 import scipy.optimize as opt
 import scipy.signal as scisig
-from scipy.interpolate import RectBivariateSpline
-from scipy.integrate.quadrature import simps as simps
 import scipy.sparse as sparse
-
-from collections import OrderedDict
-import itertools as itert
-import pickle
-import sys
-import time as clock
-import datetime
-import argparse
+from mpl_toolkits.mplot3d import Axes3D as ax3d
+from scipy.integrate.quadrature import simps as simps
+from scipy.interpolate import RectBivariateSpline
 
 # from psi_2018.testing.pfs_batch.development.fort_convolve.learning import custer
 # from fort_convolve.learning import custer
@@ -51,7 +52,8 @@ start_time = clock.time()
 
 # 0.2. Inference Tools
 <<<<<<< HEAD
-from inference.mcmc import GibbsChain #, TemperedChain #, ParallelTempering
+from inference.mcmc import GibbsChain  # , TemperedChain #, ParallelTempering
+
 =======
 # from inference.mcmc import GibbsChain, TemperedChain #, ParallelTempering
 >>>>>>> dev

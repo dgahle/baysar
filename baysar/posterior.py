@@ -1,31 +1,47 @@
-import os, sys, io
+import concurrent.futures
+import io
+import os
+import sys
 import time as clock
-from time import sleep
 from copy import copy
+from itertools import product
+from multiprocessing import Pool
+from random import uniform
+from time import sleep
 
 import numpy as np
 from numpy import random
-from random import uniform
-
 from scipy.optimize import fmin_l_bfgs_b
 
-import concurrent.futures
-from multiprocessing import Pool
+from baysar.linemodels import BalmerHydrogenLine, XLine
+from baysar.optimisation import (
+    evolutionary_gradient_ascent,
+    optimise,
+    sample_around_theta,
+)
+from baysar.output_tools import plot_fit_demo
+from baysar.plasmas import PlasmaLine
+from baysar.priors import (
+    AntiprotonCost,
+    CalibrationPrior,
+    ChargeStateOrderPrior,
+    CurvatureCost,
+    GaussianInstrumentFunctionPrior,
+    MainIonFractionCost,
+    NeutralFractionCost,
+    StarkToPeakPrior,
+    StaticElectronPressureCost,
+    TauPrior,
+    WavelengthCalibrationPrior,
+    gaussian_high_pass_cost,
+    gaussian_low_pass_cost,
+)
+from baysar.spectrometers import SpectrometerChord
+from baysar.tools import clip_data, progressbar, within
+
 # from baysar.priors import gaussian_low_pass_cost
 
-from itertools import product
 
-from baysar.priors import CurvatureCost, AntiprotonCost, MainIonFractionCost
-from baysar.priors import NeutralFractionCost, StaticElectronPressureCost, TauPrior
-from baysar.priors import ChargeStateOrderPrior, StarkToPeakPrior
-from baysar.priors import WavelengthCalibrationPrior, CalibrationPrior, GaussianInstrumentFunctionPrior
-from baysar.priors import gaussian_low_pass_cost, gaussian_high_pass_cost
-from baysar.plasmas import PlasmaLine
-from baysar.spectrometers import SpectrometerChord
-from baysar.tools import within, progressbar, clip_data
-from baysar.linemodels import BalmerHydrogenLine, XLine
-from baysar.optimisation import evolutionary_gradient_ascent, sample_around_theta, optimise
-from baysar.output_tools import plot_fit_demo
 
 
 '''
@@ -213,6 +229,7 @@ class BaysarPosterior(object):
 
     def set_sensible_bounds(self, dcwl=2, ddisp=0.005):
         import numpy as np
+
         # chordal bounds
         for chord_num in range(self.plasma.num_chords):
             tmp_chord=self.posterior_components[chord_num]
@@ -756,6 +773,8 @@ class PosteriorLogisticTran:
 
 from baysar.lineshapes import SimpleSeparatrix
 from baysar.plasmas import PlasmaSimple2D
+
+
 class BaysarSimple2DWrapper:
     def __init__(self, posteriors, chords, profile_function=None):
         if profile_function is None:
@@ -822,7 +841,7 @@ if __name__=='__main__':
                                 mystery_lines=mystery_lines, refine=[0.05],
                                 ion_resolved_temperatures=False, ion_resolved_tau=True)
 
-    from baysar.lineshapes import MeshPlasma, BowmanTeePlasma
+    from baysar.lineshapes import BowmanTeePlasma, MeshPlasma
     from baysar.plasmas import arb_obj
 
     x=np.linspace(-10, 35, 50)

@@ -4,7 +4,8 @@
 
 
 import os
-from numpy import ones, arange
+
+from numpy import arange, ones
 
 <<<<<<< HEAD
 line_data = {}

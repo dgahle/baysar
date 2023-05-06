@@ -1,14 +1,14 @@
 from argparse import ArgumentParser
 
-parser=ArgumentParser()
+parser = ArgumentParser()
 
-parser.add_argument('--sample_size', type=int, default=10000)
-parser.add_argument('--save', type=str, default=None)
-parser.add_argument('--plot', action='store_true')
-parser.add_argument('--gaussian', action='store_true')
+parser.add_argument("--sample_size", type=int, default=10000)
+parser.add_argument("--save", type=str, default=None)
+parser.add_argument("--plot", action="store_true")
+parser.add_argument("--gaussian", action="store_true")
 
 
-args=parser.parse_args()
+args = parser.parse_args()
 
 
 import numpy as np
@@ -20,13 +20,15 @@ log_dl_cz_bounds = [-2, 0]
 
 include_tau = False
 if include_tau:
-    bounds = np.array([te_bounds, log_ne_bounds, log_tau_bounds, log_dl_cz_bounds]) # param, lims
+    bounds = np.array(
+        [te_bounds, log_ne_bounds, log_tau_bounds, log_dl_cz_bounds]
+    )  # param, lims
 else:
     bounds = np.array([te_bounds, log_ne_bounds, log_dl_cz_bounds])  # param, lims
 
 if args.gaussian:
     mean = bounds.mean(1)
-    sigma = (bounds[:, -1] - bounds[:, 0])
+    sigma = bounds[:, -1] - bounds[:, 0]
     # sigma = np.sqrt(sigma)
     n_params = len(mean)
     cov = np.zeros((n_params, n_params))
@@ -34,16 +36,16 @@ if args.gaussian:
         cov[n, n] = s
 
     if include_tau:
-        tau_te_corr = - 0.85
+        tau_te_corr = -0.85
         tau_te_cov = tau_te_corr * np.sqrt(cov[0, 0]) * np.sqrt(cov[2, 2])
         cov[2, 0] = tau_te_cov
         cov[0, 2] = tau_te_cov
 
         corr = np.zeros((n_params, n_params))
         from itertools import product
+
         for i, j in product(range(n_params), range(n_params)):
             corr[i, j] = cov[i, j] / (np.sqrt(cov[i, i]) * np.sqrt(cov[j, j]))
-
 
         print(mean)
         # print(bounds)
@@ -52,8 +54,9 @@ if args.gaussian:
         print(corr)
         print()
 
-    from scipy.stats import norm
     from numpy.random import multivariate_normal
+    from scipy.stats import norm
+
     sample_size = args.sample_size
     initial_dist = multivariate_normal(mean, cov, sample_size)
 
@@ -72,7 +75,7 @@ else:
 
     initial_dist = moveaxis(array(initial_dist), [0, 1], [1, 0])
 
-    check = (initial_dist.shape == (args.sample_size, n_params))
+    check = initial_dist.shape == (args.sample_size, n_params)
     if not check:
         print(initial_dist.shape, (args.sample_size, n_params))
         raise ValueError()
@@ -83,7 +86,7 @@ if args.plot:
 
     plt.figure()
 
-    plt.plot(initial_dist[:, 0], initial_dist[:, 2], 'x', alpha=0.1)
+    plt.plot(initial_dist[:, 0], initial_dist[:, 2], "x", alpha=0.1)
 
     # plt.ylim(*bounds[2])
     # plt.xlim(*bounds[0])
@@ -93,7 +96,7 @@ if args.plot:
 if args.save is not None:
     save_type = type(args.save)
     if save_type is not str:
-        raise TypeError(f'--save must pass a str not a {save_type}')
+        raise TypeError(f"--save must pass a str not a {save_type}")
     else:
         np.save(args.save, initial_dist, allow_pickle=True, fix_imports=True)
         print(f"Saved '{args.save}.npy'!")

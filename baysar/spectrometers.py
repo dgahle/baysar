@@ -1,23 +1,52 @@
 <<<<<<< HEAD
-from numpy import square, sqrt, mean, linspace, nan, log, diff, arange, zeros, concatenate, where
+from numpy import (
+    arange,
+    concatenate,
+    diff,
+    linspace,
+    log,
+    mean,
+    nan,
+    sqrt,
+    square,
+    where,
+    zeros,
+)
+
 =======
-from numpy import square, sqrt, mean, std, linspace, nan, log, diff, arange, zeros, concatenate, where
+from numpy import (
+    arange,
+    concatenate,
+    diff,
+    linspace,
+    log,
+    mean,
+    nan,
+    sqrt,
+    square,
+    std,
+    where,
+    zeros,
+)
+
 >>>>>>> dev
 
-from scipy.ndimage.measurements import center_of_mass
-from scipy.interpolate import interp1d
-from scipy.signal import fftconvolve
-from scipy import sparse
-import numpy as np
+import io
+import os
+import sys
 import time as clock
+import warnings
 
-import os, sys, io, warnings
-
-from baysar.linemodels import XLine, ADAS406Lines, BalmerHydrogenLine
-from baysar.lineshapes import Gaussian
-from baysar.tools import clip_data, progressbar, centre_peak, within
-
+import numpy as np
 from adas import continuo
+from scipy import sparse
+from scipy.interpolate import interp1d
+from scipy.ndimage.measurements import center_of_mass
+from scipy.signal import fftconvolve
+
+from baysar.linemodels import ADAS406Lines, BalmerHydrogenLine, XLine
+from baysar.lineshapes import Gaussian
+from baysar.tools import centre_peak, clip_data, progressbar, within
 
 type_checking={'is_nan'} #
 

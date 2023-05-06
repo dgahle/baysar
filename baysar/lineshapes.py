@@ -1,14 +1,13 @@
-import sys, warnings
+import sys
+import warnings
 
 import numpy as np
-
-from scipy import special
+from scipy import interpolate, special
 from scipy.constants import pi
 from scipy.integrate import trapz
+from scipy.interpolate import UnivariateSpline  # , BSpline
 from scipy.interpolate import interp1d
 
-from scipy import interpolate
-from scipy.interpolate import UnivariateSpline # , BSpline
 
 def reduce_wavelength_check_input(wavelengths, cwl, half_range, return_indicies, power2):
     # :param 1D ndarray wavelengths: Input array to be reduced
@@ -269,6 +268,7 @@ def bowman_tee_distribution_centred(x, theta):
 
 from copy import copy
 
+
 class BowmanTeeNe:
     def __init__(self, x, background=True):
         self.x=x
@@ -292,6 +292,7 @@ class BowmanTeeTe(BowmanTeeNe):
         return bowman_tee_distribution_centred(self.x, theta)
 
 from itertools import product
+
 
 class BowmanTeePlasma(object):
     def __init__(self, x=None, bounds=None, dr_bounds=[-2, 2], bounds_ne=[11, 16], bounds_te=[-1, 2], background=False):
@@ -425,6 +426,8 @@ class LessSimplePlasma:
         self.electron_temperature=ExpDecay(self.x)
 
 from scipy.special import factorial
+
+
 class Poisson:
     def __init__(self, x):
         self.x=x
@@ -491,6 +494,8 @@ class SimpleGaussianPlasma:
 
 
 from scipy.interpolate import interp1d
+
+
 def centre_peak(x, y, centre=0):
     ycentre=x[y.argmax()]
     y=interp1d(x, y, fill_value="extrapolate")(x+ycentre-centre)
@@ -758,7 +763,9 @@ class SlabPlasma:
         self.electron_density=LeftTopHatProfile(self.x, bounds_ne, dr_bounds)
         self.electron_temperature=FlatProfile(self.x, bounds_te)
 
-from numpy import linspace, zeros, where, power
+from numpy import linspace, power, where, zeros
+
+
 class LeftRightTopHatProfile:
     def __init__(self, x, centre, bounds_left, bounds_right, alt=None):
         self.x = x

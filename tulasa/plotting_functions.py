@@ -1,16 +1,15 @@
-import numpy as np
-from numpy import random
-
-import scipy.io as sio
-from scipy.interpolate import interp1d
+import io
+import os
+import sys
 
 import matplotlib.pyplot as plt
+import numpy as np
+import scipy.io as sio
+from numpy import random
+from scipy.interpolate import interp1d
 
-import os, sys, io
-
-from tulasa.data_processing import reduce_sample, hdi_estimator
 from tulasa import general
-
+from tulasa.data_processing import hdi_estimator, reduce_sample
 
 
 def oplot_markers(ax, posterior):
@@ -443,6 +442,8 @@ def plot_p0_probs(posterior, p0):
     general.plot(abs(np.array(p0_probs)), log=True)
 
 from numpy import array
+
+
 def plot_posterior_components(posterior, sample, alpha=1, reference=None):
     pc=[]
     labels=[str(type(posterior)).split('.')[-1][:-2]]
@@ -480,6 +481,8 @@ def plot_fit_old(posterior, sample, size=100, alpha=0.1, ylim=(1e10, 1e16)):
     fig, ax = plt.subplots(2, 1, sharex=True)
 =======
 import numpy as np
+
+
 def plot_fit(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
              error_norm=True, plasma_ref=None, filename=None):
     if size is None:
