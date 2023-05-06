@@ -28,13 +28,6 @@ jobs:
         with: 
           python-version: '3.9'
 
-      # Setting up the repo directories and user config.json
-      - name: Set up repo
-        run: |
-          mkdir input
-          mkdir output
-          cp metadata/config.json config.json
-
       # Runs a single command using the runners shell
       - name: Install dependencies
         run: |
