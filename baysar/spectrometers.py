@@ -1,4 +1,8 @@
+<<<<<<< HEAD
+from numpy import square, sqrt, mean, linspace, nan, log, diff, arange, zeros, concatenate, where
+=======
 from numpy import square, sqrt, mean, std, linspace, nan, log, diff, arange, zeros, concatenate, where
+>>>>>>> dev
 
 from scipy.ndimage.measurements import center_of_mass
 from scipy.interpolate import interp1d

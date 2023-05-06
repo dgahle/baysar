@@ -787,7 +787,23 @@ class BaysarSimple2DWrapper:
 
 if __name__=='__main__':
 
+<<<<<<< HEAD
+    input_dict = {}
+    num_chords = 3
+
+    input_dict['number_of_chords'] = num_chords
+
+    input_dict['chords'] = {}
+
+    from baysar.lineshapes import Gaussian, GaussianNorm
+
+    instrument_function = GaussianNorm(cwl=15, x=np.arange(31))
+    instrument_function = instrument_function([10, 1])
+
+    a_cal = 1e11
+=======
     from baysar.input_functions import make_input_dict
+>>>>>>> dev
 
     num_pixels=1024
     wavelength_axis = [np.linspace(3800, 4350, num_pixels)]

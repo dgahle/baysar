@@ -13,8 +13,161 @@ import warnings
 
 import time as clock
 
-import numpy as np
+
+def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
+
+    """
+    This function returns an array which contains a subsection of input array ('wavelengths') which is
+    between and inclucing the points 'cwl' +- 'half_range'. If the end of this range is outside of the
+    'wavelength' array then the end of the reduced array is the end of the 'wavelength'.
+
+    :param wavelengths: Input array to be reduced
+    :param cwl: Point in the array which will be the centre of the new reduced array
+    :param half_range: Half the range of the new array.
+    :param return_indicies: Boulean (False by default) which when True the function returns the indicies
+                            of 'wavelengths' that match the beginning and end of the reduced array
+    :return: Returns an subset of 'wavelengths' which is centred around 'cwl' with a range of 'cwl' +-
+             'half_range'
+    """
+
+    upper_cwl = cwl + half_range
+    lower_cwl = cwl - half_range
+
+    if upper_cwl > max(wavelengths):
+        upper_index = len(wavelengths) - 1
+    else:
+        tmp_wave = abs(wavelengths - upper_cwl)
+        upper_index = np.where(tmp_wave == min(tmp_wave))[0][0]
+
+    if lower_cwl < max(wavelengths):
+        lower_index = 0
+    else:
+        tmp_wave = abs(wavelengths - lower_cwl)
+        lower_index = np.where(tmp_wave == min(tmp_wave))[0][0]
+
+    # print(lower_index, upper_index)
+
+    if return_indicies:
+        return wavelengths[lower_index:upper_index+1], [lower_index, upper_index]
+    else:
+        return wavelengths[lower_index:upper_index + 1]
+
+def build_tec406(filename):
+
+    """
+    Takes idl .sav file and builds a 3D interpolator (using RegularGridInterpolator) for the Total
+    Emission Coefficent as a function of ion confinement time, electron density and temperature
+
+    :param filename: string of the .sav location
+    :return: Returns a 3D RegularGridInterpolator for ne*TEC(tau, ne, Te)
+    """
+
+    try:
+        tmp_data = readsav(filename)
+    except FileNotFoundError:
+        tmp_data = readsav(filename.replace(' ', ''))
+    except:
+        raise
+
+    tmp_te = np.log10(tmp_data['te']).tolist()
+    tmp_ne = np.log10(tmp_data['edens']).tolist()
+    tmp_tau = np.log10(tmp_data['tau']).tolist()
+
+    tmp_tec_grid0 = tmp_data['tec_grid']
+    tmp_tec_grid = np.log10(copy.copy(tmp_tec_grid0)).tolist()
+
+    tmp_3d = (tmp_tau, tmp_ne, tmp_te)
+
+    bounds_error = False
+
+    try:
+        return RegularGridInterpolator(tmp_3d, tmp_tec_grid, bounds_error=bounds_error)
+    except ValueError:
+        tmp_tec_grid = reshape_tec_grid(tmp_tec_grid)
+        return RegularGridInterpolator(tmp_3d, tmp_tec_grid, bounds_error=bounds_error)
+    except:
+        raise
+
+# TODO: This function actually needs writing
+def build_pec(filename, reaction_key=0):
+
+    """
+    Takes idl .sav file and builds a 2D interpolator (using RectBivariateSpline) for the
+    Photon Emissivity Coeffiecient (PEC) as a function of electron temperature and density
+
+    :param filename: string of the .sav location
+    :param reaction_key: 0 by default which indexes for the excitation PEC data, 1 for the
+                         recombination PEC data
+    :return: Returns a 2D RectBivariateSpline for PEC(ne, Te)
+    """
+
+    try:
+        tmp_data = readsav(filename)
+    except FileNotFoundError:
+        tmp_data = readsav(filename.replace(' ', ''))
+    except:
+        raise
+
+    tmp_te = tmp_data['te']
+    tmp_ne = tmp_data['edens']
+
+    tmp_tec_grid = tmp_data['pecs'][:, :, reaction_key]
+
+    # print( tmp_ne.shape, tmp_te.shape, tmp_tec_grid.shape )
+
+    return RectBivariateSpline( tmp_ne, tmp_te, tmp_tec_grid.T )
+
+def reshape_tec_grid(tec_grid):
+
+    """
+    Takes the 3D ne*TEC Tensor and rearranges the dimentions into an appropriate structure for
+    making the 3D interpolator using build_pec()
+
+    :param tec_grid: 3D ne*TEC Tensor
+    :return: restructured 3D ne*TEC Tensor
+    """
+
+    if type(tec_grid) == list:
+        tec_grid = np.array(tec_grid)
+
+    old_shape = tec_grid.shape
+    new_shape = old_shape[::-1]
+
+    new_tec_grid = np.zeros(new_shape)
+
+    for counter0 in np.arange(new_shape[0]):
+
+        for counter1 in np.arange(new_shape[1]):
+
+
+            try:
+                new_tec_grid[counter0, counter1, :] = tec_grid[:, counter1, counter0]
+            except (ValueError, IndexError):
+                print(counter0, counter1)
+                print(old_shape, new_shape)
+                raise
+            except:
+                raise
+
+    return new_tec_grid
+
+class BasicLine(object):
+
+    """
+    This class is a manager object which takes the input of higher level classes such as
+    NoADASLines, Xline and ADAS406Lines and the lineshape object such as Guassian which
+    are purely statistical and return line shapes.
+    """
+
+    def __init__(self, cwl, wavelengths, lineshape, vectorise, fractions=[]):
+
+        self.cwl = cwl
+        self.wavelengths = wavelengths
+
+        self.vectorise = vectorise
+
 from numpy import sqrt, linspace, diff, arange, zeros, where, nan_to_num, array, log10, trapz, sin, cos, interp, dot, isinf
+
 
 from baysar.lineshapes import Gaussian, reduce_wavelength
 
@@ -230,11 +383,14 @@ class ADAS406Lines(object):
 
         self.ti=self.plasma.plasma_state[self.species+'_Ti']
 
+
         peak=self.linefunction(self.ti, self.emission_fitted ) # ph/cm-2/A/sr/s
+
         if any(np.isnan(peak)):
             raise TypeError('NaNs in peaks of {} (tau={}, ems_sum={})'.format(self.line, np.log10(tau), self.emission_fitted ))
         if any(np.isinf(peak)):
             raise TypeError('infs in peaks of {} (tau={}, ems_sum={}))'.format(self.line, np.log10(tau), self.emission_fitted ))
+
 
         return peak
 
@@ -384,6 +540,44 @@ class HydrogenLineShape(object):
         else:
             self.n_upper=n_upper
             self.n_lower=n_lower
+
+        from baysar.lineshapes import GaussiansNorm # , Gaussian
+
+        wavelengths_doppler_num = len(self.wavelengths)
+
+        if type(wavelengths_doppler_num/2) != int:
+            wavelengths_doppler_num += 1
+
+        self.wavelengths_doppler = np.linspace(self.cwl-10, self.cwl+10, wavelengths_doppler_num)
+
+        self.doppler_function = DopplerLine(self.cwl, self.wavelengths_doppler, GaussiansNorm, atomic_mass)
+
+        self.loman_dict  =  {'32': [0.7665, 0.064, 3.710e-18],  # Balmer Series
+                             '42': [0.7803, 0.050, 8.425e-18],
+                             '52': [0.6796, 0.030, 1.310e-15],
+                             '62': [0.7149, 0.028, 3.954e-16],
+                             '72': [0.7120, 0.029, 6.258e-16],
+                             '82': [0.7159, 0.032, 7.378e-16],
+                             '92': [0.7177, 0.033, 8.947e-16],
+                             '102': [0.7158, 0.032, 1.239e-15],
+                             '112': [0.7146, 0.028, 1.632e-15],
+                             '122': [0.7388, 0.026, 6.459e-16],
+                             '132': [0.7356, 0.020, 9.012e-16],
+
+                             '43': [0.7449, 0.045, 1.330e-16],  # Paschen Series
+                             '53': [0.7356, 0.044, 6.640e-16],
+                             '63': [0.7118, 0.016, 2.481e-15],
+                             '73': [0.7137, 0.029, 3.270e-15],
+                             '83': [0.7133, 0.032, 4.343e-15],
+                             '93': [0.7165, 0.033, 5.588e-15], }
+
+        self.n_upper = n_upper
+        self.n_lower = n_lower
+
+        self.loman_ij_abc = self.loman_dict[str(self.n_upper) + str(self.n_lower)]
+
+        self.get_delta_magnetic_quantum_number()
+        self.bohr_magnaton = scipy.constants.physical_constants['Bohr magneton in K/T'][0]
 
         # print("Transition n=%d -> %d | %f A"%(self.n_upper, self.n_lower, np.round(self.cwl, 2)))
 
