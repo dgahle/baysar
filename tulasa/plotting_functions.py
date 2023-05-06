@@ -475,12 +475,11 @@ def plot_posterior_components(posterior, sample, alpha=1, reference=None):
     plt.tight_layout()
     plt.show()
 
-<<<<<<< HEAD
+
 def plot_fit_old(posterior, sample, size=100, alpha=0.1, ylim=(1e10, 1e16)):
 
     fig, ax = plt.subplots(2, 1, sharex=True)
-=======
-import numpy as np
+
 
 
 def plot_fit(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
@@ -514,7 +513,6 @@ def plot_fit(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
     ax_te2 = ax_plasma2.twinx()  # instantiate a second axes that shares the same x-axis
     ax_te2.set_ylabel(r'$T_{e} \ / \ eV$', color=te_color)  # we already handled the x-label with ax1
     ax_te2.tick_params(axis='y', labelcolor=te_color)
->>>>>>> dev
 
     # ax[0] plot data and fit
     spectra = posterior.posterior_components[0].y_data
@@ -592,7 +590,6 @@ def plot_fit(posterior, sample, size=None, alpha=None, ylim=(1e10, 1e16),
     leg = ax_fit.legend()
     leg.draggable()
 
-<<<<<<< HEAD
     fig.show()
 
 
@@ -717,11 +714,9 @@ def plot_fit(posterior, sample, size=100, alpha=0.1,
     else:
         fig.savefig(filename)
 
-=======
     if filename is None:
         fig.show()
     else:
         plt.tight_layout() # breaks the code
         plt.savefig(filename)
         plt.close()
->>>>>>> dev

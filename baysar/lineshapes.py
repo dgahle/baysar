@@ -501,113 +501,113 @@ def centre_peak(x, y, centre=0):
     y=interp1d(x, y, fill_value="extrapolate")(x+ycentre-centre)
     return y
 
-class ReducedBowmanTProfile:
-    def __init__(self, x, log_peak_bounds, centre=None, dr_bounds=None,
-                       sigma_bounds=None, asdex=False, asdex_c2=0.7, **kwargs):
-
-        self.x=x
-        self.bounds=[log_peak_bounds]
-        self.centre=centre
-        self.dr_bounds=dr_bounds
-        self.sigma_bounds=sigma_bounds
-
-        self.asdex=asdex
-        self.asdex_c2=asdex_c2
-
-        self.get_bounds()
-
-    def __call__(self, theta):
-        # if self.centre is None and self.asdex:
-        #     A, c, sigma, f, B=theta
-        # elif self.centre is None:
-        #     A, c, sigma, f=theta
-        # else:
-        #     A, sigma, f=theta
-        #     c=self.centre
-        if self.asdex:
-            if self.centre is None:
-                A, c, sigma, f, B=theta
-            else:
-                A, sigma, f, B=theta
-                c=self.centre
-        else:
-            if self.centre is None:
-                A, c, sigma, f=theta
-            else:
-                A, sigma, f=theta
-                c=self.centre
-
-        # btheta=[np.power(10, A), c, np.power(10, sigma), self.q, self.nu, self.k, f, 0]
-        if self.asdex:
-            btheta=[np.power(10, A)-np.power(10, B), c, sigma, self.q, self.nu, self.k, f, np.power(10, B)]
-        else:
-            btheta=[np.power(10, A), c, sigma, self.q, self.nu, self.k, f, 0]
-
-<<<<<<< HEAD
-    def __init__(self, x, bounds=[-10, 10], zero_bounds=None, resolution=0.1, kind='quadratic'):
-=======
-        peak=bowman_tee_distribution(self.x, btheta)
-        peak=centre_peak(self.x, peak, centre=c)
-        return peak
->>>>>>> dev
-
-
-    def get_bounds(self):
-
-<<<<<<< HEAD
-        if self.zero_bounds is not None:
-            tmp_x = np.zeros(len(self.x_points)+2)
-            tmp_x[0] = min(bounds)
-            tmp_x[-1] = max(bounds)
-=======
-        if self.centre is None:
-            if self.dr_bounds is None:
-                self.bounds.append([-5, 5])
-            else:
-                self.bounds.append(self.dr_bounds)
->>>>>>> dev
-
-
-<<<<<<< HEAD
-            self.empty_theta = np.zeros(len(self.x_points))
-            self.empty_theta[0] = self.zero_bounds
-            self.empty_theta[-1] = self.zero_bounds
-=======
-        if self.sigma_bounds is None:
-            self.bounds.append([1, 10])
-        else:
-            self.bounds.append(self.sigma_bounds)
->>>>>>> dev
-
-        self.bounds.append([0, 2])
-        if self.asdex:
-            self.bounds.extend([self.bounds[0]])
-
-<<<<<<< HEAD
-        if self.zero_bounds is not None:
-=======
->>>>>>> dev
-
-        self.number_of_variables=len(self.bounds)
-
-        self.q=2. # gaussian setting
-        self.nu=1.
-        self.k=1.
-
-<<<<<<< HEAD
-        assert len(theta) == len(self.x_points), 'len(theta) != len(self.x) ' + \
-                                             str(len(theta)) + ' ' + str(len(self.x_points))
-=======
-class ReducedBowmanTPlasma(object):
-    def __init__(self, x=None, sigma_bounds=[1, 10], dr_bounds=[-5, 5], bounds_ne=[11, 16], bounds_te=[-1, 2], asdex=False):
-        if x is None:
-            self.x=np.linspace(-15, 35, 50)
-        else:
-            self.x=x
->>>>>>> dev
-
-        self.electron_density=ReducedBowmanTProfile(self.x, bounds_ne, centre=None, dr_bounds=dr_bounds, sigma_bounds=sigma_bounds, asdex=asdex)
-        self.electron_temperature=ReducedBowmanTProfile(self.x, bounds_te, centre=0, sigma_bounds=sigma_bounds, asdex=asdex)
+# class ReducedBowmanTProfile:
+#     def __init__(self, x, log_peak_bounds, centre=None, dr_bounds=None,
+#                        sigma_bounds=None, asdex=False, asdex_c2=0.7, **kwargs):
+#
+#         self.x=x
+#         self.bounds=[log_peak_bounds]
+#         self.centre=centre
+#         self.dr_bounds=dr_bounds
+#         self.sigma_bounds=sigma_bounds
+#
+#         self.asdex=asdex
+#         self.asdex_c2=asdex_c2
+#
+#         self.get_bounds()
+#
+#     def __call__(self, theta):
+#         # if self.centre is None and self.asdex:
+#         #     A, c, sigma, f, B=theta
+#         # elif self.centre is None:
+#         #     A, c, sigma, f=theta
+#         # else:
+#         #     A, sigma, f=theta
+#         #     c=self.centre
+#         if self.asdex:
+#             if self.centre is None:
+#                 A, c, sigma, f, B=theta
+#             else:
+#                 A, sigma, f, B=theta
+#                 c=self.centre
+#         else:
+#             if self.centre is None:
+#                 A, c, sigma, f=theta
+#             else:
+#                 A, sigma, f=theta
+#                 c=self.centre
+#
+#         # btheta=[np.power(10, A), c, np.power(10, sigma), self.q, self.nu, self.k, f, 0]
+#         if self.asdex:
+#             btheta=[np.power(10, A)-np.power(10, B), c, sigma, self.q, self.nu, self.k, f, np.power(10, B)]
+#         else:
+#             btheta=[np.power(10, A), c, sigma, self.q, self.nu, self.k, f, 0]
+#
+# <<<<<<< HEAD
+#     def __init__(self, x, bounds=[-10, 10], zero_bounds=None, resolution=0.1, kind='quadratic'):
+# =======
+#         peak=bowman_tee_distribution(self.x, btheta)
+#         peak=centre_peak(self.x, peak, centre=c)
+#         return peak
+# >>>>>>> dev
+#
+#
+#     def get_bounds(self):
+#
+# <<<<<<< HEAD
+#         if self.zero_bounds is not None:
+#             tmp_x = np.zeros(len(self.x_points)+2)
+#             tmp_x[0] = min(bounds)
+#             tmp_x[-1] = max(bounds)
+# =======
+#         if self.centre is None:
+#             if self.dr_bounds is None:
+#                 self.bounds.append([-5, 5])
+#             else:
+#                 self.bounds.append(self.dr_bounds)
+# >>>>>>> dev
+#
+#
+# <<<<<<< HEAD
+#             self.empty_theta = np.zeros(len(self.x_points))
+#             self.empty_theta[0] = self.zero_bounds
+#             self.empty_theta[-1] = self.zero_bounds
+# =======
+#         if self.sigma_bounds is None:
+#             self.bounds.append([1, 10])
+#         else:
+#             self.bounds.append(self.sigma_bounds)
+# >>>>>>> dev
+#
+#         self.bounds.append([0, 2])
+#         if self.asdex:
+#             self.bounds.extend([self.bounds[0]])
+#
+# <<<<<<< HEAD
+#         if self.zero_bounds is not None:
+# =======
+# >>>>>>> dev
+#
+#         self.number_of_variables=len(self.bounds)
+#
+#         self.q=2. # gaussian setting
+#         self.nu=1.
+#         self.k=1.
+#
+# <<<<<<< HEAD
+#         assert len(theta) == len(self.x_points), 'len(theta) != len(self.x) ' + \
+#                                              str(len(theta)) + ' ' + str(len(self.x_points))
+# =======
+# class ReducedBowmanTPlasma(object):
+#     def __init__(self, x=None, sigma_bounds=[1, 10], dr_bounds=[-5, 5], bounds_ne=[11, 16], bounds_te=[-1, 2], asdex=False):
+#         if x is None:
+#             self.x=np.linspace(-15, 35, 50)
+#         else:
+#             self.x=x
+# >>>>>>> dev
+#
+#         self.electron_density=ReducedBowmanTProfile(self.x, bounds_ne, centre=None, dr_bounds=dr_bounds, sigma_bounds=sigma_bounds, asdex=asdex)
+#         self.electron_temperature=ReducedBowmanTProfile(self.x, bounds_te, centre=0, sigma_bounds=sigma_bounds, asdex=asdex)
 
 class LinearSeparatrix:
     def __init__(self, x, peak_bounds=[0, 1.7]):

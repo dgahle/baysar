@@ -51,12 +51,8 @@ start_time = clock.time()
 
 
 # 0.2. Inference Tools
-<<<<<<< HEAD
-from inference.mcmc import GibbsChain  # , TemperedChain #, ParallelTempering
 
-=======
 # from inference.mcmc import GibbsChain, TemperedChain #, ParallelTempering
->>>>>>> dev
 
 # print(TemperedChain, TemperedChain.__file__)
 

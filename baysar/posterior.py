@@ -806,7 +806,6 @@ class BaysarSimple2DWrapper:
 
 if __name__=='__main__':
 
-<<<<<<< HEAD
     input_dict = {}
     num_chords = 3
 
@@ -820,9 +819,7 @@ if __name__=='__main__':
     instrument_function = instrument_function([10, 1])
 
     a_cal = 1e11
-=======
     from baysar.input_functions import make_input_dict
->>>>>>> dev
 
     num_pixels=1024
     wavelength_axis = [np.linspace(3800, 4350, num_pixels)]

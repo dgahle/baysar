@@ -7,7 +7,7 @@ import os
 
 from numpy import arange, ones
 
-<<<<<<< HEAD
+
 line_data = {}
 
 line_data['D'] = {}
@@ -340,9 +340,9 @@ line_data_multiplet['N']['2']['[4591.98, 4610.55, 4610.74]'] = \
 line_data_multiplet['N']['2']['[4634.14, 4640.64, 4641.85]'] = \
     {'wavelength': [4634.14, 4640.64, 4641.85], 'jj_frac': [0.291, 0.512, 0.197],
      'tec': os.path.expanduser('~/baysar/data/n_data/tec_grids/tec_406_grid_n2_38_4640.sav') }
-=======
+
 data_pathroot = os.path.expanduser('~/baysar/data/')
->>>>>>> dev
+
 
 # N V 2 TECs down to 1
 def add_ion_info(dictionary, wavelengths, jj_fraction, pecs, exc_block, rec_block, **kwargs):
@@ -706,14 +706,12 @@ adas_line_data['Ne'] = {'atomic_mass': 20, 'atomic_charge': 10,
 
 # my_o_ii_file = '/home/dgahle/adas/idl_spectra/use_adas208/o_ii_vsu.pass'
 
-<<<<<<< HEAD
 line_data_multiplet['N']['3']['4057.76'] = {'wavelength': 4057.76, 'jj_frac': 1,
              'tec': os.path.expanduser('~/baysar/data/n_data/'
                                          'tec_grids/tec_406_grid_n3_17_4059.sav') }
 line_data_multiplet['N']['3']['4606.33'] = {'wavelength': 4606.33, 'jj_frac': 1 }
-=======
+
 adas_line_data['Ne']['1'] = {'default_pecs':  adas_root+'adf15/pec96#ne/pec96#ne_pju#ne1.dat'}
->>>>>>> dev
 
 wavelengths = [(460.73, 462.39), (454.65, 455.27, 456.28, 456.35, 456.90), (445.04, 446.26, 446.59, 447.82),
                (405.85, 405.85, 407.14), (361.43, 362.46), (357.88, 358.01, 358.14, 358.88, 359.01), 357.54,
@@ -834,11 +832,9 @@ rec_block = [20]
 adas_line_data['Ne']['9'] = add_ion_info(adas_line_data['Ne']['9'], wavelengths, jj_fraction,
                                          pecs, exc_block, rec_block)
 
-<<<<<<< HEAD
 line_data_multiplet['N']['4']['[4603.73, 4619.98]'] = {'wavelength': [4603.73, 4619.98], 'jj_frac': [0.545, 0.455],
              'tec': os.path.expanduser('~/baysar/data/n_data/tec_grids/tec_406_grid_n4_25_4610.sav') }
-=======
->>>>>>> dev
+
 
 
 if __name__=='__main__':
