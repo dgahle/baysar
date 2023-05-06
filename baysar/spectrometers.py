@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 from numpy import (
     arange,
     concatenate,
@@ -13,7 +12,6 @@ from numpy import (
     zeros,
 )
 
-=======
 from numpy import (
     arange,
     concatenate,
@@ -29,7 +27,6 @@ from numpy import (
     zeros,
 )
 
->>>>>>> dev
 
 import io
 import os
