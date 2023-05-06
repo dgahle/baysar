@@ -1,46 +1,36 @@
-
-
-
-'''
+"""
 demo of the building a posteror for fitting two spectra
 
 has no prior
-'''''
+""" ""
 
-import os, sys, io
+import io
+import os
+import sys
 import time as clock
-
-import numpy as np
-from numpy import random
-
-import scipy.io as sio
-from scipy.interpolate import interp1d
 
 import matplotlib.pyplot as plt
+import numpy as np
+import scipy.io as sio
+from numpy import random
+from scipy.interpolate import interp1d
 
-
-import os, sys, io
-
-import time as clock
-
-sys.path.append(os.path.expanduser('~/baysar'))
-
-from tulasa import general
-
-# from tulasa.plotting_functions import plot_guess, mini_matrix, stark_pdf, impurity_pdf
-from tulasa import plotting_functions as pf
-
-from tulasa.data_processing import wave_cal, add_noise, time_posterior, \
-                                   add_chain_bounds
-
-from tulasa import general, fitting
-# from tulasa.plotting_functions import plot_fit
-
-from baysar.lineshapes import GaussianNorm, Eich
-from baysar.input_functions import make_input_dict
-from baysar.posterior import BaysarPosterior, BaysarPosteriorFilterWrapper
+sys.path.append(os.path.expanduser("~/baysar"))
 
 import emcee as thor
+
+from baysar.input_functions import make_input_dict
+from baysar.lineshapes import Eich, GaussianNorm
+from baysar.posterior import BaysarPosterior, BaysarPosteriorFilterWrapper
+
+# from tulasa.plotting_functions import plot_guess, mini_matrix, stark_pdf, impurity_pdf
+from tulasa import fitting, general
+from tulasa import plotting_functions as pf
+from tulasa.data_processing import add_chain_bounds, add_noise, time_posterior, wave_cal
+
+# from tulasa.plotting_functions import plot_fit
+
+
 
 # from inference.mcmc import GibbsChain, HamiltonianChain, PcaChain
 
@@ -53,158 +43,236 @@ def blackouts(data, regions, level):
     return data[1]
 
 
-from tulasa.data_processing import hdi_estimator, calc_dl
+from tulasa.data_processing import calc_dl, hdi_estimator
 
-def postproccess(posterior, sample, hdi_pc=0.85, print_counter=False, save=None, thin=1, lnprobs=None):
 
+def postproccess(
+    posterior, sample, hdi_pc=0.85, print_counter=False, save=None, thin=1, lnprobs=None
+):
     output = {}
 
-    output['sample'] = []
-    output['logP'] = []
+    output["sample"] = []
+    output["logP"] = []
 
     num = int(len(sample) / thin)
 
     for counter0 in np.linspace(0, len(sample) - 1, num=num, dtype=int):
-
         theta = sample[counter0]
 
-        output['sample'].append(theta)
-        output['logP'].append(posterior(theta))
+        output["sample"].append(theta)
+        output["logP"].append(posterior(theta))
 
         # l_keys = ['n_ii_1p', 'n_ii_1g', 'n_ii_3g', 'n_iii_2f', 'n_iii_2p', 'n_iv_3g', 'delta', 'epsilon']
-        l_keys = ['delta', 'epsilon', 'n_ii_3g', 'n_ii_1g', 'n_ii_1p', 'n_iii_2p', 'n_iii_2f', 'n_iv_3g']
+        l_keys = [
+            "delta",
+            "epsilon",
+            "n_ii_3g",
+            "n_ii_1g",
+            "n_ii_1p",
+            "n_iii_2p",
+            "n_iii_2f",
+            "n_iv_3g",
+        ]
 
         for counter1, l in enumerate(posterior.posterior_components[0].lines[:-1]):
-
             tmp_key = l_keys[counter1]
 
             if counter0 == 0:
-
                 try:
                     l.n_upper
 
-                    output[tmp_key] = \
-                        {'ne_exc': [l.exc_ne], 'ne_rec': [l.rec_ne], 'te_exc': [l.exc_te], 'te_rec': [l.rec_te],
-                         'f_rec': [l.f_rec], 'neutral_density': [posterior.plasma.plasma_state['D']['0']['conc']],
-                         'dl': {'exc': [calc_dl(l.exc_profile, hdi_pc, posterior.plasma.plasma_state['los'])],
-                                'rec': [calc_dl(l.rec_profile, hdi_pc, posterior.plasma.plasma_state['los'])],
-                                'total': [calc_dl(l.ems_profile, hdi_pc, posterior.plasma.plasma_state['los'])]}}
+                    output[tmp_key] = {
+                        "ne_exc": [l.exc_ne],
+                        "ne_rec": [l.rec_ne],
+                        "te_exc": [l.exc_te],
+                        "te_rec": [l.rec_te],
+                        "f_rec": [l.f_rec],
+                        "neutral_density": [
+                            posterior.plasma.plasma_state["D"]["0"]["conc"]
+                        ],
+                        "dl": {
+                            "exc": [
+                                calc_dl(
+                                    l.exc_profile,
+                                    hdi_pc,
+                                    posterior.plasma.plasma_state["los"],
+                                )
+                            ],
+                            "rec": [
+                                calc_dl(
+                                    l.rec_profile,
+                                    hdi_pc,
+                                    posterior.plasma.plasma_state["los"],
+                                )
+                            ],
+                            "total": [
+                                calc_dl(
+                                    l.ems_profile,
+                                    hdi_pc,
+                                    posterior.plasma.plasma_state["los"],
+                                )
+                            ],
+                        },
+                    }
                 except AttributeError:
-                    output[tmp_key] = \
-                        {'ems_te': [l.ems_te], 'ems_ne': [l.ems_ne], 'ems_conc': [l.ems_conc],
-                         'dl': [calc_dl(l.emission_profile, hdi_pc, posterior.plasma.plasma_state['los'])]}
+                    output[tmp_key] = {
+                        "ems_te": [l.ems_te],
+                        "ems_ne": [l.ems_ne],
+                        "ems_conc": [l.ems_conc],
+                        "dl": [
+                            calc_dl(
+                                l.emission_profile,
+                                hdi_pc,
+                                posterior.plasma.plasma_state["los"],
+                            )
+                        ],
+                    }
                 except:
                     raise
 
             else:
-
                 if lnprobs is None:
-
                     try:
                         l.n_upper
 
-                        output[tmp_key]['ne_exc'].append(l.exc_ne)
-                        output[tmp_key]['ne_rec'].append(l.rec_ne)
+                        output[tmp_key]["ne_exc"].append(l.exc_ne)
+                        output[tmp_key]["ne_rec"].append(l.rec_ne)
 
-                        output[tmp_key]['te_exc'].append(l.exc_te)
-                        output[tmp_key]['te_rec'].append(l.rec_te)
+                        output[tmp_key]["te_exc"].append(l.exc_te)
+                        output[tmp_key]["te_rec"].append(l.rec_te)
 
-                        output[tmp_key]['f_rec'].append(l.f_rec)
+                        output[tmp_key]["f_rec"].append(l.f_rec)
 
-                        output[tmp_key]['neutral_density'].append(posterior.plasma.plasma_state['D']['0']['conc'])
+                        output[tmp_key]["neutral_density"].append(
+                            posterior.plasma.plasma_state["D"]["0"]["conc"]
+                        )
 
                         try:
-                            dl_exc = calc_dl(l.exc_profile, hdi_pc, posterior.plasma.plasma_state['los'])
+                            dl_exc = calc_dl(
+                                l.exc_profile,
+                                hdi_pc,
+                                posterior.plasma.plasma_state["los"],
+                            )
                         except:
                             dl_exc = np.nan
 
                         try:
-                            dl_rec = calc_dl(l.rec_profile, hdi_pc, posterior.plasma.plasma_state['los'])
+                            dl_rec = calc_dl(
+                                l.rec_profile,
+                                hdi_pc,
+                                posterior.plasma.plasma_state["los"],
+                            )
                         except:
                             dl_rec = np.nan
 
                         try:
-                            dl_ems = calc_dl(l.ems_profile, hdi_pc, posterior.plasma.plasma_state['los'])
+                            dl_ems = calc_dl(
+                                l.ems_profile,
+                                hdi_pc,
+                                posterior.plasma.plasma_state["los"],
+                            )
                         except:
                             dl_ems = np.nan
 
-                        output[tmp_key]['dl']['exc'].append(dl_exc)
-                        output[tmp_key]['dl']['rec'].append(dl_rec)
-                        output[tmp_key]['dl']['total'].append(dl_ems)
+                        output[tmp_key]["dl"]["exc"].append(dl_exc)
+                        output[tmp_key]["dl"]["rec"].append(dl_rec)
+                        output[tmp_key]["dl"]["total"].append(dl_ems)
 
                     except AttributeError:
-
-                        output[tmp_key]['ems_te'].append(l.ems_te)
-                        output[tmp_key]['ems_ne'].append(l.ems_ne)
-                        output[tmp_key]['ems_conc'].append(l.ems_conc)
+                        output[tmp_key]["ems_te"].append(l.ems_te)
+                        output[tmp_key]["ems_ne"].append(l.ems_ne)
+                        output[tmp_key]["ems_conc"].append(l.ems_conc)
 
                         try:
-                            tmp_dl = calc_dl(l.emission_profile, hdi_pc, posterior.plasma.plasma_state['los'])
+                            tmp_dl = calc_dl(
+                                l.emission_profile,
+                                hdi_pc,
+                                posterior.plasma.plasma_state["los"],
+                            )
                         except ValueError:
                             tmp_dl = np.nan
 
-                        output[tmp_key]['dl'].append(tmp_dl)
+                        output[tmp_key]["dl"].append(tmp_dl)
 
                     except:
                         raise
 
                 else:
-
                     if lnprobs[counter0] < -150:
                         pass
                     else:
                         try:
                             l.n_upper
 
-                            output[tmp_key]['ne_exc'].append(l.exc_ne)
-                            output[tmp_key]['ne_rec'].append(l.rec_ne)
+                            output[tmp_key]["ne_exc"].append(l.exc_ne)
+                            output[tmp_key]["ne_rec"].append(l.rec_ne)
 
-                            output[tmp_key]['te_exc'].append(l.exc_te)
-                            output[tmp_key]['te_rec'].append(l.rec_te)
+                            output[tmp_key]["te_exc"].append(l.exc_te)
+                            output[tmp_key]["te_rec"].append(l.rec_te)
 
-                            output[tmp_key]['f_rec'].append(l.f_rec)
+                            output[tmp_key]["f_rec"].append(l.f_rec)
 
-                            output[tmp_key]['neutral_density'].append(posterior.plasma.plasma_state['D']['0']['conc'])
+                            output[tmp_key]["neutral_density"].append(
+                                posterior.plasma.plasma_state["D"]["0"]["conc"]
+                            )
 
                             try:
-                                dl_exc = calc_dl(l.exc_profile, hdi_pc, posterior.plasma.plasma_state['los'])
+                                dl_exc = calc_dl(
+                                    l.exc_profile,
+                                    hdi_pc,
+                                    posterior.plasma.plasma_state["los"],
+                                )
                             except:
                                 dl_exc = np.nan
 
                             try:
-                                dl_rec = calc_dl(l.rec_profile, hdi_pc, posterior.plasma.plasma_state['los'])
+                                dl_rec = calc_dl(
+                                    l.rec_profile,
+                                    hdi_pc,
+                                    posterior.plasma.plasma_state["los"],
+                                )
                             except:
                                 dl_rec = np.nan
 
                             try:
-                                dl_ems = calc_dl(l.ems_profile, hdi_pc, posterior.plasma.plasma_state['los'])
+                                dl_ems = calc_dl(
+                                    l.ems_profile,
+                                    hdi_pc,
+                                    posterior.plasma.plasma_state["los"],
+                                )
                             except:
                                 dl_ems = np.nan
 
-                            output[tmp_key]['dl']['exc'].append(dl_exc)
-                            output[tmp_key]['dl']['rec'].append(dl_rec)
-                            output[tmp_key]['dl']['total'].append(dl_ems)
+                            output[tmp_key]["dl"]["exc"].append(dl_exc)
+                            output[tmp_key]["dl"]["rec"].append(dl_rec)
+                            output[tmp_key]["dl"]["total"].append(dl_ems)
 
                         except AttributeError:
-
-                            output[tmp_key]['ems_te'].append(l.ems_te)
-                            output[tmp_key]['ems_ne'].append(l.ems_ne)
-                            output[tmp_key]['ems_conc'].append(l.ems_conc)
+                            output[tmp_key]["ems_te"].append(l.ems_te)
+                            output[tmp_key]["ems_ne"].append(l.ems_ne)
+                            output[tmp_key]["ems_conc"].append(l.ems_conc)
 
                             try:
-                                tmp_dl = calc_dl(l.emission_profile, hdi_pc, posterior.plasma.plasma_state['los'])
+                                tmp_dl = calc_dl(
+                                    l.emission_profile,
+                                    hdi_pc,
+                                    posterior.plasma.plasma_state["los"],
+                                )
                             except ValueError:
                                 tmp_dl = np.nan
 
-                            output[tmp_key]['dl'].append(tmp_dl)
+                            output[tmp_key]["dl"].append(tmp_dl)
 
                         except:
                             raise
 
-
-
         if print_counter:
-            print(counter0 + 1, len(sample), np.round(100 * (counter0 + 1) / len(sample), 3), ' %')
+            print(
+                counter0 + 1,
+                len(sample),
+                np.round(100 * (counter0 + 1) / len(sample), 3),
+                " %",
+            )
 
     if save is not None:
         np.savez(save, **output)
@@ -213,11 +281,9 @@ def postproccess(posterior, sample, hdi_pc=0.85, print_counter=False, save=None,
 
 
 def new_bounds(sample):
-
     bounds = []
 
     for s in sample:
-
         bounds.append([min(s), max(s)])
 
     return bounds
