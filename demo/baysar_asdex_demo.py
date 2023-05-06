@@ -31,7 +31,6 @@ from tulasa.data_processing import add_chain_bounds, add_noise, time_posterior, 
 # from tulasa.plotting_functions import plot_fit
 
 
-
 # from inference.mcmc import GibbsChain, HamiltonianChain, PcaChain
 
 
