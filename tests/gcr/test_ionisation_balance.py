@@ -5,6 +5,10 @@ from gcr import ionisation_balance
 
 
 # Functions and classes
+def test_ionisation_balance() -> None:
+    _ = ionisation_balance()
+    assert False
+
 def main() -> None:
     pass
 
