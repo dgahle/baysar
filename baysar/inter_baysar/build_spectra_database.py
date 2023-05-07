@@ -23,7 +23,7 @@ initial_distribution = np.load(
 # load atomic data then calculate emissivities and spectra
 from time import time
 
-from adas import read_adf15, run_adas406
+from OpenADAS import read_adf15, run_adas406
 
 from baysar.input_functions import get_species_data
 from baysar.lineshapes import gaussian_norm

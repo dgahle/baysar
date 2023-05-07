@@ -8,7 +8,7 @@ from os.path import exists
 from pathlib import Path
 from typing import Optional, Union
 
-from adas import read_adf11, run_adas406
+from OpenADAS import read_adf11, run_adas406
 from matplotlib.pyplot import legend, subplots
 from numpy import array, concatenate, exp, linspace
 from numpy import load as load_npz
