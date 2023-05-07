@@ -7,7 +7,7 @@ import warnings
 from itertools import product
 
 import numpy as np
-from adas import read_adf11, read_adf15, run_adas406
+from OpenADAS import read_adf11, read_adf15, run_adas406
 from scipy.interpolate import RectBivariateSpline, RegularGridInterpolator
 
 from baysar.line_data import adas_line_data

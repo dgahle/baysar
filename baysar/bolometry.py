@@ -1,5 +1,5 @@
 import numpy as np
-from adas import read_adf11, run_adas406
+from OpenADAS import read_adf11, run_adas406
 
 adf11_dir = "/home/adas/adas/adf11/"
 hydrogen_adf11_plt = adf11_dir + "plt12/plt12_h.dat"

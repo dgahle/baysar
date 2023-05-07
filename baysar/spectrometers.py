@@ -5,7 +5,7 @@ import time as clock
 import warnings
 
 import numpy as np
-# from adas import continuo
+# from OpenADAS import continuo
 from numpy import (
     arange,
     concatenate,

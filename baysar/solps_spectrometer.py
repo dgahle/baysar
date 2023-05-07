@@ -252,7 +252,7 @@ class SOLPSPlasma:
 
 from itertools import product
 
-from adas import read_adf15
+from OpenADAS import read_adf15
 
 from baysar.inter_baysar import TauFromTeEms
 from baysar.linemodels import stehle_param

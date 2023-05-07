@@ -722,7 +722,7 @@ class HydrogenLineShape(object):
         return peak
 
 
-from adas import read_adf11
+from OpenADAS import read_adf11
 
 
 class BalmerHydrogenLine(object):
