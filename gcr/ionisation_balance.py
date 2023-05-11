@@ -1,5 +1,6 @@
 # Imports
-from numpy import diag, ndarray, zeros
+from numpy import abs, arange, einsum, ix_, ndarray, zeros
+from numpy.linalg import eig, inv
 from OpenADAS import load_adf11, get_adf11
 from xarray import DataArray
 
@@ -7,7 +8,7 @@ from xarray import DataArray
 
 
 # Functions and classes
-def ionisation_balance(element: str) -> DataArray:
+def build_rates_matrix(element: str) -> DataArray:
     # Get SCD and ACD for the element
     adf11_scd: str = get_adf11(element, adf11type='scd')
     adf11_acd: str = get_adf11(element, adf11type='acd')
@@ -41,28 +42,53 @@ def ionisation_balance(element: str) -> DataArray:
             # Losses (diagonal)
             rate_matrix[:, :, charge, charge] = - source_data
 
-    #
+    # Format
+    rate_matrix: DataArray = DataArray(
+        rate_matrix,
+        coords=dict(
+            ne=scd.ne,
+            Te=scd.Te,
+            charge0=arange(proton_number),
+            charge1=arange(proton_number)
+        )
+    )
+
+    return rate_matrix
+
+
+def ionisation_balance(element: str) -> DataArray:
+    # Get rates
+    rate_matrix: DataArray = build_rates_matrix(element)
+    proton_number: int = len(rate_matrix.charge0)
+    # Initial conditions (time independent so not important)
     meta: ndarray = zeros(proton_number)
     meta[0] = 1
     # Solve for eigenvalues
-    from numpy import einsum
-    from numpy.linalg import eig, inv
     eigenvalues, eigenvectors = eig(rate_matrix)
+    # Sort
+    eigenvalue_axis: int = 2
+    index: list = list(ix_(*[arange(i) for i in eigenvalues.shape]))
+    index[eigenvalue_axis] = abs(eigenvalues).argsort(eigenvalue_axis)
+    # Calculate fractional abundance
+    # LHS
+    lhs_matrix: ndarray = inv(eigenvectors).dot(meta)
+    lhs_matrix = lhs_matrix[index][:, :, 0]
+    # RHS
+    rhs_matrix: ndarray = eigenvectors.transpose((0, 1, 3, 2))
+    rhs_matrix = rhs_matrix[index][:, :, 0, :]
+    # Fractional abundance
     fractional_abundance: ndarray = einsum(
         'kl,klj->klj',
-        inv(eigenvectors).dot(meta)[:, :, 0],
-        eigenvectors[:, :, :, 0]
+        lhs_matrix,
+        rhs_matrix,
     )
-    # # Normalise
-    # _eigenvalues_normalised: ndarray = eigenvalues - eigenvalues.min()
-    # eigenvalues_normalised: ndarray = _eigenvalues_normalised / _eigenvalues_normalised.sum(-1)[:, :, None]
     # Format
     fractional_abundance: DataArray = DataArray(
         fractional_abundance,
         coords=dict(
-            ne=scd.ne,
-            Te=scd.Te,
-            charge=[0, 1]
+            ne=rate_matrix.ne,
+            Te=rate_matrix.Te,
+            charge=rate_matrix.charge0,
         )
     )
     return fractional_abundance
