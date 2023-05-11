@@ -30,26 +30,35 @@ def ionisation_balance(element: str) -> DataArray:
         # Final entry check
         elif charge == (proton_number - 1):
             # Sources (off diagonal)
-            rate_matrix[:, :, charge, charge - 1] = source_data
-            rate_matrix[:, :, charge - 1, charge] = source_data
+            rate_matrix[:, :, charge, charge - 1] = scd_data
+            rate_matrix[:, :, charge - 1, charge] = acd_data
             # Losses (diagonal)
             rate_matrix[:, :, charge, charge] = - acd_data
         else:
             # Sources (off diagonal)
-            rate_matrix[:, :, charge, charge - 1] = source_data
-            rate_matrix[:, :, charge - 1, charge] = source_data
+            rate_matrix[:, :, charge, charge - 1] = scd_data
+            rate_matrix[:, :, charge - 1, charge] = acd_data
             # Losses (diagonal)
             rate_matrix[:, :, charge, charge] = - source_data
 
+    #
+    meta: ndarray = zeros(proton_number)
+    meta[0] = 1
     # Solve for eigenvalues
-    from numpy.linalg import eig
+    from numpy import einsum
+    from numpy.linalg import eig, inv
     eigenvalues, eigenvectors = eig(rate_matrix)
-    # Normalise
-    _eigenvalues_normalised: ndarray = eigenvalues - eigenvalues.min()
-    eigenvalues_normalised: ndarray = _eigenvalues_normalised / _eigenvalues_normalised.sum(-1)[:, :, None]
+    fractional_abundance: ndarray = einsum(
+        'kl,klj->klj',
+        inv(eigenvectors).dot(meta)[:, :, 0],
+        eigenvectors[:, :, :, 0]
+    )
+    # # Normalise
+    # _eigenvalues_normalised: ndarray = eigenvalues - eigenvalues.min()
+    # eigenvalues_normalised: ndarray = _eigenvalues_normalised / _eigenvalues_normalised.sum(-1)[:, :, None]
     # Format
     fractional_abundance: DataArray = DataArray(
-        eigenvalues_normalised,
+        fractional_abundance,
         coords=dict(
             ne=scd.ne,
             Te=scd.Te,
