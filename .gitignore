@@ -6,6 +6,9 @@
 input
 output
 
+# Test data formats
+*.nc
+
 # Pycharm
 .idea
 
