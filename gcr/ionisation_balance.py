@@ -30,19 +30,20 @@ def build_rates_matrix(element: str) -> DataArray:
         # Neutral
         if charge == 0:
             rate_matrix[:, :, charge, charge] = - scd_data
-        # # Final entry check
-        # elif charge == (proton_number - 1):
-        #     # Sources (off diagonal)
-        #     rate_matrix[:, :, charge, charge - 1] = source_data
-        #     rate_matrix[:, :, charge - 1, charge] = source_data
-        #     # Losses (diagonal)
-        #     rate_matrix[:, :, charge, charge] = - acd_data
+        # Bare nuclei (Final entry check)
+        elif charge == (proton_number - 1):
+            # Sources (off diagonal)
+            rate_matrix[:, :, charge, charge - 1] = scd_data
+            rate_matrix[:, :, charge - 1, charge] = acd_data
+            # Losses (diagonal)
+            rate_matrix[:, :, charge, charge] = - acd_data
+        # Ions
         else:
             # Sources (off diagonal)
-            rate_matrix[:, :, charge, charge - 1] = scd_data  # source_data
-            rate_matrix[:, :, charge - 1, charge] = acd_data  # source_data
+            rate_matrix[:, :, charge, charge - 1] = source_data
+            rate_matrix[:, :, charge - 1, charge] = source_data
             # Losses (diagonal)
-            rate_matrix[:, :, charge, charge] = - acd_data  # source_data
+            rate_matrix[:, :, charge, charge] = - source_data
 
     # Format to DataArray
     charge_array: ndarray = arange(1 + scd.coords['block'].max())
@@ -116,7 +117,7 @@ def ionisation_balance(element: str) -> DataArray:
         pass
     # Format
     fractional_abundance: ndarray = array(fractional_abundance)
-    fractional_abundance = fractional_abundance.reshape(rate_matrix.ne.shape[0], rate_matrix.Te.shape[0], 2)
+    fractional_abundance = fractional_abundance.reshape(rate_matrix.ne.shape[0], rate_matrix.Te.shape[0], r_matrix.shape[0])
     fractional_abundance: DataArray = DataArray(
         fractional_abundance,
         coords=dict(
@@ -130,6 +131,20 @@ def ionisation_balance(element: str) -> DataArray:
 
 
 def main() -> None:
+    from pathlib import Path
+    from xarray import load_dataarray
+    from matplotlib.pyplot import close, show
+    element: str = 'he'
+    fractional_abundance: DataArray = ionisation_balance(element)
+    # Test plotting lines
+    fractional_abundance.interp(ne=1e14).plot.line(x="Te", marker='x', ylim=[0, 1], xscale='log');
+    show()
+    close()
+    # # Unit test
+    # h_ionisation_balance: str = "/Users/daljeet-singh-gahle/github/baysar/tests/gcr/h_ionisation_balance_test_reference.nc"
+    # reference: DataArray = load_dataarray(h_ionisation_balance)
+    # assert fractional_abundance.interp(ne=1e14).equals(reference)  # Test plotting lines
+
     pass
 
 
