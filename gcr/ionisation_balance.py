@@ -74,8 +74,9 @@ def build_rates_matrix(element: str) -> DataArray:
         attrs=dict(
             description="Ionisation balance rate matrix",
             units="cm^3/s",
-        ),
+        )
     )
+
     return rate_matrix
 
 
