@@ -59,7 +59,7 @@ class TimeIt:
         runtime_ns: int = perf_counter_ns() - start_time
         # Format print message
         runtime_msg: str = runtime_to_msg(runtime_ns)
-        runtime_msg = f'{self.func.__name__} ' + runtime_msg.lower()
+        runtime_msg = f"{self.func.__name__} " + runtime_msg.lower()
         self.print(runtime_msg)
         # Return output
         return output

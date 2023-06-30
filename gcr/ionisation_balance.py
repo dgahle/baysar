@@ -1,10 +1,11 @@
 # Imports
 from itertools import product
-from numpy import array, isclose
-from numpy import arange, ndarray, zeros
-from OpenADAS import load_adf11, get_adf11
+
+from numpy import arange, array, isclose, ndarray, zeros
 from scipy.linalg import null_space
 from xarray import DataArray
+
+from OpenADAS import get_adf11, load_adf11
 
 # Variables
 
@@ -12,8 +13,8 @@ from xarray import DataArray
 # Functions and classes
 def build_rates_matrix(element: str) -> DataArray:
     # Get SCD and ACD for the element
-    adf11_scd: str = get_adf11(element, adf11type='scd')
-    adf11_acd: str = get_adf11(element, adf11type='acd')
+    adf11_scd: str = get_adf11(element, adf11type="scd")
+    adf11_acd: str = get_adf11(element, adf11type="acd")
     scd: DataArray = load_adf11(adf11=adf11_scd, passed=True)
     acd: DataArray = load_adf11(adf11=adf11_acd, passed=True)
     # Build the rate matrix
@@ -28,7 +29,7 @@ def build_rates_matrix(element: str) -> DataArray:
         scd_data: ndarray = scd.sel(block=scd_block).data
         # Get ACD rates
         if charge == 0:
-            acd_data: float = 0.
+            acd_data: float = 0.0
         else:
             acd_block: int = charge
             acd_data: ndarray = acd.sel(block=acd_block).data
@@ -36,7 +37,7 @@ def build_rates_matrix(element: str) -> DataArray:
         # Neutral
         if charge == 0:
             # Losses (diagonal)
-            rate_matrix[:, :, charge, charge] = - scd.sel(block=1 + charge).data
+            rate_matrix[:, :, charge, charge] = -scd.sel(block=1 + charge).data
             # Sources (off diagonal)
             rate_matrix[:, :, charge, charge + 1] = acd.sel(block=1 + charge).data
         # Ions
@@ -45,20 +46,21 @@ def build_rates_matrix(element: str) -> DataArray:
             rate_matrix[:, :, charge, charge - 1] = scd.sel(block=charge).data
             rate_matrix[:, :, charge, charge + 1] = acd.sel(block=1 + charge).data
             # Losses (diagonal)
-            loss_rate: ndarray = scd.sel(block=1 + charge).data + acd.sel(block=charge).data
-            rate_matrix[:, :, charge, charge] = - (loss_rate)
+            loss_rate: ndarray = (
+                scd.sel(block=1 + charge).data + acd.sel(block=charge).data
+            )
+            rate_matrix[:, :, charge, charge] = -(loss_rate)
         # Bare nuclei (Final entry check)
         elif charge == (proton_number - 1):
             # Sources (off diagonal)
             rate_matrix[:, :, charge, charge - 1] = scd.sel(block=charge).data
             # Losses (diagonal)
-            rate_matrix[:, :, charge, charge] = - acd.sel(block=charge).data
+            rate_matrix[:, :, charge, charge] = -acd.sel(block=charge).data
         else:
             raise ValueError()
 
-
     # Format to DataArray
-    charge_array: ndarray = arange(1 + scd.coords['block'].max())
+    charge_array: ndarray = arange(1 + scd.coords["block"].max())
     rate_matrix: DataArray = DataArray(
         rate_matrix,
         name=f"{element} Ionisation Balance Rate Matrix",
@@ -71,12 +73,14 @@ def build_rates_matrix(element: str) -> DataArray:
         attrs=dict(
             description="Ionisation balance rate matrix",
             units="cm^3/s",
-        )
+        ),
     )
     return rate_matrix
 
 
 from backend.time import TimeIt
+
+
 @TimeIt
 def ionisation_balance(element: str) -> DataArray:
     """
@@ -108,10 +112,10 @@ def ionisation_balance(element: str) -> DataArray:
     ne0: float
     te0: float
     proton_number: int = len(rate_matrix.charge0)
-    thetas: list[tuple[float, float]] = [theta for theta in product(rate_matrix.ne, rate_matrix.Te)]
-    fractional_abundance: ndarray = zeros(
-        (len(thetas), proton_number)
-    )
+    thetas: list[tuple[float, float]] = [
+        theta for theta in product(rate_matrix.ne, rate_matrix.Te)
+    ]
+    fractional_abundance: ndarray = zeros((len(thetas), proton_number))
     for i, theta in enumerate(thetas):
         # Calculate the null space vector
         ne0, te0 = theta
@@ -124,21 +128,21 @@ def ionisation_balance(element: str) -> DataArray:
         pass
     # Format
     fractional_abundance: ndarray = array(fractional_abundance)
-    fractional_abundance = fractional_abundance.reshape(rate_matrix.ne.shape[0], rate_matrix.Te.shape[0], proton_number)
+    fractional_abundance = fractional_abundance.reshape(
+        rate_matrix.ne.shape[0], rate_matrix.Te.shape[0], proton_number
+    )
     fractional_abundance: DataArray = DataArray(
         fractional_abundance,
         coords=dict(
-            ne=rate_matrix.ne,
-            Te=rate_matrix.Te,
-            charge=list(arange(proton_number))
-        )
+            ne=rate_matrix.ne, Te=rate_matrix.Te, charge=list(arange(proton_number))
+        ),
     )
 
     return fractional_abundance
 
 
 def main() -> None:
-    _ = ionisation_balance(element='he')
+    _ = ionisation_balance(element="he")
     pass
 
 

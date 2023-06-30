@@ -252,11 +252,10 @@ class SOLPSPlasma:
 
 from itertools import product
 
-from OpenADAS import read_adf15
-
 from baysar.inter_baysar import TauFromTeEms
 from baysar.linemodels import stehle_param
 from baysar.lineshapes import gaussian_norm
+from OpenADAS import read_adf15
 
 
 class EmissionProfile:
