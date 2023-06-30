@@ -1,5 +1,6 @@
 # Imports
 from numpy import arange, diag, ndarray, zeros
+from numpy.linalg import eig
 from OpenADAS import load_adf11, get_adf11
 from xarray import DataArray
 
@@ -7,7 +8,7 @@ from xarray import DataArray
 
 
 # Functions and classes
-def build_rates_matrix(element: str) -> ndarray:
+def build_rates_matrix(element: str) -> DataArray:
     # Get SCD and ACD for the element
     adf11_scd: str = get_adf11(element, adf11type='scd')
     adf11_acd: str = get_adf11(element, adf11type='acd')
@@ -61,10 +62,9 @@ def build_rates_matrix(element: str) -> ndarray:
 
 
 def ionisation_balance(element: str) -> DataArray:
-    rate_matrix: ndarray = build_rates_matrix(element)
+    rate_matrix: DataArray = build_rates_matrix(element)
     # Solve for eigenvalues
-    from numpy.linalg import eig
-    eigenvalues, eigenvectors = eig(rate_matrix)
+    eigenvalues, eigenvectors = eig(rate_matrix.data)
     # Normalise
     _eigenvalues_normalised: ndarray = eigenvalues - eigenvalues.min()
     eigenvalues_normalised: ndarray = _eigenvalues_normalised / _eigenvalues_normalised.sum(-1)[:, :, None]
@@ -72,8 +72,8 @@ def ionisation_balance(element: str) -> DataArray:
     fractional_abundance: DataArray = DataArray(
         eigenvalues_normalised,
         coords=dict(
-            ne=scd.ne,
-            Te=scd.Te,
+            ne=rate_matrix.ne,
+            Te=rate_matrix.Te,
             charge=[0, 1]
         )
     )
