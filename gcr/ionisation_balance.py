@@ -1,5 +1,5 @@
 # Imports
-from numpy import diag, ndarray, zeros
+from numpy import arange, diag, ndarray, zeros
 from OpenADAS import load_adf11, get_adf11
 from xarray import DataArray
 
@@ -7,7 +7,7 @@ from xarray import DataArray
 
 
 # Functions and classes
-def ionisation_balance(element: str) -> DataArray:
+def build_rates_matrix(element: str) -> ndarray:
     # Get SCD and ACD for the element
     adf11_scd: str = get_adf11(element, adf11type='scd')
     adf11_acd: str = get_adf11(element, adf11type='acd')
@@ -41,6 +41,27 @@ def ionisation_balance(element: str) -> DataArray:
             # Losses (diagonal)
             rate_matrix[:, :, charge, charge] = - source_data
 
+    # Format to DataArray
+    charge_array: ndarray = arange(1 + scd.coords['block'].max())
+    rate_matrix: DataArray = DataArray(
+        rate_matrix,
+        name=f"{element} Ionisation Balance Rate Matrix",
+        coords=dict(
+            ne=scd.ne,
+            Te=scd.Te,
+            charge0=charge_array,
+            charge1=charge_array,
+        ),
+        attrs=dict(
+            description="Ionisation balance rate matrix",
+            units="cm^3/s",
+        )
+    )
+    return rate_matrix
+
+
+def ionisation_balance(element: str) -> DataArray:
+    rate_matrix: ndarray = build_rates_matrix(element)
     # Solve for eigenvalues
     from numpy.linalg import eig
     eigenvalues, eigenvectors = eig(rate_matrix)
