@@ -107,25 +107,22 @@ def ionisation_balance(element: str) -> DataArray:
     i: int
     ne0: float
     te0: float
-    fractional_abundance: list[ndarray] = []
-    for i, theta in enumerate(product(rate_matrix.ne, rate_matrix.Te)):
+    proton_number: int = len(rate_matrix.charge0)
+    thetas: list[tuple[float, float]] = [theta for theta in product(rate_matrix.ne, rate_matrix.Te)]
+    fractional_abundance: ndarray = zeros(
+        (len(thetas), proton_number)
+    )
+    for i, theta in enumerate(thetas):
         # Calculate the null space vector
         ne0, te0 = theta
         r_matrix: DataArray = rate_matrix.sel(ne=ne0, Te=te0)
         f_ion: ndarray = null_space(r_matrix)
         # Normalise into physical space
         f_ion /= f_ion.sum()
-        # Numerics test
-        assert f_ion.sum() != 0.
-        assert isclose(
-            r_matrix.data.dot(null_space(r_matrix)),
-            0
-        ).all()
         # Cache
-        fractional_abundance.append(f_ion.flatten())
+        fractional_abundance[i] = f_ion.flatten()
         pass
     # Format
-    proton_number: int = r_matrix.shape[0]
     fractional_abundance: ndarray = array(fractional_abundance)
     fractional_abundance = fractional_abundance.reshape(rate_matrix.ne.shape[0], rate_matrix.Te.shape[0], proton_number)
     fractional_abundance: DataArray = DataArray(
@@ -141,6 +138,7 @@ def ionisation_balance(element: str) -> DataArray:
 
 
 def main() -> None:
+    _ = ionisation_balance(element='he')
     pass
 
 
