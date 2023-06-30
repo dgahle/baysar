@@ -1,7 +1,9 @@
 # Imports
-from numpy import arange, diag, ndarray, zeros
-from numpy.linalg import eig
+from itertools import product
+from numpy import array, isclose
+from numpy import arange, ndarray, zeros
 from OpenADAS import load_adf11, get_adf11
+from scipy.linalg import null_space
 from xarray import DataArray
 
 # Variables
@@ -86,9 +88,6 @@ def ionisation_balance(element: str) -> DataArray:
         What is f_n where R_mn * f_n = 0?
 
     """
-    from itertools import product
-    from numpy import array, isclose
-    from scipy.linalg import null_space
     # Get the rate matrix
     rate_matrix: DataArray = build_rates_matrix(element)
     # # Test
@@ -130,15 +129,7 @@ def ionisation_balance(element: str) -> DataArray:
     return fractional_abundance
 
 
-@TimeIt
 def main() -> None:
-    element: str = 'h'
-    fractional_abundance: DataArray = ionisation_balance(element)
-    # Test plotting lines
-    from matplotlib.pyplot import close, show
-    fractional_abundance.interp(ne=1e14).plot.line(x="Te", marker='x', ylim=[0, 1], xscale='log');
-    show()
-    close()
     pass
 
 
