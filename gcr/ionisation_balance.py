@@ -1,10 +1,11 @@
 # Imports
 from itertools import product
 
-from numpy import arange, array, isclose, ndarray, zeros
+from numpy import arange, array, ndarray, zeros
 from scipy.linalg import null_space
 from xarray import DataArray
 
+from backend.time import TimeIt
 from OpenADAS import get_adf11, load_adf11
 
 # Variables
@@ -78,9 +79,6 @@ def build_rates_matrix(element: str) -> DataArray:
     return rate_matrix
 
 
-from backend.time import TimeIt
-
-
 @TimeIt
 def ionisation_balance(element: str) -> DataArray:
     """
@@ -142,7 +140,6 @@ def ionisation_balance(element: str) -> DataArray:
 
 
 def main() -> None:
-    _ = ionisation_balance(element="he")
     pass
 
 
