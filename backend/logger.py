@@ -17,7 +17,7 @@ CONFIG_PATH: Path = REPO_PATH / "config.json"
 with open(CONFIG_PATH, "r") as f:
     CONFIG_DICT = load(f)
 # Paths
-OUTPUT_PATH: Path = REPO_PATH / "output"
+OUTPUT_PATH: Path = REPO_PATH / "output" / "log"
 # Logger
 logger_datefmt = "%Y-%m-%d %H:%M:%S"
 log_msg_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -81,7 +81,7 @@ def get_logger(
 
 def main() -> None:
     filename: str = Path(__file__).name
-    logger = get_logger(filename, set_path=False)
+    logger = get_logger(filename, set_path=True)
     log_msg: str = f"Running main()"
     logger.info(log_msg)
     logger.debug(log_msg)
