@@ -27,20 +27,20 @@ def build_rates_matrix(element: str) -> DataArray:
         source_data: ndarray = scd_data + acd_data
         # Neutral
         if charge == 0:
-            rate_matrix[:, :, charge, charge] = - scd.sel(block=scd_block).data
-        # Final entry check
-        elif charge == (proton_number - 1):
-            # Sources (off diagonal)
-            rate_matrix[:, :, charge, charge - 1] = source_data
-            rate_matrix[:, :, charge - 1, charge] = source_data
-            # Losses (diagonal)
-            rate_matrix[:, :, charge, charge] = - acd_data
+            rate_matrix[:, :, charge, charge] = - scd_data
+        # # Final entry check
+        # elif charge == (proton_number - 1):
+        #     # Sources (off diagonal)
+        #     rate_matrix[:, :, charge, charge - 1] = source_data
+        #     rate_matrix[:, :, charge - 1, charge] = source_data
+        #     # Losses (diagonal)
+        #     rate_matrix[:, :, charge, charge] = - acd_data
         else:
             # Sources (off diagonal)
-            rate_matrix[:, :, charge, charge - 1] = source_data
-            rate_matrix[:, :, charge - 1, charge] = source_data
+            rate_matrix[:, :, charge, charge - 1] = scd_data  # source_data
+            rate_matrix[:, :, charge - 1, charge] = acd_data  # source_data
             # Losses (diagonal)
-            rate_matrix[:, :, charge, charge] = - source_data
+            rate_matrix[:, :, charge, charge] = - acd_data  # source_data
 
     # Format to DataArray
     charge_array: ndarray = arange(1 + scd.coords['block'].max())
@@ -61,31 +61,87 @@ def build_rates_matrix(element: str) -> DataArray:
     return rate_matrix
 
 
+from backend.time import TimeIt
+@TimeIt
 def ionisation_balance(element: str) -> DataArray:
+    """
+    (d/dt)f_m = R_mn * f_n
+
+    Solve for f_m where R_mn * f_n = 0
+
+    Notes:
+        - f_n = [f_0, ..., f_A] where A is the proton number of the element
+
+    For example:
+
+        Solving the hydrogen ionisation balance at ne = 1e14 / cm3 and Te = 1 eV
+
+        R_mn(ne, Te) = [
+            [5.64441065e+11, 5.91890828e+11],  # [SCD, -(SCD + ACD)]
+            [5.91890828e+11, 2.74497632e+10]   # [-(SCD + ACD), ACD]
+        ]
+
+        f_0 = SCD
+
+        What is f_n where R_mn * f_n = 0?
+
+    """
+    from itertools import product
+    from numpy import array, isclose
+    from scipy.linalg import null_space
+    # Get the rate matrix
     rate_matrix: DataArray = build_rates_matrix(element)
-    # Solve for eigenvalues
-    eigenvalues, eigenvectors = eig(rate_matrix.data)
-    # Normalise
-    _eigenvalues_normalised: ndarray = eigenvalues - eigenvalues.min()
-    eigenvalues_normalised: ndarray = _eigenvalues_normalised / _eigenvalues_normalised.sum(-1)[:, :, None]
+    # # Test
+    # r_matrix: DataArray = rate_matrix.interp(ne=1e14, Te=1).data
+    # print(r_matrix)
+    # raise ValueError
+    # Solve for fractional abundance
+    i: int
+    ne0: float
+    te0: float
+    fractional_abundance: list[ndarray] = []
+    for i, theta in enumerate(product(rate_matrix.ne, rate_matrix.Te)):
+        # Calculate the null space vector
+        ne0, te0 = theta
+        r_matrix: DataArray = rate_matrix.sel(ne=ne0, Te=te0)
+        f_ion: ndarray = null_space(r_matrix)
+        # Normalise into physical space
+        f_ion /= f_ion.sum()
+        # Numerics test
+        assert isclose(
+            r_matrix.data.dot(null_space(r_matrix)),
+            0
+        ).all()
+        # Cache
+        fractional_abundance.append(f_ion.flatten())
+        pass
     # Format
+    fractional_abundance: ndarray = array(fractional_abundance)
+    fractional_abundance = fractional_abundance.reshape(rate_matrix.ne.shape[0], rate_matrix.Te.shape[0], 2)
     fractional_abundance: DataArray = DataArray(
-        eigenvalues_normalised,
+        fractional_abundance,
         coords=dict(
             ne=rate_matrix.ne,
             Te=rate_matrix.Te,
             charge=[0, 1]
         )
     )
+
     return fractional_abundance
 
 
+@TimeIt
 def main() -> None:
     element: str = 'h'
-    ionisation_balance(element)
+    fractional_abundance: DataArray = ionisation_balance(element)
+    # Test plotting lines
+    from matplotlib.pyplot import close, show
+    fractional_abundance.interp(ne=1e14).plot.line(x="Te", marker='x', ylim=[0, 1], xscale='log');
+    show()
+    close()
     pass
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
     pass
