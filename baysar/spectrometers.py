@@ -5,7 +5,8 @@ import time as clock
 import warnings
 
 import numpy as np
-# from adas import continuo
+
+# from OpenADAS import continuo
 from numpy import (
     arange,
     concatenate,
@@ -22,7 +23,7 @@ from numpy import (
 )
 from scipy import sparse
 from scipy.interpolate import interp1d
-from scipy.ndimage.measurements import center_of_mass
+from scipy.ndimage import center_of_mass
 from scipy.signal import fftconvolve
 
 from baysar.linemodels import ADAS406Lines, BalmerHydrogenLine, XLine

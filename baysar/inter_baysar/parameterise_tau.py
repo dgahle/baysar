@@ -8,7 +8,6 @@ from os.path import exists
 from pathlib import Path
 from typing import Optional, Union
 
-from adas import read_adf11, run_adas406
 from matplotlib.pyplot import legend, subplots
 from numpy import array, concatenate, exp, linspace
 from numpy import load as load_npz
@@ -16,6 +15,7 @@ from numpy import log, log10, logspace, savez, zeros
 from scipy.interpolate import interp1d
 
 from baysar.plasmas import get_adf11, get_meta
+from OpenADAS import read_adf11, run_adas406
 
 # Variables
 ATOMIC_DATA_CACHE_PATH: Path = Path(__file__).parent / "cache"

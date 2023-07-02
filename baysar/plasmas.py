@@ -7,12 +7,12 @@ import warnings
 from itertools import product
 
 import numpy as np
-from adas import read_adf11, read_adf15, run_adas406
 from scipy.interpolate import RectBivariateSpline, RegularGridInterpolator
 
 from baysar.line_data import adas_line_data
 from baysar.lineshapes import MeshLine
 from baysar.tools import within
+from OpenADAS import read_adf11, read_adf15, run_adas406
 
 
 def power10(var):

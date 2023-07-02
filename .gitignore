@@ -1,10 +1,13 @@
 # This repo
 # Files
-config.json
+/config.json
 **/*tmp.*
 # Folders
 input
 output
+
+# Test data formats
+*.nc
 
 # Pycharm
 .idea

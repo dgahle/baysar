@@ -6,7 +6,7 @@ from time import perf_counter_ns
 from .logger import get_logger
 
 # Variables
-logger: Logger = get_logger(Path(__file__).name)
+logger: Logger = get_logger(Path(__file__).name, set_path=False)
 
 
 # Functions
@@ -55,10 +55,11 @@ class TimeIt:
     def __call__(self, *args, **kwargs):
         # Run function and calculate runtime
         start_time: int = perf_counter_ns()
-        output = self.func()
+        output = self.func(*args, **kwargs)
         runtime_ns: int = perf_counter_ns() - start_time
         # Format print message
         runtime_msg: str = runtime_to_msg(runtime_ns)
+        runtime_msg = f"{self.func.__name__} " + runtime_msg.lower()
         self.print(runtime_msg)
         # Return output
         return output
