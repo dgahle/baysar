@@ -1,6 +1,7 @@
 # Imports
 from itertools import product
 
+from numba import jit
 from numpy import arange, array, logspace, ndarray, zeros
 from scipy.linalg import null_space
 from xarray import DataArray, concat
@@ -89,6 +90,18 @@ def build_rates_matrix(element: str, tau: float = None) -> DataArray:
     return rate_matrix
 
 
+@jit
+def solve_rate_matrix(rate_matrix: list[ndarray], fractional_abundance: ndarray) -> ndarray:
+    for i, r_matrix in enumerate(rate_matrix):
+        f_ion: ndarray = null_space(r_matrix)
+        # Normalise into physical space
+        f_ion /= f_ion.sum()
+        # Cache
+        fractional_abundance[i] = f_ion.flatten()
+
+    return fractional_abundance
+
+
 @TimeIt
 def ionisation_balance(element: str, tau: float = None) -> DataArray:
     """
@@ -134,18 +147,11 @@ def ionisation_balance(element: str, tau: float = None) -> DataArray:
         theta for theta in product(rate_matrix.ne, rate_matrix.Te)
     ]
     fractional_abundance: ndarray = zeros((len(thetas), proton_number))
-    for i, theta in enumerate(thetas):
-        # Calculate the null space vector
-        ne0, te0 = theta
-        r_matrix: DataArray = rate_matrix.sel(ne=ne0, Te=te0)
-        f_ion: ndarray = null_space(r_matrix)
-        # Normalise into physical space
-        f_ion /= f_ion.sum()
-        # Cache
-        fractional_abundance[i] = f_ion.flatten()
-        pass
+    rate_matrices: list[ndarray] = [
+        rate_matrix.sel(ne=ne0, Te=te0).data for (ne0, te0) in product(rate_matrix.ne, rate_matrix.Te)
+    ]
+    fractional_abundance = solve_rate_matrix(rate_matrix=rate_matrices, fractional_abundance=fractional_abundance)
     # Format
-    fractional_abundance: ndarray = array(fractional_abundance)
     fractional_abundance = fractional_abundance.reshape(
         rate_matrix.ne.shape[0], rate_matrix.Te.shape[0], proton_number
     )
