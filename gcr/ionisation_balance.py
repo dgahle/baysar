@@ -14,6 +14,18 @@ from OpenADAS import get_adf11, load_adf11
 
 # Functions and classes
 def build_rates_matrix(element: str, tau: float = None) -> DataArray:
+    """
+    Builds the ionisation balance rates matrix to be subsequently solved to calculate the ionisation balance. There is
+    capacity to introduce "transport" of the fractional abundance by scaling the ionisation rate.
+
+    :param (str) element:
+        Element of choice.
+    :param (float) tau: - Default = None
+        Proxy transport parameter.
+
+    :return (DataArray) rate_matrix:
+        Rates matrix to solve the ionisation balance rate equation and calculate the fractional abundance.
+    """
     # Get SCD and ACD for the element
     adf11_scd: str = get_adf11(element, adf11type="scd")
     adf11_acd: str = get_adf11(element, adf11type="acd")
@@ -92,6 +104,18 @@ def build_rates_matrix(element: str, tau: float = None) -> DataArray:
 
 @jit
 def solve_rate_matrix(rate_matrix: list[ndarray], fractional_abundance: ndarray) -> ndarray:
+    """
+    Solves the ionisation balance rate equations by using an SVD decomposition to find the null space of the rate matrix.
+
+    :param (list[ndarray]) rate_matrix:
+        List of rate matrices to be solved.
+    :param (ndarray) fractional_abundance:
+        Empty array to be filled with as the rate matrices are solved.
+
+    :return (ndarray) fractional_abundance:
+        Fractional abundance of the passed element evaluated over the electron density and temperature grid defined by
+        the adf11 parameter space.
+    """
     for i, r_matrix in enumerate(rate_matrix):
         f_ion: ndarray = null_space(r_matrix)
         # Normalise into physical space
@@ -124,17 +148,32 @@ def ionisation_balance(element: str, tau: float = None) -> DataArray:
 
     For example:
 
-        Solving the hydrogen ionisation balance at ne = 1e14 / cm3 and Te = 1 eV
+        The hydrogen rate matrix would be
 
-        R_mn(ne, Te) = [
-            [5.64441065e+11, 5.91890828e+11],  # [SCD, -(SCD + ACD)]
-            [5.91890828e+11, 2.74497632e+10]   # [-(SCD + ACD), ACD]
-        ]
+            R_mn(ne, Te) = [
+                [-SCD, ACD],
+                [SCD, -ACD]
+            ]
 
-        f_0 = SCD
+        the helium rate matrix is
 
-        What is f_n where R_mn * f_n = 0?
+            R_mn(ne, Te) = [
+                [-SCD_(0,1), ACD_(1,0), 0],
+                [SCD_(0,1), -(SCD_(1,2) + ACD_(1,0)), ACD_(2,1)],
+                [0, SCD_(1,2), -ACD_(2,1)]
+            ]
 
+        and for proton numbers (A) 2 and up follow the below trend
+
+            R_mn(ne, Te) = [
+                [-SCD_(0,1), ACD_(1,0), ..., 0],
+                ...
+                [0, ..., SCD_(i,j), -(SCD_(j,k) + ACD_(j,i)), ACD_(k,j), ..., 0],
+                ...
+                [0, ..., SCD_(1,2), -ACD_(2,1)]
+            ]
+
+        where i, j, and k are consecutive charge states.
     """
     # Get the rate matrix
     rate_matrix: DataArray = build_rates_matrix(element, tau=tau)
