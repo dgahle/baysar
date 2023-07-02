@@ -3,7 +3,7 @@ from itertools import product
 
 from numpy import arange, array, logspace, ndarray, zeros
 from scipy.linalg import null_space
-from xarray import concat, DataArray
+from xarray import DataArray, concat
 
 from backend.time import TimeIt
 from OpenADAS import get_adf11, load_adf11
@@ -83,7 +83,7 @@ def build_rates_matrix(element: str, tau: float = None) -> DataArray:
         attrs=dict(
             description="Ionisation balance rate matrix",
             units="cm^3/s",
-        )
+        ),
     )
 
     return rate_matrix
@@ -173,10 +173,8 @@ def ionisation_balance_transport(element: str) -> DataArray:
     """
     tau: float
     taus: ndarray = logspace(4, -6, 11)
-    taus: DataArray = DataArray(taus, name='Tau', coords=dict(tau=taus))
-    f_ion: list[DataArray] = [
-        ionisation_balance(element, tau) for tau in taus
-    ]
+    taus: DataArray = DataArray(taus, name="Tau", coords=dict(tau=taus))
+    f_ion: list[DataArray] = [ionisation_balance(element, tau) for tau in taus]
     fractional_abundance: DataArray = concat(f_ion, dim=taus)
 
     return fractional_abundance
