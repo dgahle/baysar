@@ -103,7 +103,9 @@ def build_rates_matrix(element: str, tau: float = None) -> DataArray:
 
 
 @jit
-def solve_rate_matrix(rate_matrix: list[ndarray], fractional_abundance: ndarray) -> ndarray:
+def solve_rate_matrix(
+    rate_matrix: list[ndarray], fractional_abundance: ndarray
+) -> ndarray:
     """
     Solves the ionisation balance rate equations by using an SVD decomposition to find the null space of the rate matrix.
 
@@ -187,9 +189,12 @@ def ionisation_balance(element: str, tau: float = None) -> DataArray:
     ]
     fractional_abundance: ndarray = zeros((len(thetas), proton_number))
     rate_matrices: list[ndarray] = [
-        rate_matrix.sel(ne=ne0, Te=te0).data for (ne0, te0) in product(rate_matrix.ne, rate_matrix.Te)
+        rate_matrix.sel(ne=ne0, Te=te0).data
+        for (ne0, te0) in product(rate_matrix.ne, rate_matrix.Te)
     ]
-    fractional_abundance = solve_rate_matrix(rate_matrix=rate_matrices, fractional_abundance=fractional_abundance)
+    fractional_abundance = solve_rate_matrix(
+        rate_matrix=rate_matrices, fractional_abundance=fractional_abundance
+    )
     # Format
     fractional_abundance = fractional_abundance.reshape(
         rate_matrix.ne.shape[0], rate_matrix.Te.shape[0], proton_number
