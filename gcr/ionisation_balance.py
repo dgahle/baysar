@@ -1,9 +1,9 @@
 # Imports
 from itertools import product
 
-from numpy import arange, array, ndarray, zeros
+from numpy import arange, array, logspace, ndarray, zeros
 from scipy.linalg import null_space
-from xarray import DataArray
+from xarray import concat, DataArray
 
 from backend.time import TimeIt
 from OpenADAS import get_adf11, load_adf11
@@ -12,12 +12,21 @@ from OpenADAS import get_adf11, load_adf11
 
 
 # Functions and classes
-def build_rates_matrix(element: str) -> DataArray:
+def build_rates_matrix(element: str, tau: float = None) -> DataArray:
     # Get SCD and ACD for the element
     adf11_scd: str = get_adf11(element, adf11type="scd")
     adf11_acd: str = get_adf11(element, adf11type="acd")
     scd: DataArray = load_adf11(adf11=adf11_scd, passed=True)
     acd: DataArray = load_adf11(adf11=adf11_acd, passed=True)
+    # Account for transport if tau is passed
+    # scd = scd if tau is None else scd - (1 / (scd.ne * tau))
+    scd = scd if tau is None else tau * scd
+    # if tau is not None:
+    #     from numpy import ones
+    #     tau_array: ndarray = arange(*scd.block.shape, dtype=float).clip(min=1.)
+    #     tau_array *= tau
+    #     tau_array = tau_array.clip(max=1.)
+    #     scd *= tau_array[:, None, None]
     # Build the rate matrix
     proton_number: int = 1 + scd.shape[0]
     # shape: tuple[int] = (proton_number, proton_number, *scd.shape[1:])
@@ -81,8 +90,18 @@ def build_rates_matrix(element: str) -> DataArray:
 
 
 @TimeIt
-def ionisation_balance(element: str) -> DataArray:
+def ionisation_balance(element: str, tau: float = None) -> DataArray:
     """
+    Solves the steady state solution to the ionisation rate balance
+
+    :param (str) element:
+        Element of choice.
+    :param (float) tau: - Default = None
+        Proxy transport parameter.
+    :return (DataArray) fractional_abundance:
+        Fractional abundance of the passed element evaluated over the electron density and temperature grid defined by
+        the adf11 parameter space.
+
     (d/dt)f_m = R_mn * f_n
 
     Solve for f_m where R_mn * f_n = 0
@@ -105,7 +124,7 @@ def ionisation_balance(element: str) -> DataArray:
 
     """
     # Get the rate matrix
-    rate_matrix: DataArray = build_rates_matrix(element)
+    rate_matrix: DataArray = build_rates_matrix(element, tau=tau)
     # Solve for fractional abundance
     i: int
     ne0: float
@@ -136,6 +155,29 @@ def ionisation_balance(element: str) -> DataArray:
             ne=rate_matrix.ne, Te=rate_matrix.Te, charge=list(arange(proton_number))
         ),
     )
+
+    return fractional_abundance
+
+
+def ionisation_balance_transport(element: str) -> DataArray:
+    """
+    Solves the steady state solution to the ionisation rate balance
+
+    :param (str) element:
+        Element of choice.
+    :param (float) tau: - Default = None
+        Proxy transport parameter.
+    :return (DataArray) fractional_abundance:
+        Fractional abundance of the passed element evaluated over the electron density and temperature grid defined by
+        the adf11 parameter space.
+    """
+    tau: float
+    taus: ndarray = logspace(4, -6, 11)
+    taus: DataArray = DataArray(taus, name='Tau', coords=dict(tau=taus))
+    f_ion: list[DataArray] = [
+        ionisation_balance(element, tau) for tau in taus
+    ]
+    fractional_abundance: DataArray = concat(f_ion, dim=taus)
 
     return fractional_abundance
 
