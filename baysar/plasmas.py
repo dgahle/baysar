@@ -12,7 +12,8 @@ from scipy.interpolate import RectBivariateSpline, RegularGridInterpolator
 from baysar.line_data import adas_line_data
 from baysar.lineshapes import MeshLine
 from baysar.tools import within
-from OpenADAS import read_adf11, read_adf15, run_adas406
+from OpenADAS import read_adf11, read_adf15
+from gcr import ionisation_balance_transport
 
 
 def power10(var):
@@ -468,12 +469,12 @@ class PlasmaLine:
             calibration_tags, calibration_functions
         ):
             for chord, chord_calibration_function in enumerate(calibration_function):
-                int_check = calibration_tag is "cal" and not self.calibrate_intensity
+                int_check = calibration_tag == "cal" and not self.calibrate_intensity
                 wave_check = (
-                    calibration_tag is "calwave" and not self.calibrate_wavelength
+                    calibration_tag == "calwave" and not self.calibrate_wavelength
                 )
                 intfun_check = (
-                    calibration_tag is "calint_func"
+                    calibration_tag == "calint_func"
                     and not self.calibrate_instrument_function
                 )
                 checks = any([int_check, wave_check, intfun_check])
@@ -592,7 +593,7 @@ class PlasmaLine:
         keep_theta_bound = []
         for p, L, b, n in zip(self.tags, slice_lengths, bounds, np.arange(len(bounds))):
             [keep_theta_bound.append(self.is_resolved[p]) for counter in np.arange(L)]
-            if len(slices) is 0:
+            if len(slices) == 0:
                 slices.append((p, slice(0, L)))
             elif self.is_resolved[p]:
                 last = slices[-1][1].stop
@@ -616,12 +617,16 @@ class PlasmaLine:
 
         self.n_params = slices[-1][1].stop
         self.slices = collections.OrderedDict(slices)
-        theta_bounds = np.array(
+        self.theta_bounds = np.array(
             [np.array(b) for n, b in enumerate(bounds) if keep_theta_bound[n]],
             dtype=float,
         )
-        self.theta_bounds = np.array([theta_bounds.min(1), theta_bounds.max(1)]).T
+        # self.theta_bounds = np.array([theta_bounds.min(1), theta_bounds.max(1)]).T
         # self.bounds = bounds
+
+        if np.isnan(self.theta_bounds).any():
+            err_msg: str = "Bounds contain NaNs!"
+            raise ValueError(err_msg)
 
         if self.n_params != len(self.theta_bounds):
             raise ValueError("self.n_params!=len(self.theta_bounds)")
@@ -698,70 +703,35 @@ class PlasmaLine:
         if not self.no_sample_neutrals:
             n0 = n0[0]
 
-        scd = read_adf11(
-            file=self.scdfile,
-            adf11type="scd",
-            is1=1,
-            index_1=-1,
-            index_2=-1,
-            te=te,
-            dens=ne,
-            all=False,
-            skipzero=False,
-            unit_te="ev",
-        )
-        acd = read_adf11(
-            file=self.acdfile,
-            adf11type="acd",
-            is1=1,
-            index_1=-1,
-            index_2=-1,
-            te=te,
-            dens=ne,
-            all=False,
-            skipzero=False,
-            unit_te="ev",
-        )
+        adf11types: list[str] = ['scd', 'acd', 'plt', 'prb']
+        if not hasattr(self, "neutral_adf11s"):
+            from OpenADAS import get_adf11, load_adf11
+            self.neutral_adf11s = dict(
+                [
+                    (
+                        _adf11type, load_adf11(get_adf11(element="h", adf11type=_adf11type, year=12), passed=True)
+                    ) for _adf11type in adf11types
+                ]
+            )
 
-        plt = read_adf11(
-            file=hydrogen_adf11_plt,
-            adf11type="plt",
-            is1=1,
-            index_1=-1,
-            index_2=-1,
-            te=te,
-            dens=ne,
-            all=False,
-        )  # , skipzero=False, unit_te='ev')
-
-        prb = read_adf11(
-            file=hydrogen_adf11_prb,
-            adf11type="prb",
-            is1=1,
-            index_1=-1,
-            index_2=-1,
-            te=te,
-            dens=ne,
-            all=False,
-        )  # , skipzero=False, unit_te='ev')
+        for _adf11type in adf11types:
+            self.__dict__[_adf11type] = self.neutral_adf11s[_adf11type].sel(block=1).interp(ne=('pecs', ne), Te=('pecs', te))
 
         # n0_time=self.plasma_state['n0_time']
         n0_time = self.plasma_state[species + "_tau"][0]
         if hasattr(self, "recombining"):
             if self.recombining is True:
-                n0 += n1 * ne * acd * n0_time
+                n0 += n1 * ne * self.acd * n0_time
 
-        n0 -= n0 * ne * scd * n0_time
+        n0 -= n0 * ne * self.scd * n0_time
         n0 = n0.clip(1)
         self.plasma_state[species + "_dens"] = n0
 
         self.h_pot = 2.18e-18
-        self.scd = scd
-        self.acd = acd
-        self.ion_source = n0 * ne * scd
-        self.ion_sink = n1 * ne * acd
-        self.E_ion = plt / scd + self.h_pot
-        self.E_rec = prb / acd - self.h_pot
+        self.ion_source = n0 * ne * self.scd
+        self.ion_sink = n1 * ne * self.acd
+        self.E_ion = self.plt / self.scd + self.h_pot
+        self.E_rec = self.prb / self.acd - self.h_pot
 
     def print_plasma_state(self):
         print_plasma_state(self)
@@ -775,16 +745,18 @@ class PlasmaLine:
         background_functions=None,
     ):
         if profile_function is None:
-            x = np.linspace(1, 9, 5)
-            profile_function = MeshLine(x=x, zero_bounds=-2, bounds=[0, 10], log=True)
-            self.profile_function = arb_obj(
-                electron_density=profile_function,
-                electron_temperature=profile_function,
-                number_of_variables_ne=len(x),
-                number_of_variables_te=len(x),
-                bounds_ne=[11, 16],
-                bounds_te=[-1, 2],
-            )
+            # x = np.linspace(1, 9, 5)
+            # profile_function = MeshLine(x=x, zero_bounds=-2, bounds=[0, 10], log=True)
+            # self.profile_function = arb_obj(
+            #     electron_density=profile_function,
+            #     electron_temperature=profile_function,
+            #     number_of_variables_ne=len(x),
+            #     number_of_variables_te=len(x),
+            #     bounds_ne=[11, 16],
+            #     bounds_te=[-1, 2],
+            # )
+            from .lineshapes import EsymmtricCauchyPlasma
+            self.profile_function = EsymmtricCauchyPlasma()
         else:
             self.profile_function = profile_function
 
@@ -1197,31 +1169,11 @@ class PlasmaLine:
         if self.contains_hydrogen:
             for species in self.hydrogen_species:
                 n0 = self.plasma_state[species + "_dens"]
-                plt = read_adf11(
-                    file=hydrogen_adf11_plt,
-                    adf11type="plt",
-                    is1=1,
-                    index_1=-1,
-                    index_2=-1,
-                    te=te,
-                    dens=ne,
-                    all=False,
-                )  # , skipzero=False, unit_te='ev')
-                exc_power = ne * n0 * plt
+                exc_power = ne * n0 * self.plt
                 self.plasma_state["power"][species + "_exc"] = exc_power
                 power += exc_power
 
-            prb = read_adf11(
-                file=hydrogen_adf11_prb,
-                adf11type="prb",
-                is1=1,
-                index_1=-1,
-                index_2=-1,
-                te=te,
-                dens=ne,
-                all=False,
-            )  # , skipzero=False, unit_te='ev')
-            rec_power = ne * ni * prb
+            rec_power = ne * ni * self.prb
             self.plasma_state["power"][self.hydrogen_species[0] + "_rec"] = rec_power
             power += rec_power
 
@@ -1313,7 +1265,14 @@ class PlasmaLine:
         ne = self.adas_plasma_inputs["ne"]
 
         pecs = []
+        from OpenADAS import get_adf15, load_adf15
+        from xarray import DataArray
         for species in self.hydrogen_species:
+            _element, _charge = species.split('_')
+            _element = _element.lower()
+            _charge = int(_charge)
+            adf15: str = get_adf15(element=_element, charge=_charge, year=12)
+            adf15_model: DataArray = load_adf15(adf15, passed=True)
             for line in self.input_dict[species].keys():
                 print(
                     "Building hydrogen PEC splines: {} {}".format(
@@ -1326,13 +1285,14 @@ class PlasmaLine:
                 rec = self.input_dict[species][line]["rec_block"]
 
                 for block, r_tag in zip([exc, rec], ["exc", "rec"]):
-                    rates, _ = read_adf15(
-                        file, block, te, ne, all=True
-                    )  # (te, ne), _# TODO - 1e50 alarm
+                    # rates, _ = read_adf15(
+                    #     file, block, te, ne, all=True
+                    # )  # (te, ne), _# TODO - 1e50 alarm
                     pecs.append(
                         (
                             line_tag + "_" + r_tag,
-                            RectBivariateSpline(ne, te, np.log(rates.T.clip(1e-50))).ev,
+                            np.log(adf15_model.sel(block=block)),
+                            # RectBivariateSpline(ne, te, np.log(rates.T.clip(1e-50))).ev,
                         )
                     )
                 # return
@@ -1557,7 +1517,7 @@ class PlasmaSimple2D:
             self.species, zip(species_attributes, species_attributes_bounds)
         ):
             # print(elem, att, att_bounds)
-            att_check = att is "tau"
+            att_check = att == "tau"
             elem_check = elem[0] in ("H", "D")
             # check=att_check+elem_check
             # print(elem, att, elem_check, att_check, check)
@@ -1628,7 +1588,7 @@ class PlasmaSimple2D:
             )
             if tmp_tag in plasma.slices:
                 # density
-                if att is "dens":
+                if att == "dens":
                     if charge > 0:
                         dk = np.log10(charge)
                     else:
@@ -1639,17 +1599,17 @@ class PlasmaSimple2D:
                     fraction = self.plasma_state[elem + "_" + att][0]
                     new_theta[plasma.slices[tmp_tag]] -= fraction + dk
                 # Ti
-                if att is "Ti":
+                if att == "Ti":
                     new_theta[plasma.slices[tmp_tag]] = self.plasma_state[
                         elem + "_" + att
                     ]
                 # velocity
-                if att is "velocity":
+                if att == "velocity":
                     new_theta[plasma.slices[tmp_tag]] = self.plasma_state[
                         elem + "_" + att
                     ]
                 # tau
-                if att is "tau":
+                if att == "tau":
                     new_theta[plasma.slices[tmp_tag]] = self.plasma_state[
                         elem + "_" + att
                     ]
