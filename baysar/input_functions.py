@@ -33,7 +33,7 @@ def within(stuff, boxes):
     else:
         if type(stuff) is str:
             stuff = float(stuff)
-        elif type(stuff) in (int, float, np.float):
+        elif type(stuff) in (int, float):
             pass
         else:
             raise TypeError("Input stuff is not of an appropriate type.")
@@ -236,15 +236,21 @@ def make_input_dict(
     :return (dict) input_dict: Contains all the needed info instantiate both BaysarPosterior and SpectrometerChord classes.
     """
 
-    # unpack species and ions
-    species_new = []
-    ions = []
-    for s in species:
-        species_new.append(s)
-        ions.append([str(ion) for ion in species[s]])
-
-    del species
-    species = species_new
+    # # unpack species and ions
+    # from itertools import product
+    # ions: list = []
+    # for _element, _ions in product(species, kwargs['ions']):
+    #     ions.append([str()])
+    #
+    # species_new = []
+    # # ions = []
+    # for s in species:
+    #     species_new.append(s)
+    #     ions.append([str(ion) for ion in species[s]])
+    #
+    # del species
+    # species = species_new
+    ions: list[list] = kwargs['ions']
 
     check_input_dict_input(
         wavelength_axis,
