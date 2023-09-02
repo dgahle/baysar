@@ -35,7 +35,7 @@ import scipy.optimize as opt
 import scipy.signal as scisig
 import scipy.sparse as sparse
 from mpl_toolkits.mplot3d import Axes3D as ax3d
-from scipy.integrate.quadrature import simps as simps
+# from scipy.integrate.quadrature import simps as simps
 from scipy.interpolate import RectBivariateSpline
 
 # from psi_2018.testing.pfs_batch.development.fort_convolve.learning import custer
@@ -62,7 +62,11 @@ start_time = clock.time()
 
 
 # 0.4. Plot Settings
-font = {"family": "normal", "weight": "bold", "size": 14}
+font = {
+    # "family": "normal",
+    "weight": "bold",
+    "size": 14
+}
 
 mpl.rc("font", **font)
 
