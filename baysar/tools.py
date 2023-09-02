@@ -119,7 +119,7 @@ def within(stuff, boxes):
     else:
         if type(stuff) is str:
             stuff = float(stuff)
-        elif type(stuff) in (int, float, np.float):
+        elif type(stuff) in (int, float):
             pass
         else:
             raise TypeError("Input stuff is not of an appropriate type.")
