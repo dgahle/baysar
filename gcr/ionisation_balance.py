@@ -102,7 +102,6 @@ def build_rates_matrix(element: str, tau: float = None) -> DataArray:
     return rate_matrix
 
 
-@njit
 def solve_rate_matrix(
     rate_matrix: list[ndarray], fractional_abundance: ndarray
 ) -> ndarray:
