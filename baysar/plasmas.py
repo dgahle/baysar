@@ -714,8 +714,16 @@ class PlasmaLine:
                 ]
             )
 
+        interp_args: dict = dict(
+            ne=('pecs', ne),
+            Te=('pecs', te),
+            kwargs=dict(
+                bounds_error=False,
+                fill_value=None
+            )
+        )
         for _adf11type in adf11types:
-            self.__dict__[_adf11type] = self.neutral_adf11s[_adf11type].sel(block=1).interp(ne=('pecs', ne), Te=('pecs', te))
+            self.__dict__[_adf11type] = self.neutral_adf11s[_adf11type].sel(block=1).interp(**interp_args).data
 
         # n0_time=self.plasma_state['n0_time']
         n0_time = self.plasma_state[species + "_tau"][0]
