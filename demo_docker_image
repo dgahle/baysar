@@ -1,8 +1,17 @@
+# Configure the container OS
+FROM ubuntu:latest
 FROM python:3.9
 
-ADD demo/balmer_series.py /
-ADD requirements.txt /
+# Build directories
+ADD . /
+RUN mkdir -p output, output/log
+ADD metadata/config.json /
 
+# Configure the environment variables
+ENV PYTHONPATH "${PYTHONPATH}:/."
+
+# Configure the python environment
 RUN pip install -r requirements.txt
 
-CMD ["python", "balmer_series.py"]
+# Run!
+CMD python demo/balmer_series.py
