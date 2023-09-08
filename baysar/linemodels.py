@@ -765,6 +765,10 @@ class BalmerHydrogenLine(object):
 
         self.n0_profile = n0
 
+        from numpy import isnan
+        if isnan(n0).any():
+            raise ValueError(f"Negative numbers in neutral density profile! n0 = {n0}")
+
         if not self.plasma.zeeman:
             self.plasma.plasma_state["b-field"] = 0
             self.plasma.plasma_state["viewangle"] = 0
@@ -776,8 +780,29 @@ class BalmerHydrogenLine(object):
             self.velocity = self.plasma.plasma_state[self.species + "_velocity"]
             doppler_shift_BalmerHydrogenLine(self, self.velocity)
 
-        rec_pec = np.exp(self.rec_pec.interp(ne=('pecs', ne), Te=('pecs', te)))
-        exc_pec = np.exp(self.exc_pec.interp(ne=('pecs', ne), Te=('pecs', te)))
+        interp_args: dict = dict(
+            ne=('pecs', ne),
+            Te=('pecs', te),
+            kwargs=dict(
+                bounds_error=False,
+                fill_value=None
+            )
+        )
+        rec_pec = np.exp(
+            self.rec_pec.interp(**interp_args)
+        ).data
+        exc_pec = np.exp(
+            self.exc_pec.interp(**interp_args)
+        ).data
+
+        if isnan(exc_pec).any():
+            err_msg: str = "NaNs in the excitation PECs!"
+            raise ValueError(err_msg)
+
+        if isnan(rec_pec).any():
+            err_msg: str = "NaNs in the recombination PECs!"
+            raise ValueError(err_msg)
+
         # set minimum number of photons to be 1
         # need to exclude antiprotons from emission!
         self.rec_profile = n1.clip(1) * ne * rec_pec  # ph/cm-3/s
@@ -839,6 +864,9 @@ class BalmerHydrogenLine(object):
             nan_to_num(self.lineshape(self.rec_lineshape_input)) * self.rec_sum
         )
         self.ems_peak = self.rec_peak + self.exc_peak
+
+        if isnan(self.ems_peak).any():
+            raise ValueError(f'NaNs in {self.line} line peak ({self.exc_sum}, {self.rec_sum})!')
 
         return self.ems_peak  # ph/cm-2/A/sr/s
 
