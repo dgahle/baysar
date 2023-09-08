@@ -307,6 +307,7 @@ class BaysarPosterior(object):
             # build background bounds
             estimate_background = tmp_chord.y_data_continuum.mean()
             d_background = tmp_chord.y_data_continuum.std()
+            # Emission floor is 1. (can't be
             background_bounds = [
                 estimate_background - d_background,
                 estimate_background + d_background,
@@ -348,6 +349,11 @@ class BaysarPosterior(object):
                     l.estimate_ems_and_bounds(chord.x_data, chord.y_data)
                     self.plasma.theta_bounds[self.plasma.slices[l.line_tag]] = l.bounds
                     # self.plasma.theta_bounds[self.plasma.slices[l.line_tag]][0]=l.bounds
+
+        from numpy import isnan
+        if isnan(self.plasma.theta_bounds).any():
+            raise ValueError("NaNs in theta bounds!")
+
 
     def random_start(self, order=1, flat=False):
         start = [
