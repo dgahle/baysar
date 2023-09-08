@@ -9,7 +9,7 @@ import os
 import sys
 
 import numpy as np
-from numpy import random
+from numpy import array, ndarray, random
 
 from baysar.line_data import adas_line_data
 
@@ -22,7 +22,15 @@ def within(stuff, boxes):
     :param box: Array of values to check the sample(s) against
     :return: True or False if all the samples are in the array
     """
-
+    # boxes type check
+    boxes: ndarray = boxes if type(boxes) is ndarray else array(boxes)
+    # shape check
+    if len(boxes.shape) != 2:
+        err_msg: str = (
+            f"Incorrect boxes dimensions! Should be structure array([box0, box1, ...])"
+        )
+        raise ValueError(err_msg)
+    # main
     if type(stuff) in (tuple, list):
         return any(
             [
@@ -33,7 +41,7 @@ def within(stuff, boxes):
     else:
         if type(stuff) is str:
             stuff = float(stuff)
-        elif type(stuff) in (int, float, np.float):
+        elif type(stuff) in (int, float):
             pass
         else:
             raise TypeError("Input stuff is not of an appropriate type.")
@@ -84,6 +92,7 @@ def check_input_dict_input(
         noise_region,
         emission_constant,
     ]
+
     # len check
     exp_len_check = [len(e) == len(exp_stuff[0]) for e in exp_stuff]
     if not all(exp_len_check):
@@ -236,16 +245,35 @@ def make_input_dict(
     :return (dict) input_dict: Contains all the needed info instantiate both BaysarPosterior and SpectrometerChord classes.
     """
 
-    # unpack species and ions
-    species_new = []
-    ions = []
-    for s in species:
-        species_new.append(s)
-        ions.append([str(ion) for ion in species[s]])
+    # # unpack species and ions
+    # from itertools import product
+    # ions: list = []
+    # for _element, _ions in product(species, kwargs['ions']):
+    #     ions.append([str()])
+    #
+    # species_new = []
+    # # ions = []
+    # for s in species:
+    #     species_new.append(s)
+    #     ions.append([str(ion) for ion in species[s]])
+    #
+    # del species
+    # species = species_new
 
-    del species
-    species = species_new
+    # Unpack kwargs
+    ions: list[list] = kwargs["ions"]
 
+    # Type formatting
+    # Spectrometer parameters and variables
+    _type_formatter = lambda x: [d if type(d) is ndarray else array(d) for d in x]
+    wavelength_axis = _type_formatter(wavelength_axis)
+    experimental_emission = _type_formatter(experimental_emission)
+    instrument_function = _type_formatter(instrument_function)
+    # noise_region = _type_formatter(noise_region)
+    # emission_constant = _type_formatter(emission_constant)
+    refine = refine if type(refine) is list else [refine]
+
+    # Input checks
     check_input_dict_input(
         wavelength_axis,
         experimental_emission,
@@ -298,7 +326,6 @@ def make_input_dict(
         "noise_region",
         "refine",
     ]
-
     for d, d_str in zip(data, data_string):
         input_dict[d_str] = d
 

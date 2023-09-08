@@ -546,7 +546,8 @@ from scipy.interpolate import interp1d
 plt.ion()
 
 from baysar.plasmas import get_meta
-from OpenADAS import read_adf11, run_adas406
+from gcr import ionisation_balance_transport
+from OpenADAS import read_adf11
 
 
 def reaction_rate(posterior, sample, neutral="D_ADAS", reaction="scd"):

@@ -1,7 +1,7 @@
 # Imports
 from itertools import product
 
-from numba import jit
+from numba import njit
 from numpy import arange, array, logspace, ndarray, zeros
 from scipy.linalg import null_space
 from xarray import DataArray, concat
@@ -102,7 +102,6 @@ def build_rates_matrix(element: str, tau: float = None) -> DataArray:
     return rate_matrix
 
 
-@jit
 def solve_rate_matrix(
     rate_matrix: list[ndarray], fractional_abundance: ndarray
 ) -> ndarray:

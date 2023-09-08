@@ -6,6 +6,7 @@
 import time as clock
 import warnings
 
+import numpy as np
 from scipy.constants import pi
 from scipy.interpolate import RectBivariateSpline, RegularGridInterpolator
 from scipy.io import readsav
@@ -622,7 +623,7 @@ class HydrogenLineShape(object):
             self.n_upper = n_upper
             self.n_lower = n_lower
 
-        from baysar.lineshapes import GaussiansNorm  # , Gaussian
+        # from .lineshapes import GaussiansNorm  # , Gaussian
 
         wavelengths_doppler_num = len(self.wavelengths)
 
@@ -634,7 +635,7 @@ class HydrogenLineShape(object):
         )
 
         self.doppler_function = DopplerLine(
-            self.cwl, self.wavelengths_doppler, GaussiansNorm, atomic_mass
+            self.cwl, self.wavelengths_doppler, atomic_mass
         )
 
         self.loman_dict = {
@@ -662,10 +663,10 @@ class HydrogenLineShape(object):
 
         self.loman_ij_abc = self.loman_dict[str(self.n_upper) + str(self.n_lower)]
 
-        self.get_delta_magnetic_quantum_number()
-        self.bohr_magnaton = scipy.constants.physical_constants["Bohr magneton in K/T"][
-            0
-        ]
+        # self.get_delta_magnetic_quantum_number()
+        from scipy.constants import physical_constants
+
+        self.bohr_magnaton = physical_constants["Bohr magneton in K/T"][0]
 
         # print("Transition n=%d -> %d | %f A"%(self.n_upper, self.n_lower, np.round(self.cwl, 2)))
 
@@ -731,12 +732,13 @@ class BalmerHydrogenLine(object):
     ):
         self.plasma = plasma
         self.species = species
+        self.element = species.split("_")[0]
         self.cwl = cwl
         self.line = self.species + "_" + str(self.cwl)
         self.wavelengths = wavelengths
         self.n_upper = self.plasma.input_dict[self.species][self.cwl]["n_upper"]
         self.n_lower = self.plasma.input_dict[self.species][self.cwl]["n_lower"]
-        self.atomic_mass = get_atomic_mass(self.species)
+        self.atomic_mass = atomic_masses[self.element]  # get_atomic_mass(self.species)
         self.los = self.plasma.profile_function.electron_density.x
         self.dl_per_sr = diff(self.los)[0] / (4 * pi)
 
@@ -761,6 +763,11 @@ class BalmerHydrogenLine(object):
 
         self.n0_profile = n0
 
+        from numpy import isnan
+
+        if isnan(n0).any():
+            raise ValueError(f"Negative numbers in neutral density profile! n0 = {n0}")
+
         if not self.plasma.zeeman:
             self.plasma.plasma_state["b-field"] = 0
             self.plasma.plasma_state["viewangle"] = 0
@@ -772,8 +779,22 @@ class BalmerHydrogenLine(object):
             self.velocity = self.plasma.plasma_state[self.species + "_velocity"]
             doppler_shift_BalmerHydrogenLine(self, self.velocity)
 
-        rec_pec = np.exp(self.rec_pec(ne, te))
-        exc_pec = np.exp(self.exc_pec(ne, te))
+        interp_args: dict = dict(
+            ne=("pecs", ne),
+            Te=("pecs", te),
+            kwargs=dict(bounds_error=False, fill_value=None),
+        )
+        rec_pec = np.exp(self.rec_pec.interp(**interp_args)).data
+        exc_pec = np.exp(self.exc_pec.interp(**interp_args)).data
+
+        if isnan(exc_pec).any():
+            err_msg: str = "NaNs in the excitation PECs!"
+            raise ValueError(err_msg)
+
+        if isnan(rec_pec).any():
+            err_msg: str = "NaNs in the recombination PECs!"
+            raise ValueError(err_msg)
+
         # set minimum number of photons to be 1
         # need to exclude antiprotons from emission!
         self.rec_profile = n1.clip(1) * ne * rec_pec  # ph/cm-3/s
@@ -835,6 +856,11 @@ class BalmerHydrogenLine(object):
             nan_to_num(self.lineshape(self.rec_lineshape_input)) * self.rec_sum
         )
         self.ems_peak = self.rec_peak + self.exc_peak
+
+        if isnan(self.ems_peak).any():
+            raise ValueError(
+                f"NaNs in {self.line} line peak ({self.exc_sum}, {self.rec_sum})!"
+            )
 
         return self.ems_peak  # ph/cm-2/A/sr/s
 

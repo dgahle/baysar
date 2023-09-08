@@ -262,6 +262,9 @@ class MeshLine(object):
         self.x_points = self.x_points.astype(float)
         self.x = np.arange(min(x_ends), max(x_ends), resolution)
 
+        self.number_of_variables = len(self.x_points)
+        self.dr = False
+
         self.check_init()
 
     def check_init(self):
