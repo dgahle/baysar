@@ -351,9 +351,9 @@ class BaysarPosterior(object):
                     # self.plasma.theta_bounds[self.plasma.slices[l.line_tag]][0]=l.bounds
 
         from numpy import isnan
+
         if isnan(self.plasma.theta_bounds).any():
             raise ValueError("NaNs in theta bounds!")
-
 
     def random_start(self, order=1, flat=False):
         start = [

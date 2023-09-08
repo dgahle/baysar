@@ -7,7 +7,6 @@ import time as clock
 import warnings
 
 import numpy as np
-
 from scipy.constants import pi
 from scipy.interpolate import RectBivariateSpline, RegularGridInterpolator
 from scipy.io import readsav
@@ -666,9 +665,8 @@ class HydrogenLineShape(object):
 
         # self.get_delta_magnetic_quantum_number()
         from scipy.constants import physical_constants
-        self.bohr_magnaton = physical_constants["Bohr magneton in K/T"][
-            0
-        ]
+
+        self.bohr_magnaton = physical_constants["Bohr magneton in K/T"][0]
 
         # print("Transition n=%d -> %d | %f A"%(self.n_upper, self.n_lower, np.round(self.cwl, 2)))
 
@@ -734,7 +732,7 @@ class BalmerHydrogenLine(object):
     ):
         self.plasma = plasma
         self.species = species
-        self.element = species.split('_')[0]
+        self.element = species.split("_")[0]
         self.cwl = cwl
         self.line = self.species + "_" + str(self.cwl)
         self.wavelengths = wavelengths
@@ -766,6 +764,7 @@ class BalmerHydrogenLine(object):
         self.n0_profile = n0
 
         from numpy import isnan
+
         if isnan(n0).any():
             raise ValueError(f"Negative numbers in neutral density profile! n0 = {n0}")
 
@@ -781,19 +780,12 @@ class BalmerHydrogenLine(object):
             doppler_shift_BalmerHydrogenLine(self, self.velocity)
 
         interp_args: dict = dict(
-            ne=('pecs', ne),
-            Te=('pecs', te),
-            kwargs=dict(
-                bounds_error=False,
-                fill_value=None
-            )
+            ne=("pecs", ne),
+            Te=("pecs", te),
+            kwargs=dict(bounds_error=False, fill_value=None),
         )
-        rec_pec = np.exp(
-            self.rec_pec.interp(**interp_args)
-        ).data
-        exc_pec = np.exp(
-            self.exc_pec.interp(**interp_args)
-        ).data
+        rec_pec = np.exp(self.rec_pec.interp(**interp_args)).data
+        exc_pec = np.exp(self.exc_pec.interp(**interp_args)).data
 
         if isnan(exc_pec).any():
             err_msg: str = "NaNs in the excitation PECs!"
@@ -866,7 +858,9 @@ class BalmerHydrogenLine(object):
         self.ems_peak = self.rec_peak + self.exc_peak
 
         if isnan(self.ems_peak).any():
-            raise ValueError(f'NaNs in {self.line} line peak ({self.exc_sum}, {self.rec_sum})!')
+            raise ValueError(
+                f"NaNs in {self.line} line peak ({self.exc_sum}, {self.rec_sum})!"
+            )
 
         return self.ems_peak  # ph/cm-2/A/sr/s
 

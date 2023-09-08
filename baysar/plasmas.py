@@ -12,8 +12,8 @@ from scipy.interpolate import RectBivariateSpline, RegularGridInterpolator
 from baysar.line_data import adas_line_data
 from baysar.lineshapes import MeshLine
 from baysar.tools import within
-from OpenADAS import read_adf11, read_adf15
 from gcr import ionisation_balance_transport
+from OpenADAS import read_adf11, read_adf15
 
 
 def power10(var):
@@ -703,27 +703,32 @@ class PlasmaLine:
         if not self.no_sample_neutrals:
             n0 = n0[0]
 
-        adf11types: list[str] = ['scd', 'acd', 'plt', 'prb']
+        adf11types: list[str] = ["scd", "acd", "plt", "prb"]
         if not hasattr(self, "neutral_adf11s"):
             from OpenADAS import get_adf11, load_adf11
+
             self.neutral_adf11s = dict(
                 [
                     (
-                        _adf11type, load_adf11(get_adf11(element="h", adf11type=_adf11type, year=12), passed=True)
-                    ) for _adf11type in adf11types
+                        _adf11type,
+                        load_adf11(
+                            get_adf11(element="h", adf11type=_adf11type, year=12),
+                            passed=True,
+                        ),
+                    )
+                    for _adf11type in adf11types
                 ]
             )
 
         interp_args: dict = dict(
-            ne=('pecs', ne),
-            Te=('pecs', te),
-            kwargs=dict(
-                bounds_error=False,
-                fill_value=None
-            )
+            ne=("pecs", ne),
+            Te=("pecs", te),
+            kwargs=dict(bounds_error=False, fill_value=None),
         )
         for _adf11type in adf11types:
-            self.__dict__[_adf11type] = self.neutral_adf11s[_adf11type].sel(block=1).interp(**interp_args).data
+            self.__dict__[_adf11type] = (
+                self.neutral_adf11s[_adf11type].sel(block=1).interp(**interp_args).data
+            )
 
         # n0_time=self.plasma_state['n0_time']
         n0_time = self.plasma_state[species + "_tau"][0]
@@ -764,6 +769,7 @@ class PlasmaLine:
             #     bounds_te=[-1, 2],
             # )
             from .lineshapes import EsymmtricCauchyPlasma
+
             self.profile_function = EsymmtricCauchyPlasma()
         else:
             self.profile_function = profile_function
@@ -1273,10 +1279,12 @@ class PlasmaLine:
         ne = self.adas_plasma_inputs["ne"]
 
         pecs = []
-        from OpenADAS import get_adf15, load_adf15
         from xarray import DataArray
+
+        from OpenADAS import get_adf15, load_adf15
+
         for species in self.hydrogen_species:
-            _element, _charge = species.split('_')
+            _element, _charge = species.split("_")
             _element = _element.lower()
             _charge = int(_charge)
             adf15: str = get_adf15(element=_element, charge=_charge, year=12)

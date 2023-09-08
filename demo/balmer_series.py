@@ -28,9 +28,11 @@ def get_gibbs_chain(posterior, start, bounds=None) -> GibbsChain:
     return chain
 
 
-def optimise_posterior(posterior: BaysarPosterior, minutes=1.) -> GibbsChain:
+def optimise_posterior(posterior: BaysarPosterior, minutes=1.0) -> GibbsChain:
     start: ndarray = posterior.random_start()
-    chain: GibbsChain = get_gibbs_chain(posterior, start, bounds=posterior.plasma.theta_bounds)
+    chain: GibbsChain = get_gibbs_chain(
+        posterior, start, bounds=posterior.plasma.theta_bounds
+    )
     chain.run_for(minutes=minutes)
 
     success_criteria: float = -0.5 * sum(
@@ -54,7 +56,6 @@ def optimise_posterior(posterior: BaysarPosterior, minutes=1.) -> GibbsChain:
 
 @dataclass
 class SuperBFGS:
-
     func: Callable
     bounds: list
 
@@ -68,17 +69,22 @@ class SuperBFGS:
             theta[1:],
             approx_grad=True,
             bounds=self.bounds[1:],
-            m=10, factr=1e7, pgtol=1e-5,
-            epsilon=1e-8, iprint=-1, maxfun=15000,
-            maxiter=1, disp=None,
+            m=10,
+            factr=1e7,
+            pgtol=1e-5,
+            epsilon=1e-8,
+            iprint=-1,
+            maxfun=15000,
+            maxiter=1,
+            disp=None,
             callback=self.callback,
-            maxls=20
+            maxls=20,
         )
 
         return f
 
     def callback(self, func_theta):
-        print(f"logP = {self.func(func_theta):.1f}", end='\n', flush=True)
+        print(f"logP = {self.func(func_theta):.1f}", end="\n", flush=True)
 
 
 def len_slice(index: slice) -> int:
@@ -87,33 +93,28 @@ def len_slice(index: slice) -> int:
 
 
 def get_param_index(posterior: BaysarPosterior) -> list[str]:
-
     param_slices: dict = posterior.plasma.slices
     index: list[str] = []
     for param in param_slices:
         param_slice: slice = param_slices[param]
         num_param_slice: int = len_slice(param_slice)
         sub_index: list[str] = [
-            param if num_param_slice == 1 else f"{param}#{n}" for n in range(num_param_slice)
+            param if num_param_slice == 1 else f"{param}#{n}"
+            for n in range(num_param_slice)
         ]
         index.extend(sub_index)
 
     return index
 
 
-def get_theta_fit_df(reference: ndarray, fit: ndarray, posterior: BaysarPosterior) -> DataFrame:
-
+def get_theta_fit_df(
+    reference: ndarray, fit: ndarray, posterior: BaysarPosterior
+) -> DataFrame:
     param_index: list[str] = get_param_index(posterior)
     data: ndarray = array([reference, fit]).T
     data = array([reference, fit, diff(data).flatten()]).T
     df_fit: DataFrame = DataFrame(
-        data=data,
-        index=param_index,
-        columns=[
-            "Target",
-            "Fit",
-            "Diff"
-        ]
+        data=data, index=param_index, columns=["Target", "Fit", "Diff"]
     )
 
     return df_fit
@@ -144,7 +145,7 @@ def main() -> None:
     reference_theta: list[float] = copy(chain.mode())
     theta_slices: dict[str, slice] = posterior.plasma.slices
     reference_theta[theta_slices["electron_density"]] = [log10(8e13), 0, 3]
-    reference_theta[theta_slices["electron_temperature"]] = [log10(5.), 3, 1]
+    reference_theta[theta_slices["electron_temperature"]] = [log10(5.0), 3, 1]
     if not posterior.plasma.no_sample_neutrals:
         reference_theta[theta_slices["H_0_dens"]] = [log10(8e13)]
     reference_theta[theta_slices["H_0_tau"]] = [-8.0]
@@ -154,17 +155,19 @@ def main() -> None:
     synthetic_spectra: ndarray = posterior.posterior_components[0].forward_model()
     # Add noise
     num_pixels: int = len(synthetic_spectra)
-    wavelength_axis: ndarray = posterior.input_dict['wavelength_axis'][0]
+    wavelength_axis: ndarray = posterior.input_dict["wavelength_axis"][0]
     synthetic_spectra += normal(0, 1e12, num_pixels)
     input_dict["experimental_emission"] = [synthetic_spectra]
     plot(synthetic_spectra, x=wavelength_axis)
 
     # Rebuild posterior
-    print('\n\n')
+    print("\n\n")
     posterior: BaysarPosterior = BaysarPosterior(input_dict=input_dict)
     # Pseudo-optimise
     start: ndarray = posterior.random_start()
-    chain: GibbsChain = get_gibbs_chain(posterior, start, bounds=posterior.plasma.theta_bounds)
+    chain: GibbsChain = get_gibbs_chain(
+        posterior, start, bounds=posterior.plasma.theta_bounds
+    )
     chain.advance(50)
     # Optimise!
     # hyper_cost_bounds: list = [[-10.0, -5.0], *posterior.plasma.theta_bounds]
@@ -176,7 +179,7 @@ def main() -> None:
         approx_grad=True,
         bounds=posterior.plasma.theta_bounds,
         maxiter=100,
-        callback=lambda x: print(f"logP = {posterior(x):.2f}", end='\n', flush=True)
+        callback=lambda x: print(f"logP = {posterior(x):.2f}", end="\n", flush=True),
     )
 
     df_fit: DataFrame = get_theta_fit_df(reference_theta, x, posterior)
@@ -200,7 +203,7 @@ def main() -> None:
     fit_spectra: ndarray = posterior.posterior_components[0].forward_model()
     plot(
         array([synthetic_spectra, fit_spectra]).T,
-        x=array([wavelength_axis, wavelength_axis]).T
+        x=array([wavelength_axis, wavelength_axis]).T,
     )
 
     rmse: ndarray = abs((synthetic_spectra - fit_spectra) / synthetic_spectra)

@@ -26,7 +26,9 @@ def within(stuff, boxes):
     boxes: ndarray = boxes if type(boxes) is ndarray else array(boxes)
     # shape check
     if len(boxes.shape) != 2:
-        err_msg: str = f"Incorrect boxes dimensions! Should be structure array([box0, box1, ...])"
+        err_msg: str = (
+            f"Incorrect boxes dimensions! Should be structure array([box0, box1, ...])"
+        )
         raise ValueError(err_msg)
     # main
     if type(stuff) in (tuple, list):
@@ -259,7 +261,7 @@ def make_input_dict(
     # species = species_new
 
     # Unpack kwargs
-    ions: list[list] = kwargs['ions']
+    ions: list[list] = kwargs["ions"]
 
     # Type formatting
     # Spectrometer parameters and variables
