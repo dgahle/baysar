@@ -3103,6 +3103,7 @@
     ],
     "mystery_lines": null,
     "refine": 0.1,
+    "no_sample_neutrals": false,
     "ion_resolved_temperatures": false,
     "ion_resolved_tau": false
 }
