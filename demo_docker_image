@@ -5,7 +5,7 @@ FROM python:3.9
 # Build directories
 ADD . /
 RUN mkdir -p output, output/log
-ADD metadata/config.json /
+RUN cp -p metadata/config.json /
 
 # Configure the environment variables
 ENV PYTHONPATH "${PYTHONPATH}:/."
