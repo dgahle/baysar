@@ -68,7 +68,8 @@ from tulasa.data_processing import add_chain_bounds
 
 
 # 0.4. Plot Settings
-font = {"family": "normal", "weight": "bold", "size": 14}
+# font = {"family": "normal", "weight": "bold", "size": 14}
+font = {"weight": "bold", "size": 14}
 
 mpl.rc("font", **font)
 

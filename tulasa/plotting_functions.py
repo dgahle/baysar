@@ -737,7 +737,7 @@ def plot_fit(
     # ax[1].set_ylabel(r'$\sigma - Normalised \ Residuals$')
     ax_res.set_xlabel(r"$Wavelength \ / \ \AA$")
 
-    los = posterior.plasma.plasma_state["los"]
+    los = posterior.plasma.los  # .plasma_state["los"]
 
     ax_plasma.set_xlim([min(los), max(los)])
 
@@ -755,14 +755,15 @@ def plot_fit(
 
     for counter0 in np.linspace(0, len(sample) - 1, size, dtype=int):
         posterior(sample[counter0])
+        tmp_fit = posterior.posterior_components[0].forward_model()
 
-        if posterior.posterior_components[0].calibrated:
-            tmp_fit = posterior.posterior_components[0].forward_model()
-        else:
-            tmp_fit = (
-                posterior.posterior_components[0].forward_model()
-                * posterior.plasma.plasma_state["a_cal"][0]
-            )
+        # if posterior.posterior_components[0].calibrated:
+        #     tmp_fit = posterior.posterior_components[0].forward_model()
+        # else:
+        #     tmp_fit = (
+        #         posterior.posterior_components[0].forward_model()
+        #         * posterior.plasma.plasma_state["a_cal"][0]
+        #     )
 
         ax_fit.plot(waves, tmp_fit, "pink", alpha=alpha)
 
@@ -781,7 +782,7 @@ def plot_fit(
         ax_te.plot(los, te, color=te_color, alpha=alpha)
 
     leg = ax_fit.legend()
-    leg.draggable()
+    # leg.draggable()
 
     if filename is None:
         fig.show()

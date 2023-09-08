@@ -354,7 +354,8 @@ def plot(
 ):
     "look up kwargs"
 
-    font = {"family": "normal", "weight": "bold", "size": fsize}
+    # font = {"family": "normal", "weight": "bold", "size": fsize}
+    font = {"weight": "bold", "size": fsize}
 
     mpl.rc("font", **font)
 
