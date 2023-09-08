@@ -90,12 +90,6 @@ def check_input_dict_input(
         noise_region,
         emission_constant,
     ]
-    # Type conversion
-    from numpy import array, ndarray
-    for n, exp_thing in enumerate(exp_stuff):
-        if type(exp_thing) is list:
-            exp_thing = [array(d) if type(d) is ndarray else d for d in exp_thing]
-            exp_stuff[n] = exp_thing
 
     # len check
     exp_len_check = [len(e) == len(exp_stuff[0]) for e in exp_stuff]
@@ -263,8 +257,21 @@ def make_input_dict(
     #
     # del species
     # species = species_new
+
+    # Unpack kwargs
     ions: list[list] = kwargs['ions']
 
+    # Type formatting
+    # Spectrometer parameters and variables
+    _type_formatter = lambda x: [d if type(d) is ndarray else array(d) for d in x]
+    wavelength_axis = _type_formatter(wavelength_axis)
+    experimental_emission = _type_formatter(experimental_emission)
+    instrument_function = _type_formatter(instrument_function)
+    # noise_region = _type_formatter(noise_region)
+    # emission_constant = _type_formatter(emission_constant)
+    refine = refine if type(refine) is list else [refine]
+
+    # Input checks
     check_input_dict_input(
         wavelength_axis,
         experimental_emission,
