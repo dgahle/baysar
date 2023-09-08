@@ -9,7 +9,7 @@ import os
 import sys
 
 import numpy as np
-from numpy import random
+from numpy import array, ndarray, random
 
 from baysar.line_data import adas_line_data
 
@@ -22,7 +22,13 @@ def within(stuff, boxes):
     :param box: Array of values to check the sample(s) against
     :return: True or False if all the samples are in the array
     """
-
+    # boxes type check
+    boxes: ndarray = boxes if type(boxes) is ndarray else array(boxes)
+    # shape check
+    if len(boxes.shape) != 2:
+        err_msg: str = f"Incorrect boxes dimensions! Should be structure array([box0, box1, ...])"
+        raise ValueError(err_msg)
+    # main
     if type(stuff) in (tuple, list):
         return any(
             [
@@ -84,6 +90,13 @@ def check_input_dict_input(
         noise_region,
         emission_constant,
     ]
+    # Type conversion
+    from numpy import array, ndarray
+    for n, exp_thing in enumerate(exp_stuff):
+        if type(exp_thing) is list:
+            exp_thing = [array(d) if type(d) is ndarray else d for d in exp_thing]
+            exp_stuff[n] = exp_thing
+
     # len check
     exp_len_check = [len(e) == len(exp_stuff[0]) for e in exp_stuff]
     if not all(exp_len_check):
@@ -304,7 +317,6 @@ def make_input_dict(
         "noise_region",
         "refine",
     ]
-
     for d, d_str in zip(data, data_string):
         input_dict[d_str] = d
 
