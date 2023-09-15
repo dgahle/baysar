@@ -2,7 +2,7 @@
 from numpy import array, isnan, linspace, log10, ndarray
 
 from baysar.plasmas.profile_functions.asymmetric_cauchy import asymmetric_cauchy
-from baysar.plasmas.profile_functions.asymmetric_cauchy import asymmetric_cauchy_d_log_p_max, asymmetric_cauchy_d_shift, asymmetric_cauchy_d_p_min
+from baysar.plasmas.profile_functions.asymmetric_cauchy import asymmetric_cauchy_d_log_p_max, asymmetric_cauchy_d_shift, asymmetric_cauchy_d_sigma, asymmetric_cauchy_d_p_min
 
 
 # Variables
@@ -65,13 +65,24 @@ class TestAsymmetricCauchy:
 class TestAsymmetricCauchyGradients:
 
     def test_asymmetric_cauchy_d_log_p_max(self) -> None:
-        asymmetric_cauchy_d_log_p_max(x, log_p_max, shift, sigma, p_min)
+        test: ndarray = asymmetric_cauchy_d_log_p_max(x, log_p_max, shift, sigma, p_min)
+        check: ndarray = isnan(test)
+        assert not check.any(), 'asymmetric_cauchy_d_log_p_max is returning NaNs!'
 
     def test_asymmetric_cauchy_d_shift(self) -> None:
-        asymmetric_cauchy_d_shift(x, log_p_max, shift, sigma, p_min)
+        test: ndarray = asymmetric_cauchy_d_shift(x, log_p_max, shift, sigma, p_min)
+        check: ndarray = isnan(test)
+        assert not check.any(), 'asymmetric_cauchy_d_shift is returning NaNs!'
+
+    def test_asymmetric_cauchy_d_sigma(self) -> None:
+        test: ndarray = asymmetric_cauchy_d_sigma(x, log_p_max, shift, sigma, p_min)
+        check: ndarray = isnan(test)
+        assert not check.any(), 'asymmetric_cauchy_d_sigma is returning NaNs!'
 
     def test_asymmetric_cauchy_d_p_min(self) -> None:
-        asymmetric_cauchy_d_p_min(x, log_p_max, shift, sigma, p_min)
+        test: ndarray = asymmetric_cauchy_d_p_min(x, log_p_max, shift, sigma, p_min)
+        check: ndarray = isnan(test, where=False)
+        assert not check.any(), 'asymmetric_cauchy_d_p_min is returning NaNs!'
 
 
 if __name__ == "__main__":

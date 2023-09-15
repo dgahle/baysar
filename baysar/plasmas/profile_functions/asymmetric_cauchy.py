@@ -42,17 +42,39 @@ def asymmetric_cauchy_d_shift(x: ndarray, log_p_max: float, shift: float, sigma:
     # Solve dC/dShift by quotient rule
     B: ndarray = 0.2 * sigma + sigma / G
     dC_dshift: ndarray = - (B + dx * dB_dshift) / square(B)
-    # Solve dD/dShift
+    # Solve dD/dShift by substitution and quotient rule
     C: ndarray = sigma + dx / B
     dD_dshift: ndarray = 2 * (dx / C) * - (C + dC_dshift * dx) / square(C)
     # Solve dE/dShift
     D: ndarray = square(dx / C)
     dE_dshift: ndarray = dD_dshift
-    # Solve dy/dShift
+    # Solve dy/dShift by substitution
     E: ndarray = 1 + D
     A: ndarray = power(10, log_p_max) - p_min
     dy_dE: ndarray = - A / square(E)
     gradient_profile: ndarray = dy_dE * dE_dshift
+
+    return gradient_profile
+
+
+def asymmetric_cauchy_d_sigma(x: ndarray, log_p_max: float, shift: float, sigma: float, p_min: float) -> ndarray:
+    # Solve dB/dSigma by substitution
+    dx: ndarray = x - shift
+    dB_dsigma: ndarray = 0.2 + 1 / (1 + exp(-dx))
+    # Solve dC/dSigma by quotient rule
+    B: ndarray = 0.2 * sigma + sigma / (1 + exp(-dx))
+    dC_dsigma: ndarray = 1 - dx / square(B) * dB_dsigma
+    # Solve dD/dSigma by substitution and quotient rule
+    C: ndarray = sigma + dx / B
+    D: ndarray = square(dx / C)
+    dD_dsigma: ndarray = 2 * D * - dx / square(C) * dC_dsigma
+    # Solve dE/dSigma
+    dE_dsigma: ndarray = dD_dsigma
+    # Solve dy/dSigma by substitution
+    E: ndarray = 1 + D
+    A: ndarray = power(10, log_p_max) - p_min
+    dy_dE: ndarray = - A / square(E)
+    gradient_profile: ndarray = dy_dE * dE_dsigma
 
     return gradient_profile
 
