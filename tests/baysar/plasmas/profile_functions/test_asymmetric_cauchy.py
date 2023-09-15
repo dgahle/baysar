@@ -1,7 +1,8 @@
 # Imports
-from numpy import array, linspace, log10, ndarray
+from numpy import array, isnan, linspace, log10, ndarray
 
 from baysar.plasmas.profile_functions.asymmetric_cauchy import asymmetric_cauchy
+from baysar.plasmas.profile_functions.asymmetric_cauchy import asymmetric_cauchy_d_log_p_max, asymmetric_cauchy_d_shift, asymmetric_cauchy_d_p_min
 
 
 # Variables
@@ -59,3 +60,19 @@ class TestAsymmetricCauchy:
         assert_msg: str = f"Profile minimum values are {', '.join([f'{v:.2f}' for v in test])} " \
                           f"but should be {', '.join([f'{v}' for v in p_min])}!"
         assert checks, assert_msg
+
+
+class TestAsymmetricCauchyGradients:
+
+    def test_asymmetric_cauchy_d_log_p_max(self) -> None:
+        asymmetric_cauchy_d_log_p_max(x, log_p_max, shift, sigma, p_min)
+
+    def test_asymmetric_cauchy_d_shift(self) -> None:
+        asymmetric_cauchy_d_shift(x, log_p_max, shift, sigma, p_min)
+
+    def test_asymmetric_cauchy_d_p_min(self) -> None:
+        asymmetric_cauchy_d_p_min(x, log_p_max, shift, sigma, p_min)
+
+
+if __name__ == "__main__":
+    pass
