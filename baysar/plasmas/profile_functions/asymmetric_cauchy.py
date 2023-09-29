@@ -1,5 +1,5 @@
 # Imports
-from numpy import exp, log, ndarray, power, square
+from numpy import exp, linspace, log, ndarray, power, square
 
 
 # Variables
@@ -117,7 +117,12 @@ def _electron_temperature(x: ndarray, log_te_max: float, sigma: float, te_min: f
 class AsymmetricCauchyProfile:
 
     def __init__(self):
+        self.x: ndarray = linspace(-5, 15, 101)
         pass
+
+    def _asymmetric_cauchy(self, theta: list[float]) -> ndarray:
+        profile: ndarray = asymmetric_cauchy(self.x, *theta)
+        return profile
 
 
 if __name__ == "__main__":
