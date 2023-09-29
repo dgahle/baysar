@@ -768,7 +768,7 @@ class PlasmaLine:
             #     bounds_ne=[11, 16],
             #     bounds_te=[-1, 2],
             # )
-            from .lineshapes import EsymmtricCauchyPlasma
+            from ..lineshapes import EsymmtricCauchyPlasma
 
             self.profile_function = EsymmtricCauchyPlasma()
         else:
