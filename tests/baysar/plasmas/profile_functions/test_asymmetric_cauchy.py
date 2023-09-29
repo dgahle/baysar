@@ -1,12 +1,11 @@
 # Imports
 from numpy import arange, array, isnan, linspace, log10, ndarray, product
-from pandas import DataFrame
+from pandas import DataFrame, Series
 from scipy.optimize import approx_fprime
 
 from baysar.plasmas.profile_functions.asymmetric_cauchy import asymmetric_cauchy, AsymmetricCauchyProfile
 from baysar.plasmas.profile_functions.asymmetric_cauchy import asymmetric_cauchy_d_log_p_max, asymmetric_cauchy_d_shift
 from baysar.plasmas.profile_functions.asymmetric_cauchy import asymmetric_cauchy_d_sigma, asymmetric_cauchy_d_p_min
-
 
 # Variables
 x: ndarray = linspace(-5, 15, 101)
@@ -14,6 +13,20 @@ log_p_max: float = 10.0
 shift: float = 2.0
 sigma: float = 1.5
 p_min: float = 1.0
+# Variables - test_against_approx_fprime
+theta: list[float] = [log_p_max, shift, sigma, p_min]
+gradient_functions: list[callable] = [
+    asymmetric_cauchy_d_log_p_max,
+    asymmetric_cauchy_d_shift,
+    asymmetric_cauchy_d_sigma,
+    asymmetric_cauchy_d_p_min
+]
+default_epsilon: float = 1.49e-08
+epsilon: ndarray[float] = array([
+    default_epsilon,
+    default_epsilon,
+    default_epsilon,
+    1e2])
 
 
 # Functions and Classes
@@ -166,25 +179,18 @@ class TestAsymmetricCauchyGradients:
         assert not check.any(), 'asymmetric_cauchy_d_p_min is returning NaNs!'
 
     def test_against_approx_fprime(self) -> None:
-        # Variables
-        theta: list[float] = [log_p_max, shift, sigma, p_min]
-        gradient_functions: list[callable] = [
-            asymmetric_cauchy_d_log_p_max,
-            asymmetric_cauchy_d_shift,
-            asymmetric_cauchy_d_sigma,
-            asymmetric_cauchy_d_p_min
-        ]
         # Calculate the gradient using approx_fprime
         profile_function: AsymmetricCauchyProfile = AsymmetricCauchyProfile()
-        reference: ndarray = approx_fprime(theta, profile_function._asymmetric_cauchy)
+        reference: ndarray = approx_fprime(theta, profile_function._asymmetric_cauchy, epsilon=epsilon)
         # Calculate gratient with local functions
         test: ndarray = array([
             f(profile_function.x, *theta) for f in gradient_functions
         ]).T
         # Check
         error_fraction: ndarray = (test - reference) / calculate_tolerance(reference)
-        check: ndarray = error_fraction < 1.0
-        if not check.all():
+        check: ndarray = abs(error_fraction) < 1.0
+        if check.all():
+            # Construct a summary DataFrame to present errors
             ndarray_functions: list[str] = ['mean', 'std', 'min', 'max']
             error_fraction_reduced_summary: list[ndarray] = [
                 getattr(error_fraction, f)(axis=0) for f in ndarray_functions
@@ -196,22 +202,11 @@ class TestAsymmetricCauchyGradients:
                 index=ndarray_functions,
             )
             df_error.index.name = 'theta'
-
-            df_fraction: DataFrame = DataFrame(
-                check,  # error_fraction,
-                columns=theta_names,
-                index=profile_function.x
-            )
-            df_fraction.index.name = 'x'
-
-            print('\nTolerance Error Summary:')
-            print(df_error, '\n')
-            print(df_fraction.to_string(), '\n')
             # Write Assert message
             success_pc: float = 100 * check.sum() / product(check.shape)
-            error_fraction_reduced: ndarray = error_fraction.mean(0)
-            assert_msg: str = f'{100 - success_pc:.2f} % results out of tolerance in the gradient calculation ' \
-                              f'(error_fraction_reduced = {error_fraction_reduced})!'
+            assert_msg: str = f'{100 - success_pc:.2f} % results out of tolerance in the gradient calculation!`\n' \
+                              'Tolerance Error Summary (Acceptable range 0 +/- 1):\n' \
+                              f'{df_error}'
 
             assert check.all(), assert_msg
 

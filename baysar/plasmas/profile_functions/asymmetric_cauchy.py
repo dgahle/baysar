@@ -1,6 +1,5 @@
 # Imports
-from numpy import exp, linspace, log, ndarray, power, square
-
+from numpy import exp, linspace, log, ndarray, power, sqrt, square
 
 # Variables
 
@@ -58,23 +57,23 @@ def asymmetric_cauchy_d_shift(x: ndarray, log_p_max: float, shift: float, sigma:
 
 
 def asymmetric_cauchy_d_sigma(x: ndarray, log_p_max: float, shift: float, sigma: float, p_min: float) -> ndarray:
-    # Solve dB/dSigma by substitution
+    # Calculate terms needed form the original asymmetric_cauchy function
     dx: ndarray = x - shift
-    dB_dsigma: ndarray = 0.2 + 1 / (1 + exp(-dx))
-    # Solve dC/dSigma by quotient rule
     B: ndarray = 0.2 * sigma + sigma / (1 + exp(-dx))
-    dC_dsigma: ndarray = 1 - dx / square(B) * dB_dsigma
-    # Solve dD/dSigma by substitution and quotient rule
     C: ndarray = sigma + dx / B
     D: ndarray = square(dx / C)
-    dD_dsigma: ndarray = 2 * D * - dx / square(C) * dC_dsigma
-    # Solve dE/dSigma
-    dE_dsigma: ndarray = dD_dsigma
-    # Solve dy/dSigma by substitution
-    E: ndarray = 1 + D
     A: ndarray = power(10, log_p_max) - p_min
-    dy_dE: ndarray = - A / square(E)
-    gradient_profile: ndarray = dy_dE * dE_dsigma
+    # Predefine dB/dSigma to make the final code/calculation easier to read
+    dB_dsigma: ndarray = 0.2 + 1 / (1 + exp(-dx))
+    # Calculate the gradients over the profile
+    lhs0: ndarray = sqrt(A) / (1 + D)
+    lhs: ndarray = 2 * power(C, - 3) * square(lhs0 * dx)
+    rhs: ndarray = 1 - (
+        (
+            (x - shift)/square(B)
+        ) * dB_dsigma
+    )
+    gradient_profile: ndarray = rhs * lhs
 
     return gradient_profile
 
@@ -119,8 +118,8 @@ def _electron_temperature(x: ndarray, log_te_max: float, sigma: float, te_min: f
 
 class AsymmetricCauchyProfile:
 
-    def __init__(self):
-        self.x: ndarray = linspace(-5, 15, 101)
+    def __init__(self, x=None):
+        self.x: ndarray = linspace(-5, 15, 101) if x is None else x
         pass
 
     def _asymmetric_cauchy(self, theta: list[float]) -> ndarray:
