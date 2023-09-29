@@ -1,5 +1,6 @@
 # Imports
-from numpy import array, isnan, linspace, log10, ndarray
+from numpy import array, isnan, linspace, log10, ndarray, product
+from pandas import DataFrame
 from scipy.optimize import approx_fprime
 
 from baysar.plasmas.profile_functions.asymmetric_cauchy import asymmetric_cauchy, AsymmetricCauchyProfile
@@ -18,6 +19,36 @@ p_min: float = 1.0
 # Functions and Classes
 def _calc_tolerance(data: ndarray, rtol: float = 1e-05, atol: float = 1e-08):
     return atol + rtol * abs(data)
+
+
+def get_name(var: any) -> str:
+    """
+    Used the `id` function to match the passed variable against the contents of globals().
+
+    Note: This has only been tested against returning the names of variables in a list comprehension
+
+    Args:
+        var (any): Variable of which to name
+
+    Returns:
+        name (str): Name of the var matched against globals
+    """
+
+    name: str = [i for i, j in globals().items() if id(j) == id(var)][0]
+
+    return name
+
+
+def test_get_name() -> None:
+    # Test
+    theta: list[float] = [log_p_max, shift, sigma, p_min]
+    test: list[str] = [get_name(var) for var in theta]
+    # Reference
+    reference: list[str] = ["log_p_max", "shift", 'sigma', "p_min"]
+    # Check
+    check: list[bool] = [t==r for t, r in zip(test, reference)]
+    assert_msg: str = ""
+    assert all(check), assert_msg
 
 
 class TestAsymmetricCauchy:
@@ -93,10 +124,7 @@ class TestAsymmetricCauchyGradients:
         assert not check.any(), 'asymmetric_cauchy_d_p_min is returning NaNs!'
 
     def test_against_approx_fprime(self) -> None:
-        # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.approx_fprime.html
         # Variables
-        from numpy import isclose, ones, product
-        from pandas import DataFrame
         theta: list[float] = [log_p_max, shift, sigma, p_min]
         gradient_functions: list[callable] = [
             asymmetric_cauchy_d_log_p_max,
@@ -119,7 +147,6 @@ class TestAsymmetricCauchyGradients:
             error_fraction_reduced_summary: list[ndarray] = [
                 getattr(error_fraction, f)(axis=0) for f in ndarray_functions
             ]
-            get_name: callable = lambda x: [i for i, j in globals().items() if id(j) == id(x)][0]
             theta_names: list[str] = [get_name(var) for var in theta]
             df_error: DataFrame = DataFrame(
                 error_fraction_reduced_summary,
