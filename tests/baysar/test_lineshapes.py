@@ -64,13 +64,28 @@ class TestGaussian(unittest.TestCase):
             intensity=1,
         )
         self.assertRaises(
-            TypeError, gaussian_check_input, x=np.array([0]), cwl="a", fwhm=1, intensity=1
+            TypeError,
+            gaussian_check_input,
+            x=np.array([0]),
+            cwl="a",
+            fwhm=1,
+            intensity=1,
         )
         self.assertRaises(
-            TypeError, gaussian_check_input, x=np.array([0]), cwl=1, fwhm="a", intensity=1
+            TypeError,
+            gaussian_check_input,
+            x=np.array([0]),
+            cwl=1,
+            fwhm="a",
+            intensity=1,
         )
         self.assertRaises(
-            TypeError, gaussian_check_input, x=np.array([0]), cwl=1, fwhm=1, intensity="a"
+            TypeError,
+            gaussian_check_input,
+            x=np.array([0]),
+            cwl=1,
+            fwhm=1,
+            intensity="a",
         )
 
 
