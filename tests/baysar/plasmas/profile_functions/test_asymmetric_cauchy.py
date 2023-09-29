@@ -1,5 +1,5 @@
 # Imports
-from numpy import array, isnan, linspace, log10, ndarray, product
+from numpy import arange, array, isnan, linspace, log10, ndarray, product
 from pandas import DataFrame
 from scipy.optimize import approx_fprime
 
@@ -17,13 +17,55 @@ p_min: float = 1.0
 
 
 # Functions and Classes
-def _calc_tolerance(data: ndarray, rtol: float = 1e-05, atol: float = 1e-08):
-    return atol + rtol * abs(data)
+def calculate_tolerance(reference: [float, ndarray], rtol: float = 1e-05, atol: float = 1e-08):
+    """
+    Use the tolerance calculation from numpy.isclose to get a standard deviation to calculate Gaussian errors for
+    fractional equivalence tests within machine error.
+
+    Useful reference: https://numpy.org/doc/stable/reference/generated/numpy.isclose.html
+
+    Args:
+        reference (float, array_like): Variable of which to name
+        rtol (float) = 1e-05: Tolerance relative to the reference
+        atol (float) = 1e-08: Absolute tolerance
+
+    Returns:
+        sigma = atol + rtol * abs(reference)
+    """
+
+    return atol + rtol * abs(reference)
+
+
+class TestCalculateTolerance:
+
+    def test_with_zero(self):
+        # Test
+        test: float = calculate_tolerance(reference=0.)
+        # Reference
+        reference: float = 1e-08  # same as atol in the function
+        # Check
+        assert test == reference, f'Does not work with reference = {reference}!'
+
+    def test_with_arange(self):
+        # Variables
+        data: ndarray[float] = arange(2)
+        rtol: float = 1e-05
+        atol: float = 1e-08
+        # Test
+        test: ndarray = calculate_tolerance(data)
+        # Reference
+        reference: ndarray = array([
+            atol,
+            atol + rtol
+        ])
+        # Check
+        check: ndarray = test == reference
+        assert check.all(), f'Does not work with reference = {reference}!'
 
 
 def get_name(var: any) -> str:
     """
-    Used the `id` function to match the passed variable against the contents of globals().
+    Uses the `id` function to match the passed variable against the contents of globals().
 
     Note: This has only been tested against returning the names of variables in a list comprehension
 
@@ -140,7 +182,7 @@ class TestAsymmetricCauchyGradients:
             f(profile_function.x, *theta) for f in gradient_functions
         ]).T
         # Check
-        error_fraction: ndarray = (test - reference) / _calc_tolerance(reference)
+        error_fraction: ndarray = (test - reference) / calculate_tolerance(reference)
         check: ndarray = error_fraction < 1.0
         if not check.all():
             ndarray_functions: list[str] = ['mean', 'std', 'min', 'max']
