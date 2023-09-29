@@ -1,6 +1,6 @@
 # Imports
 from numpy import arange, array, isnan, linspace, log10, ndarray, product
-from pandas import DataFrame, Series
+from pandas import DataFrame
 from scipy.optimize import approx_fprime
 
 from baysar.plasmas.profile_functions.asymmetric_cauchy import (
