@@ -10,7 +10,7 @@ from random import uniform
 from time import sleep
 
 import numpy as np
-from numpy import random
+from numpy import ndarray, random
 from scipy.optimize import fmin_l_bfgs_b
 
 from baysar.linemodels import BalmerHydrogenLine, XLine
@@ -259,6 +259,14 @@ class BaysarPosterior(object):
 
     def cost(self, theta):
         return -self.__call__(theta)
+
+    def gradient(self, theta: list[float]) -> ndarray:
+        # Update plasma state
+        self.plasma(theta)
+        # Calculate gradients
+        gradient: ndarray = sum(p.gradient() for p in self.posterior_components)
+
+        return gradient
 
     def build_posterior_components(self):
         self.posterior_components = []

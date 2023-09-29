@@ -15,6 +15,7 @@ from numpy import (
     log,
     mean,
     nan,
+    ndarray,
     sqrt,
     square,
     std,
@@ -102,6 +103,11 @@ class SpectrometerChord(object):
         """
 
         return self.likelihood()
+
+    def gradient(self) -> ndarray:
+        gradient: ndarray
+
+        return gradient
 
     def get_noise_spectra(self):
         """
