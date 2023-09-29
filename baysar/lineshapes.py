@@ -1,14 +1,31 @@
-from copy import copy
-from itertools import product
 import sys
 import warnings
+from copy import copy
+from itertools import product
 
-from numpy import arange, array, concatenate, diff, exp, isreal, linspace, log, log10, ndarray, ones, power, sqrt, square, tanh, where, zeros
+from numpy import (
+    arange,
+    array,
+    concatenate,
+    diff,
+    exp,
+    isreal,
+    linspace,
+    log,
+    log10,
+    ndarray,
+    ones,
+    power,
+    sqrt,
+    square,
+    tanh,
+    where,
+    zeros,
+)
 from scipy import interpolate, special
 from scipy.constants import pi
 from scipy.integrate import trapz
-from scipy.interpolate import interp1d, UnivariateSpline  # , BSpline
-from scipy.interpolate import interp1d
+from scipy.interpolate import UnivariateSpline, interp1d  # , BSpline
 from scipy.special import factorial
 
 
@@ -86,9 +103,7 @@ def gaussian_check_input(x: ndarray, cwl, fwhm, intensity):
     # :param 1D ndarray x: Axis to evaluate gaussian
     if type(x) is not ndarray:
         raise TypeError("type(x) is not ndarray")
-    if not any(isreal(x)):
-        print(x.dtype)
-        print("x =", x)
+    if not any([x.dtype in [int, float]]):
         raise TypeError(
             "x must only contain real scalars"
         )  # this also checks that the array is 1D
@@ -259,9 +274,7 @@ class MeshLine(object):
             self.empty_theta = zeros(len(x) + 2)
             self.empty_theta[0] = zero_bounds
             self.empty_theta[-1] = zero_bounds
-            self.x_points = concatenate(
-                [array([min(x_ends)]), x, array([max(x_ends)])]
-            )
+            self.x_points = concatenate([array([min(x_ends)]), x, array([max(x_ends)])])
         self.x_points = self.x_points.astype(float)
         self.x = arange(min(x_ends), max(x_ends), resolution)
 
@@ -373,8 +386,6 @@ class BowmanTeeNe:
 class BowmanTeeTe(BowmanTeeNe):
     def profile(self, theta):
         return bowman_tee_distribution_centred(self.x, theta)
-
-
 
 
 class BowmanTeePlasma(object):
@@ -596,8 +607,6 @@ class SimpleGaussianPlasma:
 
         self.electron_density = GaussianPlasma(x=self.x)
         self.electron_temperature = GaussianPlasma(x=self.x, cwl=0)
-
-
 
 
 def centre_peak(x, y, centre=0):
@@ -893,8 +902,6 @@ class SlabPlasma:
 
         self.electron_density = LeftTopHatProfile(self.x, bounds_ne, dr_bounds)
         self.electron_temperature = FlatProfile(self.x, bounds_te)
-
-
 
 
 class LeftRightTopHatProfile:
