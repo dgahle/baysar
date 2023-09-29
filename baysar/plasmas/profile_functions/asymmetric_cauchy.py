@@ -80,6 +80,9 @@ def asymmetric_cauchy_d_sigma(x: ndarray, log_p_max: float, shift: float, sigma:
 
 
 def asymmetric_cauchy_d_p_min(x: ndarray, log_p_max: float, shift: float, sigma: float, p_min: float) -> ndarray:
+    """
+    (d/dpmin)f(x;theta)  = 1 - 1 / (1 + D), where f(x; theta) is the asymmetric_cauchy function.
+    """
     # Calculate the broadening
     B: ndarray = 0.2 * sigma + sigma / (1 + exp(-(x - shift)))
     C: ndarray = sigma + (x - shift) / B
