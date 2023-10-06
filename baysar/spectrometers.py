@@ -11,6 +11,7 @@ from numpy import (
     arange,
     concatenate,
     diff,
+    empty,
     linspace,
     log,
     mean,
@@ -31,6 +32,8 @@ from baysar.linemodels import ADAS406Lines, BalmerHydrogenLine, XLine
 from baysar.lineshapes import Gaussian
 from baysar.tools import centre_peak, clip_data, progressbar, within
 
+from .plasmas import PlasmaLine
+
 type_checking = {"is_nan"}  #
 
 
@@ -43,7 +46,7 @@ class SpectrometerChord(object):
 
     """
 
-    def __init__(self, plasma, refine=None, chord_number=None):
+    def __init__(self, plasma: PlasmaLine, refine=None, chord_number=None):
         print("Building SpectrometerChord no. %d" % (chord_number))
         self.chord_number = chord_number
         self.plasma = plasma
@@ -105,7 +108,26 @@ class SpectrometerChord(object):
         return self.likelihood()
 
     def gradient(self) -> ndarray:
-        gradient: ndarray
+        # Building variables
+        shape: tuple[int, int] = (
+            self.plasma.n_params,
+            *self.x_data_fm.shape
+        )
+        gradient: ndarray = empty(shape)
+        gradient[:, :] = nan
+        # Calibration
+        # Background
+        background_theta = self.plasma.plasma_state[
+            "background_" + str(self.chord_number)
+        ]
+        background_gradient = self.background_function.gradient(background_theta)
+        gradient[self.plasma.slices[f'background_{self.chord_number}']] = background_gradient
+        # Emission lines
+        gradient += sum(l.gradient() for l in self.lines)
+        # Convolution
+        gradient = self.instrument_function_matrix.dot(gradient.T).sum(axis=0)
+
+        assert gradient.shape == (self.plasma.n_params)
 
         return gradient
 
@@ -347,7 +369,7 @@ class SpectrometerChord(object):
         """
 
         # print("Getting line objects")
-        self.lines = []
+        self.lines: list[ADAS406Lines, BalmerHydrogenLine, XLine] = []
         for species in self.input_dict["species"]:
             index = np.where([s == "_" for s in species])[0][0]
             elem = species[:index]
