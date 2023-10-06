@@ -7,6 +7,7 @@ import warnings
 from itertools import product
 
 import numpy as np
+from numpy import log, ndarray
 from scipy.interpolate import RectBivariateSpline, RegularGridInterpolator
 
 from baysar.line_data import adas_line_data
@@ -156,6 +157,9 @@ class default_background_function(object):
 
     def calculate_background(self, theta):
         return theta
+
+    def gradient(self, theta):
+        return log(10) * theta
 
 
 atomic_number = {
@@ -615,9 +619,9 @@ class PlasmaLine:
                     slices.append((p, slice(last, last + L)))
                     keep_theta_bound[-1] = True
 
-        self.n_params = slices[-1][1].stop
-        self.slices = collections.OrderedDict(slices)
-        self.theta_bounds = np.array(
+        self.n_params: int = slices[-1][1].stop
+        self.slices: dict[str, slice] = collections.OrderedDict(slices)
+        self.theta_bounds: ndarray = np.array(
             [np.array(b) for n, b in enumerate(bounds) if keep_theta_bound[n]],
             dtype=float,
         )

@@ -3104,6 +3104,8 @@
     "mystery_lines": null,
     "refine": 0.1,
     "no_sample_neutrals": false,
+    "cold_neutrals": false,
+    "cold_ions": false,
     "ion_resolved_temperatures": false,
     "ion_resolved_tau": false
 }
