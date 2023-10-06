@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from json import load
 from pathlib import Path
 
-from inference.mcmc import GibbsChain
+from inference.mcmc import GibbsChain, HamiltonianChain
 from numpy import array, diff, log10, ndarray, power
 from numpy.random import normal
 from pandas import DataFrame
@@ -135,7 +135,10 @@ def main() -> None:
     input_dict: dict = make_input_dict(**baysar_config)
     posterior: BaysarPosterior = BaysarPosterior(input_dict=input_dict)
     # Pseudo-optimise
-    chain: GibbsChain = optimise_posterior(posterior, minutes=0.16)
+    start: ndarray = posterior.random_start()
+    chain: HamiltonianChain = HamiltonianChain(posterior=posterior, grad=posterior.gradient, start=start)
+    chain.run_for(minutes=0.16)
+    # chain: GibbsChain = optimise_posterior(posterior, minutes=0.16)
 
     #########################
     ### Self vs Self fit! ###
@@ -165,9 +168,10 @@ def main() -> None:
     posterior: BaysarPosterior = BaysarPosterior(input_dict=input_dict)
     # Pseudo-optimise
     start: ndarray = posterior.random_start()
-    chain: GibbsChain = get_gibbs_chain(
-        posterior, start, bounds=posterior.plasma.theta_bounds
-    )
+    chain: HamiltonianChain = HamiltonianChain(posterior=posterior, grad=posterior.gradient, start=start)
+    # chain: GibbsChain = get_gibbs_chain(
+    #     posterior, start, bounds=posterior.plasma.theta_bounds
+    # )
     chain.advance(50)
     # Optimise!
     # hyper_cost_bounds: list = [[-10.0, -5.0], *posterior.plasma.theta_bounds]
