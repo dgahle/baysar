@@ -876,7 +876,11 @@ class BalmerHydrogenLine(object):
         gradient: ndarray = empty(shape)
         gradient[:, :] = nan
         # Electron density
+        ne_key: str = 'electron_density'
+        gradient[self.plasma.slices[ne_key]] = self.electron_density_gradient()
         # Electron temperature
+        te_key: str = 'electron_temperature'
+        gradient[self.plasma.slices[te_key]] = self.electron_temperature_gradient()
         # Neutral density
         n0_key: str = f'{self.species}_dens'
         if n0_key in self.plasma.slices:
@@ -893,6 +897,14 @@ class BalmerHydrogenLine(object):
 
         raise NotImplementedError
 
+        return gradient
+
+    def electron_density_gradient(self) -> ndarray:
+        gradient: ndarray
+        return gradient
+
+    def electron_temperature_gradient(self) -> ndarray:
+        gradient: ndarray
         return gradient
 
     def tau_gradient(self) -> ndarray:
