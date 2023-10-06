@@ -98,38 +98,43 @@ def asymmetric_cauchy_d_p_min(
     return gradient_profile
 
 
-def _electron_density(
-    x: ndarray, log_ne_max: float, shift: float, sigma: float
-) -> ndarray:
-    # Calculate the amplitude
-    A: float = power(10, log_ne_max)
-    # Calculate the broadening
-    B: ndarray = 0.2 * sigma + sigma / (1 + exp(-(x - shift)))
-    C: ndarray = sigma + (x - shift) / B
-    # Calculate the profile
-    profile: ndarray = A / (1 + (x - shift) / C)
+class ElectronDensity:
 
-    return profile
+    def __init__(self, x: ndarray):
+        self.x: ndarray = x
+        self.number_of_variables: int = 3
+        self.bounds: list[list[int]] = [
+            [12, 15],
+            [-2, 3],
+            [0.5, 5]
+        ]
+
+    def __call__(self, theta: list[float]) -> ndarray:
+        log_p_max, shift, sigma = theta
+        return asymmetric_cauchy(self.x, log_p_max=log_p_max, shift=shift, sigma=sigma, p_min=0.)
 
 
-def _electron_temperature(
-    x: ndarray, log_te_max: float, sigma: float, te_min: float
-) -> ndarray:
-    # Calculate the amplitude
-    A: float = power(10, log_te_max) - te_min
-    # Calculate the broadening
-    B: ndarray = 0.2 * sigma + sigma / (1 + exp(-x))
-    C: ndarray = sigma + x / B
-    # Calculate the profile
-    profile: ndarray = te_min + A / (1 + x / C)
+class ElectronTemperature:
 
-    return profile
+    def __init__(self, x: ndarray):
+        self.x: ndarray = x
+        self.number_of_variables: int = 3
+        self.bounds: list[list[int]] = [
+            [-1, 2],
+            [0.5, 5],
+            [0.5, 5]
+        ]
+
+    def __call__(self, theta: list[float]) -> ndarray:
+        log_p_max, sigma, p_min = theta
+        return asymmetric_cauchy(self.x, log_p_max=log_p_max, shift=0., sigma=sigma, p_min=p_min)
 
 
 class AsymmetricCauchyProfile:
     def __init__(self, x=None):
-        self.x: ndarray = linspace(-5, 15, 101) if x is None else x
-        pass
+        self.x: ndarray = linspace(-10, 25, 101) if x is None else x
+        self.electron_density: ElectronDensity = ElectronDensity(self.x)
+        self.electron_temperature: ElectronTemperature = ElectronTemperature(self.x)
 
     def _asymmetric_cauchy(self, theta: list[float]) -> ndarray:
         profile: ndarray = asymmetric_cauchy(self.x, *theta)
