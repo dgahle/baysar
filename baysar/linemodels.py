@@ -7,6 +7,7 @@ import time as clock
 import warnings
 
 import numpy as np
+from numpy import empty, log, nan, ndarray, power
 from scipy.constants import pi
 from scipy.interpolate import RectBivariateSpline, RegularGridInterpolator
 from scipy.io import readsav
@@ -849,12 +850,12 @@ class BalmerHydrogenLine(object):
             bfield,
             viewangle,
         ]
-        self.exc_peak = (
-            nan_to_num(self.lineshape(self.exc_lineshape_input)) * self.exc_sum
-        )
-        self.rec_peak = (
-            nan_to_num(self.lineshape(self.rec_lineshape_input)) * self.rec_sum
-        )
+        self.exc_lineshape: ndarray = nan_to_num(self.lineshape(self.exc_lineshape_input))
+        self.rec_lineshape: ndarray = nan_to_num(self.lineshape(self.rec_lineshape_input))
+
+        self.exc_peak = self.exc_lineshape * self.exc_sum
+        self.rec_peak = self.rec_lineshape * self.rec_sum
+
         self.ems_peak = self.rec_peak + self.exc_peak
 
         if isnan(self.ems_peak).any():
@@ -863,6 +864,55 @@ class BalmerHydrogenLine(object):
             )
 
         return self.ems_peak  # ph/cm-2/A/sr/s
+
+    def gradient(self) -> ndarray:
+        # Shortcut for cached values
+        _ = self()
+        # Building variables
+        shape: tuple[int, int] = (
+            self.plasma.n_params,
+            *self.wavelengths.shape
+        )
+        gradient: ndarray = empty(shape)
+        gradient[:, :] = nan
+        # Electron density
+        # Electron temperature
+        # Neutral density
+        n0_key: str = f'{self.species}_dens'
+        if n0_key in self.plasma.slices:
+            gradient[self.plasma.slices[n0_key]] = log(10) * self.exc_peak
+        # Ionisation tau
+        tau_key: str = f'{self.species}_tau'
+        gradient[self.plasma.slices[tau_key]] = self.tau_gradient()
+        # Doppler temperature
+        doppler_temperature_key: str = f'{self.species}_velocity'
+        # Doppler velocity
+        velocity_key: str = f'{self.species}_velocity'
+        if velocity_key in self.plasma.slices:
+            raise NotImplementedError('No gradients calculation for the Doppler velocity in BalmerHydrogenLine!')
+
+        raise NotImplementedError
+
+        return gradient
+
+    def tau_gradient(self) -> ndarray:
+        # Plasma parameters
+        ne = self.plasma.plasma_state["electron_density"]
+        te = self.plasma.plasma_state["electron_temperature"]
+        n0: ndarray = power(10, self.plasma.plasma_theta[f'{self.species}_dens'])
+        # Reaction rates
+        interp_args: dict = dict(
+            ne=("pecs", ne),
+            Te=("pecs", te),
+            kwargs=dict(bounds_error=False, fill_value=None),
+        )
+        pec: ndarray = np.exp(self.exc_pec.interp(**interp_args)).data
+        # Calculate gradient
+        n0_dtau: ndarray = log(10) * n0 * ne * self.plasma.scd
+        emission_profile_dtau: ndarray = n0_dtau * ne * pec
+        gradient: ndarray = self.exc_lineshape * trapz(emission_profile_dtau)
+
+        return gradient
 
 
 from numpy import dot, round
