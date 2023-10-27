@@ -16,6 +16,8 @@ from baysar.tools import within
 from gcr import ionisation_balance_transport
 from OpenADAS import read_adf11, read_adf15
 
+from .profile_functions.asymmetric_cauchy import AsymmetricCauchyProfile
+
 
 def power10(var):
     return np.power(10, var)
@@ -761,22 +763,8 @@ class PlasmaLine:
         calintfun_functions=None,
         background_functions=None,
     ):
-        if profile_function is None:
-            # x = np.linspace(1, 9, 5)
-            # profile_function = MeshLine(x=x, zero_bounds=-2, bounds=[0, 10], log=True)
-            # self.profile_function = arb_obj(
-            #     electron_density=profile_function,
-            #     electron_temperature=profile_function,
-            #     number_of_variables_ne=len(x),
-            #     number_of_variables_te=len(x),
-            #     bounds_ne=[11, 16],
-            #     bounds_te=[-1, 2],
-            # )
-            from ..lineshapes import EsymmtricCauchyPlasma
 
-            self.profile_function = EsymmtricCauchyPlasma()
-        else:
-            self.profile_function = profile_function
+        self.profile_function = AsymmetricCauchyProfile() if profile_function is None else profile_function
 
         # tmp_func = arb_obj_single_log_input(number_of_variables=1, bounds=[-5, 20], power=10)
         if cal_functions is None:
