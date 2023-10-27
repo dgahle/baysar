@@ -12,6 +12,7 @@ from scipy.constants import pi
 from scipy.interpolate import RectBivariateSpline, RegularGridInterpolator
 from scipy.io import readsav
 from scipy.signal import fftconvolve
+from xarray import DataArray
 
 
 def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
@@ -687,19 +688,11 @@ class HydrogenLineShape(object):
         )
 
     def __call__(self, theta):
+        # Unpack theta
+        electron_density, electron_temperature, ion_temperature = theta[:2]
+        # Get the Zeeman-Doppler component
         if self.zeeman:
-            (
-                electron_density,
-                electron_temperature,
-                ion_temperature,
-                b_field,
-                viewangle,
-            ) = theta
-        else:
-            electron_density, electron_temperature, ion_temperature = theta
-
-        self.doppler_component = self.doppler_function(ion_temperature, 1)
-        if self.zeeman:
+            b_field, viewangle = theta[2:]
             self.doppler_component = zeeman_split(
                 self.cwl,
                 self.doppler_component,
@@ -707,7 +700,9 @@ class HydrogenLineShape(object):
                 b_field,
                 viewangle,
             )
-
+        else:
+            self.doppler_component = self.doppler_function(ion_temperature, 1)
+        # Get the Stark Component
         self.stark_component = stehle_param(
             self.n_upper,
             self.n_lower,
@@ -716,12 +711,18 @@ class HydrogenLineShape(object):
             electron_density,
             electron_temperature,
         )
-
-        # peak=np.convolve(stark_component, doppler_component/doppler_component.sum(), 'same')
+        # Convolved and normalise components
         peak = fftconvolve(self.stark_component, self.doppler_component, "same")
         peak /= trapz(peak, self.wavelengths)
 
         return peak
+
+    def gradient(self, theta) -> ndarray:
+        gradient: ndarray
+
+        raise NotImplementedError
+        
+        return gradient
 
 
 from OpenADAS import read_adf11
@@ -785,8 +786,11 @@ class BalmerHydrogenLine(object):
             Te=("pecs", te),
             kwargs=dict(bounds_error=False, fill_value=None),
         )
-        rec_pec = np.exp(self.rec_pec.interp(**interp_args)).data
-        exc_pec = np.exp(self.exc_pec.interp(**interp_args)).data
+        rec_pec: DataArray = np.exp(self.rec_pec.interp(**interp_args))  # .data
+        exc_pec: DataArray = np.exp(self.exc_pec.interp(**interp_args))  # .data
+        # Add los as a coordinate for the PECs dimention
+        rec_pec = rec_pec.assign_coords(los=('pecs', self.plasma.los))
+        exc_pec = exc_pec.assign_coords(los=('pecs', self.plasma.los))
 
         if isnan(exc_pec).any():
             err_msg: str = "NaNs in the excitation PECs!"
@@ -900,11 +904,34 @@ class BalmerHydrogenLine(object):
         return gradient
 
     def electron_density_gradient(self) -> ndarray:
-        gradient: ndarray
+        # Get the dne/dtheta for the chain rule calculation
+        ne_theta_grad: ndarray = self.plasma.profile_function.electron_density.gradient(self.plasma.plasma_theta['electron_density'])
+        # Calculate the excitation component
+        ems_grad: ndarray = trapz(
+            self.exc_profile.diff(dim='ne').data[None, :] * ne_theta_grad,
+            x=self.plasma.los
+        )
+        peak_shape_grad: ndarray = nan_to_num(self.lineshape.gradient(self.exc_lineshape_input))
+        excitation: ndarray = self.exc_lineshape * ems_grad + \
+                              peak_shape_grad * self.exc_sum
+        # Calculate the recombintion component
+        ems_grad: ndarray = trapz(
+            self.exc_profile.diff(dim='ne').data[None, :] * ne_theta_grad,
+            x=self.plasma.los
+        )
+        peak_shape_grad: ndarray = nan_to_num(self.lineshape.gradient(self.exc_lineshape_input))
+        recombination: ndarray = self.rec_lineshape * ems_grad + \
+                                 peak_shape_grad * self.rec_sum
+        # Sum and return
+        gradient: ndarray = excitation + recombination
+
         return gradient
 
     def electron_temperature_gradient(self) -> ndarray:
         gradient: ndarray
+
+        raise NotImplementedError
+
         return gradient
 
     def tau_gradient(self) -> ndarray:
