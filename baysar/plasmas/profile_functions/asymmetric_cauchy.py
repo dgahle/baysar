@@ -1,5 +1,5 @@
 # Imports
-from numpy import exp, linspace, log, ndarray, power, sqrt, square
+from numpy import array, exp, linspace, log, ndarray, power, sqrt, square
 
 # Variables
 
@@ -18,6 +18,24 @@ def asymmetric_cauchy(
     profile: ndarray = p_min + A / (1 + D)
 
     return profile
+
+
+def asymmetric_cauchy_gradient(
+    x: ndarray, log_p_max: float, shift: float, sigma: float, p_min: float
+) -> ndarray:
+    gradient_functions: list[callable] = [
+        asymmetric_cauchy_d_log_p_max,
+        asymmetric_cauchy_d_shift,
+        asymmetric_cauchy_d_sigma,
+        asymmetric_cauchy_d_p_min,
+    ]
+
+    theta: list[float] = [log_p_max, shift, sigma, p_min]
+    gradient: ndarray = array(
+        [f(x, *theta) for f in gradient_functions]
+    ).T
+
+    return gradient
 
 
 def asymmetric_cauchy_d_log_p_max(
@@ -113,6 +131,24 @@ class ElectronDensity:
         log_p_max, shift, sigma = theta
         return asymmetric_cauchy(self.x, log_p_max=log_p_max, shift=shift, sigma=sigma, p_min=0.)
 
+    def gradient(self, theta: list[float]) -> ndarray:
+        log_p_max, shift, sigma = theta
+
+        p_min: float = 0.
+
+        gradient_functions: list[callable] = [
+            asymmetric_cauchy_d_log_p_max,
+            asymmetric_cauchy_d_shift,
+            asymmetric_cauchy_d_sigma,
+        ]
+
+        theta: list[float] = [log_p_max, shift, sigma, p_min]
+        gradient: ndarray = array(
+            [f(self.x, *theta) for f in gradient_functions]
+        )
+
+        return gradient
+
 
 class ElectronTemperature:
 
@@ -128,6 +164,24 @@ class ElectronTemperature:
     def __call__(self, theta: list[float]) -> ndarray:
         log_p_max, sigma, p_min = theta
         return asymmetric_cauchy(self.x, log_p_max=log_p_max, shift=0., sigma=sigma, p_min=p_min)
+
+    def gradient(self, theta: list[float]) -> ndarray:
+        log_p_max, sigma, p_min = theta
+
+        shift: float = 0.
+
+        gradient_functions: list[callable] = [
+            asymmetric_cauchy_d_log_p_max,
+            asymmetric_cauchy_d_sigma,
+            asymmetric_cauchy_d_p_min,
+        ]
+
+        theta: list[float] = [log_p_max, shift, sigma, p_min]
+        gradient: ndarray = array(
+            [f(self.x, *theta) for f in gradient_functions]
+        )
+
+        return gradient
 
 
 class AsymmetricCauchyProfile:
