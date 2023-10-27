@@ -3,16 +3,46 @@
 """
 
 
+from copy import copy
 import time as clock
 import warnings
 
 import numpy as np
+from numpy import dot, round
+from numpy import trapz
 from numpy import empty, log, nan, ndarray, power
+from numpy import (
+    arange,
+    array,
+    cos,
+    diff,
+    dot,
+    interp,
+    isinf,
+    linspace,
+    log10,
+    nan_to_num,
+    sin,
+    sqrt,
+    trapz,
+    where,
+    zeros,
+)
 from scipy.constants import pi
+from scipy.constants import speed_of_light
+from scipy.constants import c as speed_of_light
+from scipy.constants import e as electron_charge
+from scipy.constants import m_e as electron_mass
+from scipy.constants import physical_constants
 from scipy.interpolate import RectBivariateSpline, RegularGridInterpolator
 from scipy.io import readsav
 from scipy.signal import fftconvolve
 from xarray import DataArray
+
+from baysar.lineshapes import Gaussian, reduce_wavelength, put_in_iterable
+from baysar.tools import clip_data
+from OpenADAS import read_adf11
+
 
 
 def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
@@ -164,28 +194,7 @@ class BasicLine(object):
         self.vectorise = vectorise
 
 
-from numpy import (
-    arange,
-    array,
-    cos,
-    diff,
-    dot,
-    interp,
-    isinf,
-    linspace,
-    log10,
-    nan_to_num,
-    sin,
-    sqrt,
-    trapz,
-    where,
-    zeros,
-)
 
-from baysar.lineshapes import Gaussian, reduce_wavelength
-
-# from numpy import log10, trapz
-from baysar.tools import clip_data  # x_data, y_data, x_range
 
 
 def estimate_XLine(l, wave, ems, half_width=None, half_range=0.5):
@@ -209,9 +218,6 @@ def estimate_XLine(l, wave, ems, half_width=None, half_range=0.5):
     return estimate, bounds
 
 
-from numpy import trapz
-
-
 class XLine(object):
     def __init__(
         self, cwl, wavelengths, plasma, fractions, fwhm=0.2, species="X", half_range=5
@@ -233,9 +239,6 @@ class XLine(object):
 
     def estimate_ems_and_bounds(self, wavelength, spectra):
         self.estimate, self.bounds = estimate_XLine(self, wavelength, spectra)
-
-
-from scipy.constants import speed_of_light
 
 
 def doppler_shift(cwl, atomic_mass, velocity):
@@ -302,7 +305,6 @@ class DopplerLine(object):
         return self.line([fwhm, ems])
 
 
-from baysar.lineshapes import put_in_iterable
 
 elements = ["H", "D", "He", "Be", "B", "C", "N", "O", "Ne"]
 masses = [1, 2, 4, 9, 10.8, 12, 14, 16, 20.2]
@@ -568,9 +570,6 @@ def stehle_param(
     return ls_s / trapz(ls_s, wavelengths)
 
 
-from scipy.constants import c as speed_of_light
-from scipy.constants import e as electron_charge
-from scipy.constants import m_e as electron_mass
 
 # cf is central frequency
 b_field_to_cf_shift = electron_charge / (4 * pi * electron_mass * speed_of_light * 1e10)
@@ -606,7 +605,6 @@ def zeeman_split(cwl, peak, wavelengths, b_field, viewangle):
     return ls_sigma_minus + ls_pi + ls_sigma_plus
 
 
-from copy import copy
 
 
 class HydrogenLineShape(object):
@@ -666,7 +664,7 @@ class HydrogenLineShape(object):
         self.loman_ij_abc = self.loman_dict[str(self.n_upper) + str(self.n_lower)]
 
         # self.get_delta_magnetic_quantum_number()
-        from scipy.constants import physical_constants
+
 
         self.bohr_magnaton = physical_constants["Bohr magneton in K/T"][0]
 
@@ -689,10 +687,11 @@ class HydrogenLineShape(object):
 
     def __call__(self, theta):
         # Unpack theta
-        electron_density, electron_temperature, ion_temperature = theta[:2]
+        default_theta_length: int = 3
+        electron_density, electron_temperature, ion_temperature = theta[:default_theta_length]
         # Get the Zeeman-Doppler component
         if self.zeeman:
-            b_field, viewangle = theta[2:]
+            b_field, viewangle = theta[default_theta_length:]
             self.doppler_component = zeeman_split(
                 self.cwl,
                 self.doppler_component,
@@ -724,8 +723,6 @@ class HydrogenLineShape(object):
         
         return gradient
 
-
-from OpenADAS import read_adf11
 
 
 class BalmerHydrogenLine(object):
@@ -952,9 +949,6 @@ class BalmerHydrogenLine(object):
         gradient: ndarray = self.exc_lineshape * trapz(emission_profile_dtau)
 
         return gradient
-
-
-from numpy import dot, round
 
 
 def print_ADAS406Line_summary(line):
