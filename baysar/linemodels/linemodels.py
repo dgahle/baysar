@@ -1,53 +1,22 @@
-"""
-.. moduleauther:: Daljeet Singh Gahle <daljeet.gahle@strath.ac.uk>
-"""
-
-
-import time as clock
-import warnings
+# Imports
 from copy import copy
 
 import numpy as np
-from numpy import (
-    arange,
-    array,
-    cos,
-    diff,
-    dot,
-    empty,
-    interp,
-    isinf,
-    linspace,
-    log,
-    log10,
-    nan,
-    nan_to_num,
-    ndarray,
-    power,
-    round,
-    sin,
-    sqrt,
-    trapz,
-    where,
-    zeros,
-)
-from scipy.constants import c as speed_of_light
-from scipy.constants import e as electron_charge
-from scipy.constants import m_e as electron_mass
-from scipy.constants import physical_constants, pi, speed_of_light
+from numpy import diff, dot, log10, round, sqrt, trapz
+from scipy.constants import pi
 from scipy.interpolate import RectBivariateSpline, RegularGridInterpolator
 from scipy.io import readsav
-from scipy.signal import fftconvolve
-from xarray import DataArray
 
-from baysar.lineshapes import Gaussian, put_in_iterable, reduce_wavelength
+from baysar.lineshapes import Gaussian, put_in_iterable
 from baysar.tools import clip_data
-from OpenADAS import read_adf11
 
 from .doppler import DopplerLine, doppler_shift, update_DopplerLine_cwls
 from .tools import get_atomic_mass
 
+# Variables
 
+
+# Functions and classes
 def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
     """
     This function returns an array which contains a subsection of input array ('wavelengths') which is
