@@ -689,7 +689,9 @@ class HydrogenLineShape(object):
         # Unpack theta
         default_theta_length: int = 3
         electron_density, electron_temperature, ion_temperature = theta[:default_theta_length]
-        # Get the Zeeman-Doppler component
+        # Get the Doppler component
+        self.doppler_component = self.doppler_function(ion_temperature, 1)
+        # Get the Zeeman component
         if self.zeeman:
             b_field, viewangle = theta[default_theta_length:]
             self.doppler_component = zeeman_split(
@@ -699,8 +701,6 @@ class HydrogenLineShape(object):
                 b_field,
                 viewangle,
             )
-        else:
-            self.doppler_component = self.doppler_function(ion_temperature, 1)
         # Get the Stark Component
         self.stark_component = stehle_param(
             self.n_upper,
