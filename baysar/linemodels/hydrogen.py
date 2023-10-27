@@ -1,44 +1,30 @@
 # Imports
-import time as clock
-import warnings
 from copy import copy
 
-import numpy as np
 from numpy import (
     arange,
-    array,
     cos,
     diff,
+    divide,
     dot,
     empty,
+    exp,
     interp,
-    isinf,
     linspace,
     log,
-    log10,
     nan,
     nan_to_num,
     ndarray,
     power,
     round,
     sin,
-    sqrt,
     trapz,
-    where,
-    zeros,
 )
-from scipy.constants import c as speed_of_light
 from scipy.constants import e as electron_charge
 from scipy.constants import m_e as electron_mass
 from scipy.constants import physical_constants, pi, speed_of_light
-from scipy.interpolate import RectBivariateSpline, RegularGridInterpolator
-from scipy.io import readsav
 from scipy.signal import fftconvolve
 from xarray import DataArray
-
-from baysar.lineshapes import Gaussian, put_in_iterable, reduce_wavelength
-from baysar.tools import clip_data
-from OpenADAS import read_adf11
 
 from .doppler import DopplerLine, doppler_shift_BalmerHydrogenLine
 from .tools import atomic_masses
@@ -77,7 +63,7 @@ def stehle_param(
     delta_lambda_12ij = (
         10.0
         * c_ij
-        * np.divide((1e6 * electron_density) ** a_ij, electron_temperature**b_ij)
+        * divide((1e6 * electron_density) ** a_ij, electron_temperature**b_ij)
     )  # nm -> A
     gamma = delta_lambda_12ij / 2.0
     ls_s = 1 / (abs((wavelengths - cwl)) ** 2.5 + gamma**2.5)
@@ -124,7 +110,7 @@ class HydrogenLineShape(object):
             self.n_lower = 2
             UserWarning(
                 "Using the Balmer Stark shape coefficients for the Lyman series. Transition n=%d -> %d | %f A"
-                % (self.n_upper, self.n_lower, np.round(self.cwl, 2))
+                % (self.n_upper, self.n_lower, round(self.cwl, 2))
             )
         else:
             self.n_upper = n_upper
@@ -137,7 +123,7 @@ class HydrogenLineShape(object):
         if type(wavelengths_doppler_num / 2) != int:
             wavelengths_doppler_num += 1
 
-        self.wavelengths_doppler = np.linspace(
+        self.wavelengths_doppler = linspace(
             self.cwl - 10, self.cwl + 10, wavelengths_doppler_num
         )
 
@@ -174,13 +160,13 @@ class HydrogenLineShape(object):
 
         self.bohr_magnaton = physical_constants["Bohr magneton in K/T"][0]
 
-        # print("Transition n=%d -> %d | %f A"%(self.n_upper, self.n_lower, np.round(self.cwl, 2)))
+        # print("Transition n=%d -> %d | %f A"%(self.n_upper, self.n_lower, round(self.cwl, 2)))
 
         # # TODO - why?
         # wavelengths_doppler_num = len(self.wavelengths) # todo make a power of 2
         # if wavelengths_doppler_num % 2 == 0:
         #     wavelengths_doppler_num += 1
-        dlambda = np.diff(self.wavelengths).mean()
+        dlambda = diff(self.wavelengths).mean()
         self.wavelengths_doppler = arange(
             self.cwl - 10, self.cwl + 10 + dlambda, dlambda
         )
@@ -290,8 +276,8 @@ class BalmerHydrogenLine(object):
             Te=("pecs", te),
             kwargs=dict(bounds_error=False, fill_value=None),
         )
-        rec_pec: DataArray = np.exp(self.rec_pec.interp(**interp_args))  # .data
-        exc_pec: DataArray = np.exp(self.exc_pec.interp(**interp_args))  # .data
+        rec_pec: DataArray = exp(self.rec_pec.interp(**interp_args))  # .data
+        exc_pec: DataArray = exp(self.exc_pec.interp(**interp_args))  # .data
         # Add los as a coordinate for the PECs dimention
         rec_pec = rec_pec.assign_coords(los=("pecs", self.plasma.los))
         exc_pec = exc_pec.assign_coords(los=("pecs", self.plasma.los))
@@ -311,14 +297,14 @@ class BalmerHydrogenLine(object):
         self.rec_ems_weights = self.rec_profile / self.rec_profile.sum()
         self.exc_ems_weights = self.exc_profile / self.exc_profile.sum()
 
-        self.rec_sum = np.trapz(self.rec_profile, x=self.plasma.los) / (
+        self.rec_sum = trapz(self.rec_profile, x=self.plasma.los) / (
             4 * pi
         )  # ph/cm-2/sr/s
-        self.exc_sum = np.trapz(self.exc_profile, x=self.plasma.los) / (
+        self.exc_sum = trapz(self.exc_profile, x=self.plasma.los) / (
             4 * pi
         )  # ph/cm-2/sr/s
         self.ems_profile = self.rec_profile + self.exc_profile
-        self.emission_fitted = np.trapz(self.ems_profile, x=self.plasma.los) / (4 * pi)
+        self.emission_fitted = trapz(self.ems_profile, x=self.plasma.los) / (4 * pi)
 
         # used for the emission lineshape calculation
         self.exc_ne = dot(self.exc_ems_weights, ne)
@@ -460,7 +446,7 @@ class BalmerHydrogenLine(object):
             Te=("pecs", te),
             kwargs=dict(bounds_error=False, fill_value=None),
         )
-        pec: ndarray = np.exp(self.exc_pec.interp(**interp_args)).data
+        pec: ndarray = exp(self.exc_pec.interp(**interp_args)).data
         # Calculate gradient
         n0_dtau: ndarray = log(10) * n0 * ne * self.plasma.scd
         emission_profile_dtau: ndarray = n0_dtau * ne * pec
