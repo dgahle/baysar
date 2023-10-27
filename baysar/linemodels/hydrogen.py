@@ -100,8 +100,36 @@ def zeeman_split(cwl, peak, wavelengths, b_field, viewangle):
     return ls_sigma_minus + ls_pi + ls_sigma_plus
 
 
+class StarkShape:
+
+    def __init__(self, cwl, wavelengths, n_upper, n_lower):
+        # Cache args
+        self.cwl = cwl
+        self.wavelengths = wavelengths
+        self.n_upper = n_upper
+        self.n_lower = n_lower
+        # Paramaterised MMM Stark profile coefficients from Bart's paper
+        self.a_ij, self.b_ij, self.c_ij = loman_coeff[str(n_upper) + str(n_lower)]
+
+    def __call__(self, electron_density, electron_temperature) -> ndarray:
+        # Convert ne units from cm-3 to m-3
+        electron_density *= 1e6
+        # Calculate part of the denominator of the Stehle equation
+        gamma = 0.5 * (
+                10.0  # nm -> A
+                * self.c_ij
+                * divide(electron_density ** self.a_ij, electron_temperature ** self.b_ij)
+        )
+        # Calculate the line shape
+        lineshape = 1 / (abs((self.wavelengths - self.cwl)) ** 2.5 + gamma ** 2.5)
+        # Normalise
+        lineshape /= trapz(lineshape, self.wavelengths)
+        return lineshape
+
+
 class HydrogenLineShape(object):
     def __init__(self, cwl, wavelengths, n_upper, n_lower, atomic_mass, zeeman=True):
+        # Cache inputs
         self.cwl = cwl
         self.wavelengths = wavelengths
         self.zeeman = zeeman
@@ -115,57 +143,8 @@ class HydrogenLineShape(object):
         else:
             self.n_upper = n_upper
             self.n_lower = n_lower
-
-        # from .lineshapes import GaussiansNorm  # , Gaussian
-
-        wavelengths_doppler_num = len(self.wavelengths)
-
-        if type(wavelengths_doppler_num / 2) != int:
-            wavelengths_doppler_num += 1
-
-        self.wavelengths_doppler = linspace(
-            self.cwl - 10, self.cwl + 10, wavelengths_doppler_num
-        )
-
-        self.doppler_function = DopplerLine(
-            self.cwl, self.wavelengths_doppler, atomic_mass
-        )
-
-        self.loman_dict = {
-            "32": [0.7665, 0.064, 3.710e-18],  # Balmer Series
-            "42": [0.7803, 0.050, 8.425e-18],
-            "52": [0.6796, 0.030, 1.310e-15],
-            "62": [0.7149, 0.028, 3.954e-16],
-            "72": [0.7120, 0.029, 6.258e-16],
-            "82": [0.7159, 0.032, 7.378e-16],
-            "92": [0.7177, 0.033, 8.947e-16],
-            "102": [0.7158, 0.032, 1.239e-15],
-            "112": [0.7146, 0.028, 1.632e-15],
-            "122": [0.7388, 0.026, 6.459e-16],
-            "132": [0.7356, 0.020, 9.012e-16],
-            "43": [0.7449, 0.045, 1.330e-16],  # Paschen Series
-            "53": [0.7356, 0.044, 6.640e-16],
-            "63": [0.7118, 0.016, 2.481e-15],
-            "73": [0.7137, 0.029, 3.270e-15],
-            "83": [0.7133, 0.032, 4.343e-15],
-            "93": [0.7165, 0.033, 5.588e-15],
-        }
-
-        self.n_upper = n_upper
-        self.n_lower = n_lower
-
-        self.loman_ij_abc = self.loman_dict[str(self.n_upper) + str(self.n_lower)]
-
-        # self.get_delta_magnetic_quantum_number()
-
-        self.bohr_magnaton = physical_constants["Bohr magneton in K/T"][0]
-
-        # print("Transition n=%d -> %d | %f A"%(self.n_upper, self.n_lower, round(self.cwl, 2)))
-
-        # # TODO - why?
-        # wavelengths_doppler_num = len(self.wavelengths) # todo make a power of 2
-        # if wavelengths_doppler_num % 2 == 0:
-        #     wavelengths_doppler_num += 1
+        # Get lineshape components
+        # Doppler
         dlambda = diff(self.wavelengths).mean()
         self.wavelengths_doppler = arange(
             self.cwl - 10, self.cwl + 10 + dlambda, dlambda
@@ -176,6 +155,13 @@ class HydrogenLineShape(object):
             atomic_mass=atomic_mass,
             half_range=5000,
         )
+        # Stark
+        self.Stark = StarkShape(
+            cwl, wavelengths, n_upper, n_lower
+        )
+        # Zeeman
+        # self.get_delta_magnetic_quantum_number()
+        self.bohr_magnaton = physical_constants["Bohr magneton in K/T"][0]
 
     def __call__(self, theta):
         # Unpack theta
@@ -196,13 +182,8 @@ class HydrogenLineShape(object):
                 viewangle,
             )
         # Get the Stark Component
-        self.stark_component = stehle_param(
-            self.n_upper,
-            self.n_lower,
-            self.cwl,
-            self.wavelengths,
-            electron_density,
-            electron_temperature,
+        self.stark_component = self.Stark(
+            electron_density, electron_temperature
         )
         # Convolved and normalise components
         peak = fftconvolve(self.stark_component, self.doppler_component, "same")
@@ -210,7 +191,18 @@ class HydrogenLineShape(object):
 
         return peak
 
-    def gradient(self, theta) -> ndarray:
+    def gradient(self, theta: list[str]) -> ndarray:
+        """
+        Calculates the gradient of the HydrogenLineShape as a function of ne, Te, Ti, and if Zeeman splitting is
+        included then also B and viewangle.
+
+        :param (list[str]) theta:
+            Parameters of the HydrogenLineShape {ne, Te, Ti} and {B, viewangle} if Zeeman splitting is included.
+
+        :return (DataArray) gradient:
+            Gradient of HydrogenLineShape as a function of its parameters {ne, Te, Ti} and {B, viewangle} if Zeeman splitting is included.
+        """
+
         gradient: ndarray
 
         raise NotImplementedError
