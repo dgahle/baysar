@@ -1,5 +1,5 @@
 # Imports
-from numpy import array, sqrt, where
+from numpy import where
 
 # Variables
 elements = ["H", "D", "He", "Be", "B", "C", "N", "O", "Ne"]
@@ -12,12 +12,12 @@ atomic_masses = dict(elements_and_masses)
 
 # Functions and classes
 def species_to_element(species):
-    return species[0 : where([a == "_" for a in species])[0][0]]
+    return species[0: where([a == "_" for a in species])[0][0]]
 
 
 def get_atomic_mass(species):
-    elm = species_to_element(species)
-    return atomic_masses[elm]
+    element = species_to_element(species)
+    return atomic_masses[element]
 
 
 if __name__ == "__main__":
