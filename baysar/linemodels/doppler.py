@@ -62,7 +62,5 @@ def doppler_shift_BalmerHydrogenLine(self, velocity):
     update_HydrogenLineShape_cwl(self.lineshape, new_cwl)
 
 
-
-
 if __name__ == "__main__":
     pass

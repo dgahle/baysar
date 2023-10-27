@@ -3,49 +3,49 @@
 """
 
 
-from copy import copy
 import time as clock
 import warnings
+from copy import copy
 
 import numpy as np
-from numpy import dot, round
-from numpy import trapz
-from numpy import empty, log, nan, ndarray, power
 from numpy import (
     arange,
     array,
     cos,
     diff,
     dot,
+    empty,
     interp,
     isinf,
     linspace,
+    log,
     log10,
+    nan,
     nan_to_num,
+    ndarray,
+    power,
+    round,
     sin,
     sqrt,
     trapz,
     where,
     zeros,
 )
-from scipy.constants import pi
-from scipy.constants import speed_of_light
 from scipy.constants import c as speed_of_light
 from scipy.constants import e as electron_charge
 from scipy.constants import m_e as electron_mass
-from scipy.constants import physical_constants
+from scipy.constants import physical_constants, pi, speed_of_light
 from scipy.interpolate import RectBivariateSpline, RegularGridInterpolator
 from scipy.io import readsav
 from scipy.signal import fftconvolve
 from xarray import DataArray
 
-from baysar.lineshapes import Gaussian, reduce_wavelength, put_in_iterable
+from baysar.lineshapes import Gaussian, put_in_iterable, reduce_wavelength
 from baysar.tools import clip_data
 from OpenADAS import read_adf11
 
 from .doppler import DopplerLine, doppler_shift, update_DopplerLine_cwls
 from .tools import get_atomic_mass
-
 
 
 def reduce_wavelength(wavelengths, cwl, half_range, return_indicies=False):
@@ -197,9 +197,6 @@ class BasicLine(object):
         self.vectorise = vectorise
 
 
-
-
-
 def estimate_XLine(l, wave, ems, half_width=None, half_range=0.5):
     """
     Esimates the area of a mystery line (XLine) and gives bounds.
@@ -244,12 +241,6 @@ class XLine(object):
         self.estimate, self.bounds = estimate_XLine(self, wavelength, spectra)
 
 
-
-
-
-
-
-
 def doppler_shift_ADAS406Lines(self, velocity):
     # get doppler shifted wavelengths
     cwls = np.array(copy(self.cwls))
@@ -260,10 +251,6 @@ def doppler_shift_ADAS406Lines(self, velocity):
 
 def ti_to_fwhm(cwl, atomic_mass, ti):
     return cwl * 7.715e-5 * sqrt(ti / atomic_mass)
-
-
-
-
 
 
 class ADAS406Lines(object):
@@ -476,11 +463,6 @@ class ADAS406Lines(object):
 #                            override_input_check=True)
 #
 #      return line.ls_szd / trapz(line.ls_szd, self.wavelengths)
-
-
-
-
-
 
 
 def print_ADAS406Line_summary(line):

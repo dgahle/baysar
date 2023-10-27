@@ -1,48 +1,52 @@
 # Imports
-from copy import copy
 import time as clock
 import warnings
+from copy import copy
 
 import numpy as np
-from numpy import dot, round
-from numpy import trapz
-from numpy import empty, log, nan, ndarray, power
 from numpy import (
     arange,
     array,
     cos,
     diff,
     dot,
+    empty,
     interp,
     isinf,
     linspace,
+    log,
     log10,
+    nan,
     nan_to_num,
+    ndarray,
+    power,
+    round,
     sin,
     sqrt,
     trapz,
     where,
     zeros,
 )
-from scipy.constants import pi
-from scipy.constants import speed_of_light
 from scipy.constants import c as speed_of_light
 from scipy.constants import e as electron_charge
 from scipy.constants import m_e as electron_mass
-from scipy.constants import physical_constants
+from scipy.constants import physical_constants, pi, speed_of_light
 from scipy.interpolate import RectBivariateSpline, RegularGridInterpolator
 from scipy.io import readsav
 from scipy.signal import fftconvolve
 from xarray import DataArray
 
-from baysar.lineshapes import Gaussian, reduce_wavelength, put_in_iterable
+from baysar.lineshapes import Gaussian, put_in_iterable, reduce_wavelength
 from baysar.tools import clip_data
-from .tools import atomic_masses
-from .doppler import DopplerLine, doppler_shift_BalmerHydrogenLine
 from OpenADAS import read_adf11
 
+from .doppler import DopplerLine, doppler_shift_BalmerHydrogenLine
+from .tools import atomic_masses
+
 # Variables
-b_field_to_cf_shift = electron_charge / (4 * pi * electron_mass * speed_of_light * 1e10)  # cf is central frequency
+b_field_to_cf_shift = electron_charge / (
+    4 * pi * electron_mass * speed_of_light * 1e10
+)  # cf is central frequency
 loman_coeff = {
     "32": [0.7665, 0.064, 3.710e-18],  # Balmer Series
     "42": [0.7803, 0.050, 8.425e-18],
@@ -190,7 +194,9 @@ class HydrogenLineShape(object):
     def __call__(self, theta):
         # Unpack theta
         default_theta_length: int = 3
-        electron_density, electron_temperature, ion_temperature = theta[:default_theta_length]
+        electron_density, electron_temperature, ion_temperature = theta[
+            :default_theta_length
+        ]
         # Get the Doppler component
         self.doppler_component = self.doppler_function(ion_temperature, 1)
         # Get the Zeeman component
@@ -287,8 +293,8 @@ class BalmerHydrogenLine(object):
         rec_pec: DataArray = np.exp(self.rec_pec.interp(**interp_args))  # .data
         exc_pec: DataArray = np.exp(self.exc_pec.interp(**interp_args))  # .data
         # Add los as a coordinate for the PECs dimention
-        rec_pec = rec_pec.assign_coords(los=('pecs', self.plasma.los))
-        exc_pec = exc_pec.assign_coords(los=('pecs', self.plasma.los))
+        rec_pec = rec_pec.assign_coords(los=("pecs", self.plasma.los))
+        exc_pec = exc_pec.assign_coords(los=("pecs", self.plasma.los))
 
         if isnan(exc_pec).any():
             err_msg: str = "NaNs in the excitation PECs!"
@@ -352,8 +358,12 @@ class BalmerHydrogenLine(object):
             bfield,
             viewangle,
         ]
-        self.exc_lineshape: ndarray = nan_to_num(self.lineshape(self.exc_lineshape_input))
-        self.rec_lineshape: ndarray = nan_to_num(self.lineshape(self.rec_lineshape_input))
+        self.exc_lineshape: ndarray = nan_to_num(
+            self.lineshape(self.exc_lineshape_input)
+        )
+        self.rec_lineshape: ndarray = nan_to_num(
+            self.lineshape(self.rec_lineshape_input)
+        )
 
         self.exc_peak = self.exc_lineshape * self.exc_sum
         self.rec_peak = self.rec_lineshape * self.rec_sum
@@ -371,31 +381,30 @@ class BalmerHydrogenLine(object):
         # Shortcut for cached values
         _ = self()
         # Building variables
-        shape: tuple[int, int] = (
-            self.plasma.n_params,
-            *self.wavelengths.shape
-        )
+        shape: tuple[int, int] = (self.plasma.n_params, *self.wavelengths.shape)
         gradient: ndarray = empty(shape)
         gradient[:, :] = nan
         # Electron density
-        ne_key: str = 'electron_density'
+        ne_key: str = "electron_density"
         gradient[self.plasma.slices[ne_key]] = self.electron_density_gradient()
         # Electron temperature
-        te_key: str = 'electron_temperature'
+        te_key: str = "electron_temperature"
         gradient[self.plasma.slices[te_key]] = self.electron_temperature_gradient()
         # Neutral density
-        n0_key: str = f'{self.species}_dens'
+        n0_key: str = f"{self.species}_dens"
         if n0_key in self.plasma.slices:
             gradient[self.plasma.slices[n0_key]] = log(10) * self.exc_peak
         # Ionisation tau
-        tau_key: str = f'{self.species}_tau'
+        tau_key: str = f"{self.species}_tau"
         gradient[self.plasma.slices[tau_key]] = self.tau_gradient()
         # Doppler temperature
-        doppler_temperature_key: str = f'{self.species}_velocity'
+        doppler_temperature_key: str = f"{self.species}_velocity"
         # Doppler velocity
-        velocity_key: str = f'{self.species}_velocity'
+        velocity_key: str = f"{self.species}_velocity"
         if velocity_key in self.plasma.slices:
-            raise NotImplementedError('No gradients calculation for the Doppler velocity in BalmerHydrogenLine!')
+            raise NotImplementedError(
+                "No gradients calculation for the Doppler velocity in BalmerHydrogenLine!"
+            )
 
         raise NotImplementedError
 
@@ -403,23 +412,31 @@ class BalmerHydrogenLine(object):
 
     def electron_density_gradient(self) -> ndarray:
         # Get the dne/dtheta for the chain rule calculation
-        ne_theta_grad: ndarray = self.plasma.profile_function.electron_density.gradient(self.plasma.plasma_theta['electron_density'])
+        ne_theta_grad: ndarray = self.plasma.profile_function.electron_density.gradient(
+            self.plasma.plasma_theta["electron_density"]
+        )
         # Calculate the excitation component
         ems_grad: ndarray = trapz(
-            self.exc_profile.diff(dim='ne').data[None, :] * ne_theta_grad,
-            x=self.plasma.los
+            self.exc_profile.diff(dim="ne").data[None, :] * ne_theta_grad,
+            x=self.plasma.los,
         )
-        peak_shape_grad: ndarray = nan_to_num(self.lineshape.gradient(self.exc_lineshape_input))
-        excitation: ndarray = self.exc_lineshape * ems_grad + \
-                              peak_shape_grad * self.exc_sum
+        peak_shape_grad: ndarray = nan_to_num(
+            self.lineshape.gradient(self.exc_lineshape_input)
+        )
+        excitation: ndarray = (
+            self.exc_lineshape * ems_grad + peak_shape_grad * self.exc_sum
+        )
         # Calculate the recombintion component
         ems_grad: ndarray = trapz(
-            self.exc_profile.diff(dim='ne').data[None, :] * ne_theta_grad,
-            x=self.plasma.los
+            self.exc_profile.diff(dim="ne").data[None, :] * ne_theta_grad,
+            x=self.plasma.los,
         )
-        peak_shape_grad: ndarray = nan_to_num(self.lineshape.gradient(self.exc_lineshape_input))
-        recombination: ndarray = self.rec_lineshape * ems_grad + \
-                                 peak_shape_grad * self.rec_sum
+        peak_shape_grad: ndarray = nan_to_num(
+            self.lineshape.gradient(self.exc_lineshape_input)
+        )
+        recombination: ndarray = (
+            self.rec_lineshape * ems_grad + peak_shape_grad * self.rec_sum
+        )
         # Sum and return
         gradient: ndarray = excitation + recombination
 
@@ -436,7 +453,7 @@ class BalmerHydrogenLine(object):
         # Plasma parameters
         ne = self.plasma.plasma_state["electron_density"]
         te = self.plasma.plasma_state["electron_temperature"]
-        n0: ndarray = power(10, self.plasma.plasma_theta[f'{self.species}_dens'])
+        n0: ndarray = power(10, self.plasma.plasma_theta[f"{self.species}_dens"])
         # Reaction rates
         interp_args: dict = dict(
             ne=("pecs", ne),
