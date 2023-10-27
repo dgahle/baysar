@@ -37,7 +37,8 @@ from xarray import DataArray
 
 from baysar.lineshapes import Gaussian, reduce_wavelength, put_in_iterable
 from baysar.tools import clip_data
-from .tools import atomic_masses, doppler_shift, DopplerLine, update_DopplerLine_cwls
+from .tools import atomic_masses
+from .doppler import DopplerLine, doppler_shift_BalmerHydrogenLine
 from OpenADAS import read_adf11
 
 # Variables
@@ -64,23 +65,6 @@ loman_coeff = {
 
 
 # Functions and classes
-def update_HydrogenLineShape_cwl(line, cwl):
-    old_cwl = copy(line.cwl)
-    # update cwl for stark and zeeman
-    line.cwl = cwl
-    # update for DopplerLine
-    update_DopplerLine_cwls(line.doppler_function, [cwl])
-    # shift the DopplerLine wavelengths so the peak remains centred for the convolution
-    line.doppler_function.line.reducedx[0] += cwl - old_cwl
-
-
-def doppler_shift_BalmerHydrogenLine(self, velocity):
-    # get doppler shifted wavelengths
-    new_cwl = doppler_shift(copy(self.cwl), self.atomic_mass, velocity)
-    # update wavelengths
-    update_HydrogenLineShape_cwl(self.lineshape, new_cwl)
-
-
 def stehle_param(
     n_upper, n_lower, cwl, wavelengths, electron_density, electron_temperature
 ):

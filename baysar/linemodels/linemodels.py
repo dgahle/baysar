@@ -43,7 +43,8 @@ from baysar.lineshapes import Gaussian, reduce_wavelength, put_in_iterable
 from baysar.tools import clip_data
 from OpenADAS import read_adf11
 
-from .tools import DopplerLine, doppler_shift, get_atomic_mass, update_DopplerLine_cwls
+from .doppler import DopplerLine, doppler_shift, update_DopplerLine_cwls
+from .tools import get_atomic_mass
 
 
 
